@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { imageMarkdown, type DirectorAction, type DirectorInput } from "@/lib/director";
 import { useMutation, useQuery, useSession, useToast } from "@/components/providers";
 import { Logo } from "@/components/logo";
 import { Quipus, btn } from "@/components/bits";
@@ -43,6 +44,9 @@ const TOOLS: { id: ClassroomTool; label: string; icon: typeof FileText }[] = [
   { id: "notebook", label: "Cuaderno", icon: NotebookPen },
   { id: "activity", label: "Actividad", icon: Sparkles },
 ];
+
+/** Filtro barato: solo lo que suena a gráfico, pregunta o imagen se manda al director. */
+const TUTOR_PREFILTER = /graf|parábola|parabola|recta|funci|plano|eje|pregunta|quiz|opci|alternativ|imagen|dibuj|muestr/i;
 
 interface ChatLine {
   id: number;
@@ -178,6 +182,70 @@ export default function ClassroomPage() {
     [transport],
   );
 
+  // ---- Director de clase: el servidor decide graficar / quiz / imagen a partir del chat y de lo que anuncia el tutor ----
+  const chatRef = useRef<ChatLine[]>([]);
+  useEffect(() => {
+    chatRef.current = chat;
+  }, [chat]);
+  const dir = useRef({
+    busy: false,
+    lastCall: 0,
+    failures: 0,
+    off: false,
+    pending: null as DirectorInput | null,
+    recent: new Map<string, number>(),
+    graphs: new Map<string, number>(),
+  });
+  const applyActionsRef = useRef<(actions: DirectorAction[]) => void>(() => {});
+  const askDirectorRef = useRef<(input: DirectorInput) => void>(() => {});
+  const isAiClass = data?.session.tutor_kind === "ai";
+  // Con varios alumnos solo el primero consulta lo que dice el tutor (si no, cada cliente repetiría la acción)
+  const hearsTutor = !!userId && data?.students[0]?.id === userId;
+
+  const askDirector = (input: DirectorInput) => {
+    const d = dir.current;
+    if (!userId || d.off || !isAiClass || (input.source === "tutor" && !hearsTutor)) return;
+    const key = `${input.source}:${input.text.toLowerCase()}`;
+    const now = Date.now();
+    if ((d.recent.get(key) ?? 0) > now - 30_000) return;
+    d.recent.set(key, now);
+    if (d.recent.size > 60) for (const [k, t] of d.recent) if (t < now - 30_000) d.recent.delete(k);
+    if (d.busy) {
+      d.pending = input; // solo importa lo último
+      return;
+    }
+    d.busy = true;
+    void (async () => {
+      let next: DirectorInput | null = input;
+      while (next && !d.off) {
+        const cur: DirectorInput = next;
+        next = null;
+        // El servidor pide ≥ 2 s entre llamadas
+        const wait = d.lastCall + 2100 - Date.now();
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+        d.lastCall = Date.now();
+        const context = chatRef.current
+          .filter((l) => l.kind === "chat" || l.kind === "speech")
+          .slice(-6)
+          .map((l) => `${l.name || "Alguien"}: ${l.text}`.slice(0, 160));
+        try {
+          const res = await api.director(userId, sessionId, { ...cur, context });
+          d.failures = 0;
+          if (res.actions.length) applyActionsRef.current(res.actions);
+        } catch (err) {
+          console.warn("[director]", err instanceof Error ? err.message : err);
+          // Sin configurar (503) o caído: tras 3 fallos seguidos se deja de insistir en esta clase
+          if (++d.failures >= 3) d.off = true;
+        }
+        if (d.pending) {
+          next = d.pending;
+          d.pending = null;
+        }
+      }
+      d.busy = false;
+    })();
+  };
+
   const pushChat = useCallback((line: Omit<ChatLine, "id">) => {
     setChat((c) => {
       const i = line.segment ? c.findIndex((x) => x.segment === line.segment) : -1;
@@ -185,6 +253,38 @@ export default function ClassroomPage() {
       return [...c.slice(-80), { ...line, id: ++chatId.current }];
     });
   }, []);
+
+  const applyDirectorActions = (actions: DirectorAction[]) => {
+    if (!transport) return;
+    const actor = aiKey ?? myActor;
+    const d = dir.current;
+    const chip = (tool: string, label: string) => transport.send({ type: "tool_action", actor, tool, label });
+    for (const a of actions) {
+      if (a.type === "graph_set") {
+        const norm = a.latex.replace(/\s+/g, "");
+        // El agente puede haber graficado lo mismo hace un momento: gana el primero en llegar
+        if ((d.graphs.get(norm) ?? 0) > Date.now() - 10_000) continue;
+        d.graphs.set(norm, Date.now());
+        transport.send({ type: "graph_set", actor, id: a.id, latex: a.latex, color: a.color });
+        transport.send({ type: "focus_tool", actor, tool: "graph" });
+        chip("graph", `Graficado ${a.latex}`);
+      } else if (a.type === "graph_clear") {
+        for (const id of a.ids) transport.send({ type: "graph_remove", actor, id });
+        d.graphs.clear();
+        if (a.ids.length) chip("graph", "Gráfico borrado");
+      } else if (a.type === "quiz") {
+        transport.send({ type: "quiz_ask", actor, id: a.id, question: a.question, options: a.options });
+      } else if (a.type === "image") {
+        transport.send({ type: "doc_write", actor, markdown: imageMarkdown(a), mode: "append" });
+        transport.send({ type: "focus_tool", actor, tool: "doc" });
+        chip("image", "Imagen");
+      }
+    }
+  };
+  useEffect(() => {
+    applyActionsRef.current = applyDirectorActions;
+    askDirectorRef.current = askDirector;
+  });
 
   // Consumidor único de eventos: aplica cada herramienta al estado del aula
   useEffect(() => {
@@ -209,7 +309,10 @@ export default function ClassroomPage() {
       };
       switch (e.type) {
         case "emote":
-          if (fromAi) showEmote(e.kind === "think" ? "thinking" : e.kind === "surprised" ? "surprised" : "celebrating");
+          if (fromAi)
+            showEmote(
+              e.kind === "think" ? "thinking" : e.kind === "surprised" ? "surprised" : e.kind === "encourage" ? "listening" : "celebrating",
+            );
           break;
         case "doc_write":
           setDocDraft((d) => (e.mode === "append" ? (d ?? savedDoc) + e.markdown : e.markdown));
@@ -234,6 +337,7 @@ export default function ClassroomPage() {
           setNotebookImg(null);
           break;
         case "graph_set":
+          dir.current.graphs.set(e.latex.replace(/\s+/g, ""), Date.now());
           desmos.current?.setExpression(e.id, e.latex, e.color, fromAi);
           markBusy("graphing");
           break;
@@ -258,6 +362,8 @@ export default function ClassroomPage() {
           // Con segmento (LiveKit) la línea se va completando; sin segmento (modo local) solo la final
           if (e.segment || !e.partial)
             pushChat({ actor: e.actor, name: names[e.actor] ?? "Tutor", text: e.text, kind: "speech", segment: e.segment });
+          // Lo que el tutor anuncia ("voy a graficar…") solo llega al director si parece una acción
+          if (fromAi && !e.partial && TUTOR_PREFILTER.test(e.text)) askDirectorRef.current({ source: "tutor", text: e.text.slice(0, 600) });
           break;
         case "speaking":
           setSpeaking((s) => ({ ...s, [e.actor]: e.on }));
@@ -267,6 +373,8 @@ export default function ClassroomPage() {
           break;
         case "chat":
           pushChat({ actor: e.actor, name: e.name, text: e.text, kind: "chat" });
+          // Cada cliente consulta solo lo que escribió o dijo su alumno
+          if (e.actor === myActor && e.text.trim().length >= 4) askDirectorRef.current({ source: "student", text: e.text.slice(0, 600) });
           break;
         case "quiz_ask":
           setQuiz({ id: e.id, question: e.question, options: e.options, picked: null, result: null });
@@ -410,6 +518,23 @@ export default function ClassroomPage() {
   const pickOption = (index: number) => {
     if (!quiz || quiz.picked !== null || !transport) return;
     setQuiz({ ...quiz, picked: index });
+    if (quiz.id.startsWith("dq-")) {
+      // Pregunta del director: el servidor califica (la clave nunca llegó a la web)
+      const id = quiz.id;
+      const actor = aiKey ?? myActor;
+      api
+        .answerQuiz(userId ?? "", sessionId, id, index)
+        .then((v) => {
+          transport.send({ type: "quiz_result", actor, id, correct: v.correct, correctIndex: v.correctIndex, explanation: v.explanation });
+          transport.send({ type: "emote", actor, kind: v.correct ? "celebrate" : "encourage" });
+        })
+        .catch((err) => {
+          console.warn("[director] no se pudo calificar", err instanceof Error ? err.message : err);
+          toast("No pudimos revisar tu respuesta. Intenta de nuevo.", "error");
+          setQuiz((q) => (q && q.id === id && !q.result ? { ...q, picked: null } : q));
+        });
+      return;
+    }
     transport.send({ type: "quiz_answer", actor: myActor, id: quiz.id, index });
   };
 

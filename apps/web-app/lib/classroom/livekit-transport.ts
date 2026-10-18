@@ -33,6 +33,7 @@ const PEER_EVENTS = new Set<ClassroomEvent["type"]>([
   "board_erase",
   "focus_tool",
   "notebook_clear",
+  "quiz_ask",
   "session_event",
 ]);
 
@@ -68,6 +69,14 @@ export class LiveKitTransport implements ClassroomTransport {
         if (!msg || typeof msg !== "object") return;
         const type = (msg as { type?: unknown }).type;
         if (typeof type !== "string" || !PEER_EVENTS.has(type as ClassroomEvent["type"])) return;
+        if (type === "quiz_ask") {
+          // Tarjeta del director compartida por un compañero: se reconstruye con forma segura
+          const q = msg as { id?: unknown; question?: unknown; options?: unknown };
+          const options = Array.isArray(q.options) ? q.options.filter((o): o is string => typeof o === "string").map((o) => o.slice(0, 120)).slice(0, 4) : [];
+          if (typeof q.id !== "string" || typeof q.question !== "string" || options.length < 2) return;
+          this.emit({ type: "quiz_ask", actor: this.actorOf(this.participant(info.identity), info.identity), id: q.id.slice(0, 40), question: q.question.slice(0, 240), options });
+          return;
+        }
         // El actor lo pone la sala, no el mensaje: nadie puede hacerse pasar por otro
         this.emit({ ...(msg as ClassroomEvent), actor: this.actorOf(this.participant(info.identity), info.identity) });
       });

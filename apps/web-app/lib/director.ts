@@ -159,3 +159,11 @@ export function mockDirect(input: DirectorInput): RawAction[] {
   if (/\b(pregunta|quiz)\b|opci[óo]n m[úu]ltiple/.test(t)) return [MOCK_QUIZ];
   return [];
 }
+
+/** Markdown seguro para el documento: sin corchetes ni paréntesis que rompan la sintaxis. */
+export function imageMarkdown(img: { url: string; caption: string; credit: string }): string {
+  const clean = (t: string) => t.replace(/[[\]()<>*_`\n\r]/g, " ").replace(/\s+/g, " ").trim();
+  const url = img.url.replace(/\(/g, "%28").replace(/\)/g, "%29").replace(/\s/g, "%20");
+  const credit = [clean(img.credit), "Wikimedia Commons"].filter(Boolean).join(" · ");
+  return `\n\n![${clean(img.caption)}](${url})\n\n*Imagen: ${credit}*\n`;
+}
