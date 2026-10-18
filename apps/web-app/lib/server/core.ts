@@ -8,7 +8,7 @@ export class HttpError extends Error {
   constructor(
     public status: number,
     message: string,
-    public code: "insufficient_funds" | "not_found" | "invalid" | "conflict" | "unauthorized" | "forbidden" | "unavailable" = "invalid",
+    public code: "insufficient_funds" | "not_found" | "invalid" | "conflict" | "unauthorized" | "forbidden" | "suspended" | "unavailable" = "invalid",
   ) {
     super(message);
   }
@@ -99,6 +99,11 @@ const RPC_ERRORS: Record<string, [number, string, HttpError["code"]]> = {
   tutor_no_ensena_tema: [400, "Ese tutor no enseña este tema.", "invalid"],
 };
 
+/** Códigos de Postgres/PostgREST cuando falta una tabla, función o columna (migración sin aplicar). */
+const MISSING_SCHEMA = new Set(["42P01", "42883", "42703", "PGRST202", "PGRST204", "PGRST205"]);
+
+export const isMissingSchema = (err: PgError | null | undefined) => !!err?.code && MISSING_SCHEMA.has(err.code);
+
 interface PgError {
   message: string;
   code?: string;
@@ -109,6 +114,10 @@ export function fromDbError(err: PgError): HttpError {
     if (err.message?.includes(key)) return new HttpError(status, msg, code);
   }
   if (err.code === "23505") return new HttpError(409, "Eso ya estaba registrado.", "conflict");
+  if (isMissingSchema(err)) {
+    console.error("[api] falta aplicar una migración", err.code, err.message);
+    return new HttpError(503, "Falta aplicar la migración 003_admin.sql en la base de datos.", "unavailable");
+  }
   console.error("[api] error de base de datos", err.code, err.message);
   return new HttpError(500, "Algo salió mal en el servidor. Intenta de nuevo.", "invalid");
 }

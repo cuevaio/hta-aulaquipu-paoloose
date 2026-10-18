@@ -15,6 +15,9 @@ import type {
   TutorStats,
 } from "@/lib/types";
 
+/** Columnas públicas del perfil: suspended_at/suspended_reason nunca salen de la API. */
+export const PROFILE_COLUMNS = "id, username, display_name, grade, school, avatar_config, created_at";
+
 export const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 // ---------- filas ----------
@@ -78,7 +81,7 @@ export function toAi(a: AiRow): AiTutor {
 export async function profilesById(ids: string[]): Promise<Map<string, Profile>> {
   const unique = [...new Set(ids.filter(Boolean))];
   if (!unique.length) return new Map();
-  const rows = await must<Profile[]>(db().from("profiles").select("*").in("id", unique));
+  const rows = await must<Profile[]>(db().from("profiles").select(PROFILE_COLUMNS).in("id", unique));
   return new Map(rows.map((p) => [p.id, p]));
 }
 

@@ -1,9 +1,10 @@
 // Endpoints de la API (§9). Cada handler recibe el usuario autenticado por cookie;
 // nunca confía en un id de usuario enviado por el navegador.
 
-import { db, env, HttpError, must, rpc } from "@/lib/server/core";
+import { db, env, HttpError, isMissingSchema, must, rpc } from "@/lib/server/core";
 import {
   aiTutors,
+  PROFILE_COLUMNS,
   availableOf,
   badgesOf,
   balanceOf,
@@ -22,6 +23,7 @@ import {
   type SessionRow,
   type TopicRow,
 } from "@/lib/server/data";
+import { isAdmin, requireNotSuspended } from "@/lib/server/admin";
 import { normalizeTopic } from "@/lib/server/topics";
 import { closeRoom, createCampusToken, createRoomToken } from "@/lib/server/livekit";
 import type {
@@ -45,16 +47,16 @@ export const TEST_PASSWORD = "aula2026";
 
 // ---------- validación de entrada ----------
 
-type Body = Record<string, unknown>;
+export type Body = Record<string, unknown>;
 
-const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+export const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
-function uuidParam(v: string | undefined, what = "recurso"): string {
+export function uuidParam(v: string | undefined, what = "recurso"): string {
   if (!isUuid(v)) throw new HttpError(404, `No encontramos ese ${what}.`, "not_found");
   return v;
 }
 
-function str(body: Body, key: string, { max = 500, min = 0 } = {}): string {
+export function str(body: Body, key: string, { max = 500, min = 0 } = {}): string {
   const v = body[key];
   if (typeof v !== "string") throw new HttpError(400, `Falta el campo "${key}".`);
   const t = v.trim();
@@ -63,7 +65,7 @@ function str(body: Body, key: string, { max = 500, min = 0 } = {}): string {
   return t;
 }
 
-function optionalIso(body: Body, key: string): string | null {
+export function optionalIso(body: Body, key: string): string | null {
   const v = body[key];
   if (v === null || v === undefined || v === "") return null;
   if (typeof v !== "string" || Number.isNaN(Date.parse(v))) throw new HttpError(400, "Fecha inválida.");
@@ -92,6 +94,7 @@ export async function login(body: Body, ip: string): Promise<{ userId: string }>
     loginAttempts.set(ip, next);
     throw new HttpError(401, "DNI o contraseña incorrectos.", "unauthorized");
   }
+  await requireNotSuspended(userId);
   loginAttempts.delete(ip);
   return { userId };
 }
@@ -120,13 +123,14 @@ async function skinsFor(userId: string): Promise<(Skin & { owned: boolean; equip
 }
 
 export async function me(userId: string): Promise<Me> {
-  const [profile, balance, available, skins, equipped, stats] = await Promise.all([
+  const [profile, balance, available, skins, equipped, stats, admin] = await Promise.all([
     profileOf(userId),
     balanceOf(userId),
     availableOf(userId),
     skinsFor(userId),
     equippedFor([userId]),
     statsFor([userId]),
+    isAdmin(userId),
   ]);
   const st = stats.get(userId)!;
   return {
@@ -137,11 +141,12 @@ export async function me(userId: string): Promise<Me> {
     equipped: equipped.get(userId)!,
     badges: await badgesOf(userId, st, balance),
     stats: st,
+    is_admin: admin,
   };
 }
 
 export async function demoUsers(): Promise<Profile[]> {
-  return must<Profile[]>(db().from("profiles").select("*").order("display_name"));
+  return must<Profile[]>(db().from("profiles").select(PROFILE_COLUMNS).order("display_name"));
 }
 
 // ---------- temas y pedidos ----------
@@ -588,10 +593,15 @@ export async function equipSkin(userId: string, id: string, body: Body) {
 
 // ---------- ledger ----------
 
+const LEDGER_BASE = "id, session_id, from_profile, to_profile, amount, kind, created_at";
+
 export async function ledger(userId: string): Promise<LedgerLine[]> {
-  const rows = await must<{ id: number; session_id: string | null; from_profile: string | null; to_profile: string | null; amount: number; kind: LedgerLine["kind"]; created_at: string }[]>(
-    db().from("quipus_ledger").select("*").or(`to_profile.eq.${userId},from_profile.eq.${userId}`).order("id", { ascending: false }).limit(200),
-  );
+  type Row = { id: number; session_id: string | null; from_profile: string | null; to_profile: string | null; amount: number; kind: LedgerLine["kind"]; created_at: string; note?: string | null };
+  const query = (columns: string) =>
+    db().from("quipus_ledger").select(columns).or(`to_profile.eq.${userId},from_profile.eq.${userId}`).order("id", { ascending: false }).limit(200);
+  // La columna note llega con la migración 003: sin ella se lee el ledger como antes
+  const first = await query(`${LEDGER_BASE}, note`);
+  const rows = await must<Row[]>(first.error && isMissingSchema(first.error) ? query(LEDGER_BASE) : Promise.resolve(first));
   const sessionIds = [...new Set(rows.map((r) => r.session_id).filter((x): x is string => !!x))];
   const sessions = sessionIds.length
     ? await must<{ id: string; topic_id: string | null; ai_tutor_id: string | null }[]>(
@@ -626,6 +636,12 @@ export async function ledger(userId: string): Promise<LedgerLine[]> {
         break;
       case "refund":
         description = `Devolución por clase cancelada${topic ? ` (${topic})` : ""}`;
+        break;
+      case "grant":
+        description = `Regalo de AulaQuipu${l.note ? `: ${l.note}` : ""}`;
+        break;
+      case "adjust":
+        description = `Ajuste de AulaQuipu${l.note ? `: ${l.note}` : ""}`;
         break;
     }
     return { ...l, amount: Number(l.amount), direction: l.to_profile === userId ? ("in" as const) : ("out" as const), description };

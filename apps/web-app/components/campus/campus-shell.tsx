@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, GraduationCap, LayoutDashboard, HelpCircle, LogOut, User, X } from "lucide-react";
+import { BookOpen, GraduationCap, LayoutDashboard, HelpCircle, LogOut, ShieldCheck, User, X } from "lucide-react";
 import { api, API_MODE } from "@/lib/api";
 import { AI_SPOTS, STUDENT_SPOTS, TUTOR_SPOTS, type Room } from "@/lib/campus/map";
 import { useQuery, useSession } from "@/components/providers";
@@ -216,6 +216,11 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
               <Link href="/perfil" onClick={() => setMenu(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold hover:bg-muted">
                 <User className="size-4" /> Mi perfil
               </Link>
+              {me.is_admin && (
+                <Link href="/admin" onClick={() => setMenu(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold hover:bg-muted">
+                  <ShieldCheck className="size-4" /> Admin
+                </Link>
+              )}
               <button
                 onClick={async () => {
                   setMenu(false);

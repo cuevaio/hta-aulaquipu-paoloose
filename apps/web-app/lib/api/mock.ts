@@ -12,6 +12,7 @@ import type {
   UpcomingClass,
 } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
+import { buildMockAdmin, isMockAdmin } from "@/lib/api/mock-admin";
 import { buildSeed, SEED_VERSION, TOPIC_KEYWORDS, type DbState } from "@/lib/api/seed";
 import type {
   Badge,
@@ -108,7 +109,7 @@ export function balanceOf(s: DbState, id: UUID): number {
 /** Escribe en el ledger. La validación de saldo se hace antes (requireBalance), como en las RPCs. */
 function addLedger(
   s: DbState,
-  entry: { kind: LedgerKind; amount: number; from: UUID | null; to: UUID | null; sessionId?: UUID | null },
+  entry: { kind: LedgerKind; amount: number; from: UUID | null; to: UUID | null; sessionId?: UUID | null; note?: string },
 ) {
   if (entry.amount <= 0) return;
   const id = s.ledger.reduce((m, l) => Math.max(m, l.id), 0) + 1;
@@ -120,6 +121,7 @@ function addLedger(
     amount: entry.amount,
     kind: entry.kind,
     created_at: now(),
+    ...(entry.note ? { note: entry.note } : {}),
   };
   s.ledger.push(row);
 }
@@ -259,6 +261,10 @@ function describeLedger(s: DbState, l: LedgerEntry, me: UUID): string {
       return "Compra en la tienda";
     case "refund":
       return `Devolución por clase cancelada${topic ? ` (${topic})` : ""}`;
+    case "grant":
+      return `Regalo de AulaQuipu${l.note ? `: ${l.note}` : ""}`;
+    case "adjust":
+      return `Ajuste de AulaQuipu${l.note ? `: ${l.note}` : ""}`;
   }
 }
 
@@ -290,13 +296,17 @@ function ensureLiveGroupSession(s: DbState, group: Group): Session {
 
 // ---------- cliente ----------
 
+
 export const mockApi: ApiClient = {
+  admin: buildMockAdmin({ read, write, balanceOf, addLedger, uid, now }),
+
   login: (dni, password) =>
     read((s) => {
       const clean = dni.trim();
       if (!/^\d{8}$/.test(clean)) throw new ApiError("El DNI tiene 8 dígitos.", "invalid");
       const cred = s.credentials.find((c) => c.dni === clean && c.password === password);
       if (!cred) throw new ApiError("DNI o contraseña incorrectos.", "unauthorized");
+      if (profileOf(s, cred.profile_id).suspended_at) throw new ApiError("Tu cuenta está suspendida.", "suspended");
       return { userId: cred.profile_id };
     }),
 
@@ -319,6 +329,7 @@ export const mockApi: ApiClient = {
         equipped: equippedOf(s, userId),
         badges: badgesOf(s, userId),
         stats: statsOf(s, userId),
+        is_admin: isMockAdmin(s, userId),
       };
     }),
 
@@ -416,7 +427,8 @@ export const mockApi: ApiClient = {
       if (input.kind === "ai") {
         const ai = s.ai_tutors.find((a) => a.id === input.aiTutorId);
         if (!ai) throw new ApiError("Tutor IA no encontrado", "not_found");
-        requireBalance(s, userId, ai.price_quipus);
+        const price = ai.price_quipus;
+        requireBalance(s, userId, price);
         const request = input.requestId ? s.requests.find((r) => r.id === input.requestId) : null;
         const topicId =
           request?.topic_id ?? s.ai_tutor_topics.find((x) => x.ai_tutor_id === ai.id)?.topic_id ?? s.topics[0].id;
@@ -430,7 +442,7 @@ export const mockApi: ApiClient = {
           tutor_id: null,
           ai_tutor_id: ai.id,
           room_name: `session-${id}`,
-          price_quipus: ai.price_quipus,
+          price_quipus: price,
           status: "live",
           started_at: now(),
           ended_at: null,

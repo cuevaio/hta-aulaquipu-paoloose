@@ -11,6 +11,8 @@ import {
   SESSION_TTL_S,
 } from "@/lib/server/core";
 import * as h from "@/lib/server/handlers";
+import * as ad from "@/lib/server/admin-handlers";
+import { isAdmin, requireAdmin, requireNotSuspended } from "@/lib/server/admin";
 
 type Ctx = { user: string; body: Record<string, unknown>; params: string[]; query: URLSearchParams };
 type Handler = (ctx: Ctx) => Promise<unknown>;
@@ -20,6 +22,8 @@ interface Route {
   pattern: string[]; // ":x" captura un segmento
   handler: Handler;
   public?: boolean;
+  /** Exige que la sesión sea de un administrador (comprobado en el servidor). */
+  admin?: boolean;
 }
 
 const r = (method: string, path: string, handler: Handler, isPublic = false): Route => ({
@@ -28,6 +32,9 @@ const r = (method: string, path: string, handler: Handler, isPublic = false): Ro
   handler,
   public: isPublic,
 });
+
+/** Ruta del panel: sesión + admin obligatorios. */
+const a = (method: string, path: string, handler: Handler): Route => ({ ...r(method, path, handler), admin: true });
 
 const ROUTES: Route[] = [
   r("GET", "demo/accounts", () => h.testAccounts(), true),
@@ -61,6 +68,10 @@ const ROUTES: Route[] = [
   r("POST", "skins/:id/equip", ({ user, params, body }) => h.equipSkin(user, params[0], body)),
   r("GET", "ledger/mine", ({ user }) => h.ledger(user)),
   r("POST", "campus/token", ({ user }) => h.campusToken(user)),
+
+  // Panel de administración. admin/me solo pide sesión: dice si eres admin sin dar 403.
+  r("GET", "admin/me", async ({ user }) => ({ isAdmin: await isAdmin(user) })),
+  a("GET", "admin/audit", () => ad.auditLog()),
 ];
 
 function find(method: string, segments: string[]): { route: Route; params: string[] } | null {
@@ -139,6 +150,8 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
     if (!hit) throw new HttpError(404, "Ruta no encontrada.", "not_found");
     const user = readSessionValue(jar.get(SESSION_COOKIE)?.value);
     if (!user && !hit.route.public) throw new HttpError(401, "Tu sesión expiró. Vuelve a entrar.", "unauthorized");
+    if (user && !hit.route.public) await requireNotSuspended(user);
+    if (hit.route.admin) await requireAdmin(user ?? "");
     const body = await readBody(req);
     return json(await hit.route.handler({ user: user ?? "", body, params: hit.params, query: req.nextUrl.searchParams }));
   } catch (e) {

@@ -4,6 +4,9 @@
 // Se elige con NEXT_PUBLIC_API_MODE=mock|http.
 
 import type {
+  AuditRow,
+} from "@/lib/admin-types";
+import type {
   AiTutor,
   Group,
   IncomingRequest,
@@ -69,7 +72,15 @@ export interface RoomToken {
   docName: string;
 }
 
+/** Panel de administración. El servidor exige sesión + admin en cada llamada (excepto me). */
+export interface AdminApi {
+  me(userId: UUID): Promise<{ isAdmin: boolean }>;
+  audit(userId: UUID): Promise<AuditRow[]>;
+}
+
 export interface ApiClient {
+  admin: AdminApi;
+
   /** Login con DNI (8 dígitos) y contraseña. Por ahora cuentas de prueba. */
   login(dni: string, password: string): Promise<{ userId: UUID }>;
   logout(): Promise<void>;
@@ -120,7 +131,7 @@ export interface ApiClient {
 export class ApiError extends Error {
   constructor(
     message: string,
-    public code: "insufficient_funds" | "not_found" | "invalid" | "conflict" | "network" | "unauthorized" = "invalid",
+    public code: "insufficient_funds" | "not_found" | "invalid" | "conflict" | "network" | "unauthorized" | "forbidden" | "suspended" = "invalid",
   ) {
     super(message);
   }

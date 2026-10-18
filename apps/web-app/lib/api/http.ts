@@ -2,7 +2,7 @@
 // La identidad viaja en una cookie httpOnly firmada por el servidor tras el login;
 // el parámetro userId de cada método solo existe por compatibilidad con el mock.
 
-import type { ApiClient } from "@/lib/api/client";
+import type { AdminApi, ApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "/api";
@@ -31,7 +31,13 @@ async function call<T>(_userId: string | null, method: string, path: string, bod
 
 const q = encodeURIComponent;
 
+const admin: AdminApi = {
+  me: (u) => call(u, "GET", "/admin/me"),
+  audit: (u) => call(u, "GET", "/admin/audit"),
+};
+
 export const httpApi: ApiClient = {
+  admin,
   login: (dni, password) => call(null, "POST", "/auth/login", { dni, password }),
   logout: () => call(null, "POST", "/auth/logout"),
   testAccounts: () => call(null, "GET", "/demo/accounts"),

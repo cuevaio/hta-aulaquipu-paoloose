@@ -9,7 +9,7 @@ export type RequestStatus = "open" | "matched" | "fulfilled" | "cancelled";
 export type GroupStatus = "forming" | "scheduled" | "live" | "completed" | "cancelled";
 export type SessionStatus = "live" | "completed" | "cancelled";
 export type TutorKind = "human" | "ai";
-export type LedgerKind = "mint" | "session_payment" | "ai_session" | "skin_purchase" | "refund";
+export type LedgerKind = "mint" | "session_payment" | "ai_session" | "skin_purchase" | "refund" | "grant" | "adjust";
 export type SkinKind = "avatar" | "frame" | "badge" | "profile_deco";
 
 export interface AvatarConfig {
@@ -27,6 +27,8 @@ export interface Profile {
   school: string | null;
   avatar_config: AvatarConfig;
   created_at: string;
+  /** Solo el mock lo usa: la API real nunca expone la suspensión. */
+  suspended_at?: string | null;
 }
 
 export interface Topic {
@@ -111,6 +113,8 @@ export interface LedgerEntry {
   amount: number;
   kind: LedgerKind;
   created_at: string;
+  /** Motivo de un regalo o ajuste de la plataforma. */
+  note?: string | null;
 }
 
 export interface Review {
@@ -179,6 +183,8 @@ export interface Me {
   equipped: Equipped;
   badges: Badge[];
   stats: TutorStats;
+  /** Administrador de la plataforma (muestra la entrada "Admin"). */
+  is_admin?: boolean;
 }
 
 export interface PublicProfile {
