@@ -157,3 +157,50 @@
   75% { transform: translateY(-4px) rotate(4deg); }
 }
 .walking .player-body > * { animation: walk-bob 0.36s ease-in-out infinite; }
+
+/* Avatar animado del tutor IA (components/classroom/ai-tutor-avatar.tsx) */
+@keyframes tutor-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.5px); }
+}
+@keyframes tutor-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.08); }
+}
+@keyframes tutor-dots {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-3px); }
+}
+@keyframes tutor-bounce {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  30% { transform: translateY(-9px) scale(0.97, 1.04); }
+  60% { transform: translateY(0) scale(1.04, 0.96); }
+}
+@keyframes tutor-tilt {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(-7deg); }
+}
+@keyframes tutor-sparkle {
+  0%, 100% { opacity: 0; transform: scale(0.3) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1) rotate(45deg); }
+}
+@keyframes tutor-scribble {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(-3px, 1px) rotate(-8deg); }
+  75% { transform: translate(3px, -1px) rotate(6deg); }
+}
+@keyframes tutor-bars {
+  0%, 100% { transform: scaleY(0.5); }
+  50% { transform: scaleY(1); }
+}
+.tutor-anim-bob { animation: tutor-bob 3.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center bottom; }
+.tutor-anim-bounce { animation: tutor-bounce 0.7s ease-in-out infinite; transform-box: fill-box; transform-origin: center bottom; }
+.tutor-anim-tilt { animation: tutor-tilt 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center bottom; }
+.tutor-anim-blink { animation: tutor-blink 4.2s infinite; transform-box: fill-box; transform-origin: center; }
+.tutor-anim-dot { animation: tutor-dots 1.2s ease-in-out infinite; }
+.tutor-anim-sparkle { animation: tutor-sparkle 1s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.tutor-anim-scribble { animation: tutor-scribble 0.5s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.tutor-anim-bars { animation: tutor-bars 0.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center bottom; }
+@media (prefers-reduced-motion: reduce) {
+  [class*="tutor-anim-"] { animation: none !important; }
+}
