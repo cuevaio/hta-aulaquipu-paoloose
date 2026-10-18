@@ -755,6 +755,9 @@ export const mockApi: ApiClient = {
         })),
     ),
 
+  // En modo demo no hay sala compartida: cada navegador está solo
+  campusToken: async () => null,
+
   resetDemo: async () => {
     await delay();
     db = buildSeed();

@@ -11,6 +11,7 @@ import { Avatar } from "@/components/avatar";
 import { Quipus } from "@/components/bits";
 import { Logo } from "@/components/logo";
 import { CampusWorld, type CampusPerson, type Interactable } from "@/components/campus/world";
+import { useCampusPresence } from "@/lib/campus/use-campus-presence";
 import { cn } from "@/lib/utils";
 
 const BAR = [
@@ -33,6 +34,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   const [banner, setBanner] = useState<Room | null>(null);
   const [near, setNear] = useState<Interactable | null>(null);
   const [menu, setMenu] = useState(false);
+  const presence = useCampusPresence(ready && me ? userId : null);
 
   useEffect(() => {
     if (ready && !userId) router.replace("/");
@@ -82,8 +84,10 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
       prompt: `Tomar clase con ${a.name}`,
       ai: { emoji: a.persona.emoji, color: a.persona.color },
     }));
-    return [...students, ...ais];
-  }, [crowd.data]);
+    // Quien está conectado camina en vivo: no se muestra además en su lugar fijo
+    const live = new Set(presence.peers.map((p) => p.id));
+    return [...students.filter((s) => !live.has(s.id)), ...ais];
+  }, [crowd.data, presence.peers]);
 
   const open = useCallback((href: string) => router.push(href), [router]);
   const close = useCallback(() => router.push("/campus"), [router]);
@@ -119,6 +123,9 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
       <CampusWorld
         me={{ name: me.profile.display_name.split(" ")[0], avatar: me.profile.avatar_config, equipped: me.equipped }}
         people={people}
+        peers={presence.peers}
+        peerPositions={presence.positions}
+        onMove={presence.reportPosition}
         liveClass={!!crowd.data?.live}
         onOpen={open}
         onRoomChange={onRoomChange}
@@ -135,6 +142,15 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
           {room && (
             <span className="hidden rounded-full bg-navy-3 px-2.5 py-1 text-xs font-bold text-white sm:inline">
               {room.emoji} {room.name}
+            </span>
+          )}
+          {presence.online && (
+            <span
+              className="flex items-center gap-1.5 rounded-full bg-navy-3 px-2.5 py-1 text-xs font-bold text-white"
+              title={presence.peers.length ? presence.peers.map((p) => p.name).join(", ") : "Solo tú por ahora"}
+            >
+              <span className="size-2 rounded-full bg-mint" />
+              {presence.peers.length + 1} en línea
             </span>
           )}
         </div>

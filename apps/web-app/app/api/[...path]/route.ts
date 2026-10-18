@@ -60,6 +60,7 @@ const ROUTES: Route[] = [
   r("POST", "skins/:id/buy", ({ user, params }) => h.buySkin(user, params[0])),
   r("POST", "skins/:id/equip", ({ user, params, body }) => h.equipSkin(user, params[0], body)),
   r("GET", "ledger/mine", ({ user }) => h.ledger(user)),
+  r("POST", "campus/token", ({ user }) => h.campusToken(user)),
 ];
 
 function find(method: string, segments: string[]): { route: Route; params: string[] } | null {

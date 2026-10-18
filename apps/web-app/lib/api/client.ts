@@ -111,6 +111,9 @@ export interface ApiClient {
 
   ledger(userId: UUID): Promise<LedgerLine[]>;
 
+  /** Token para el campus compartido (LiveKit). null si el servidor no tiene LiveKit. */
+  campusToken(userId: UUID): Promise<{ url: string; token: string } | null>;
+
   resetDemo(): Promise<void>;
 }
 

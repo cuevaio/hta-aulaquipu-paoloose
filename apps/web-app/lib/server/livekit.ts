@@ -48,6 +48,32 @@ export async function createRoomToken(opts: {
   return { url: cfg.publicUrl, token: await at.toJwt() };
 }
 
+export const CAMPUS_ROOM = "aulaquipu-campus";
+
+/**
+ * Token para el campus 2D compartido: solo datos (posiciones), sin audio ni video.
+ * El aspecto del avatar va en la metadata del participante, puesta por el servidor.
+ */
+export async function createCampusToken(opts: { identity: string; name: string; metadata: string }) {
+  const cfg = livekitConfig();
+  if (!cfg) return null;
+  const at = new AccessToken(cfg.key, cfg.secret, {
+    identity: opts.identity,
+    name: opts.name,
+    metadata: opts.metadata,
+    ttl: "10m",
+  });
+  at.addGrant({
+    roomJoin: true,
+    room: CAMPUS_ROOM,
+    canPublish: false,
+    canSubscribe: true,
+    canPublishData: true,
+    canUpdateOwnMetadata: false,
+  });
+  return { url: cfg.publicUrl, token: await at.toJwt() };
+}
+
 /** El protocolo no documenta la unidad de created_at: se deduce por magnitud (s, ms, µs o ns). */
 function epochToMs(v: number): number {
   if (v > 1e17) return v / 1e6;

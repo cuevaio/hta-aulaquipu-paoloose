@@ -64,6 +64,7 @@ export const httpApi: ApiClient = {
   buySkin: (u, id) => call(u, "POST", `/skins/${q(id)}/buy`),
   equipSkin: (u, id, equip) => call(u, "POST", `/skins/${q(id)}/equip`, { equip }),
   ledger: (u) => call(u, "GET", "/ledger/mine"),
+  campusToken: (u) => call(u, "POST", "/campus/token"),
   resetDemo: async () => {
     throw new ApiError("Reiniciar la demo solo existe en modo mock.", "invalid");
   },

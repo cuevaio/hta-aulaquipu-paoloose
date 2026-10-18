@@ -19,6 +19,7 @@ import {
   type WorldObject,
 } from "@/lib/campus/map";
 import { cn } from "@/lib/utils";
+import type { CampusPeer, PeerPosition } from "@/lib/campus/use-campus-presence";
 
 export interface CampusPerson {
   id: string;
@@ -116,6 +117,9 @@ const BIG_EMOJI = new Set(["plant", "tree", "fountain"]);
 export function CampusWorld({
   me,
   people,
+  peers,
+  peerPositions,
+  onMove,
   liveClass,
   onOpen,
   onRoomChange,
@@ -124,6 +128,10 @@ export function CampusWorld({
 }: {
   me: { name: string; avatar: AvatarConfig; equipped: Equipped | null };
   people: CampusPerson[];
+  /** Personas conectadas al campus en este momento (multijugador). */
+  peers: CampusPeer[];
+  peerPositions: React.RefObject<Map<string, PeerPosition>>;
+  onMove: (pos: PeerPosition) => void;
   liveClass: boolean;
   onOpen: (href: string) => void;
   onRoomChange: (room: Room | null) => void;
@@ -144,7 +152,11 @@ export function CampusWorld({
   const keys = useRef(new Set<string>());
   const path = useRef<{ x: number; y: number }[]>([]);
   const pending = useRef<Interactable | null>(null);
-  const callbacks = useRef({ onOpen, onRoomChange, onNearChange });
+  const callbacks = useRef({ onOpen, onRoomChange, onNearChange, onMove });
+  const facing = useRef(1);
+  // Elementos y posición dibujada de cada persona conectada (se interpola hacia la recibida)
+  const peerEls = useRef(new Map<string, HTMLDivElement>());
+  const peerDrawn = useRef(new Map<string, { x: number; y: number }>());
 
   const targets = useMemo<Interactable[]>(
     () => [
@@ -161,8 +173,8 @@ export function CampusWorld({
   const blocked = useMemo(() => makeBlocked(people), [people]);
 
   useEffect(() => {
-    callbacks.current = { onOpen, onRoomChange, onNearChange };
-  }, [onOpen, onRoomChange, onNearChange]);
+    callbacks.current = { onOpen, onRoomChange, onNearChange, onMove };
+  }, [onOpen, onRoomChange, onNearChange, onMove]);
 
   useEffect(() => {
     const onResize = () => setT(tileFor(window.innerWidth));
@@ -268,8 +280,32 @@ export function CampusWorld({
         player.current.style.transform = `translate3d(${p.x * T - T / 2}px, ${p.y * T - T * 0.85}px, 0)`;
         player.current.style.zIndex = String(Math.floor(p.y * 10) + 5);
         player.current.classList.toggle("walking", moving);
-        if (body.current && vx) body.current.style.transform = vx < 0 ? "scaleX(-1)" : "scaleX(1)";
+        if (vx) facing.current = vx < 0 ? -1 : 1;
+        if (body.current) body.current.style.transform = `scaleX(${facing.current})`;
+
+        // Personas conectadas: se acercan suavemente a la última posición recibida
+        const k = Math.min(1, dt * 12);
+        for (const [id, el] of peerEls.current) {
+          const target = peerPositions.current?.get(id);
+          if (!target) {
+            el.style.opacity = "0";
+            continue;
+          }
+          let d = peerDrawn.current.get(id);
+          if (!d || Math.hypot(target.x - d.x, target.y - d.y) > 6) d = { x: target.x, y: target.y };
+          d.x += (target.x - d.x) * k;
+          d.y += (target.y - d.y) * k;
+          peerDrawn.current.set(id, d);
+          const moving = Math.hypot(target.x - d.x, target.y - d.y) > 0.03;
+          el.style.opacity = "1";
+          el.style.transform = `translate3d(${d.x * T - T / 2}px, ${d.y * T - T * 0.85}px, 0)`;
+          el.style.zIndex = String(Math.floor(d.y * 10) + 5);
+          el.classList.toggle("walking", moving);
+          const inner = el.firstElementChild as HTMLElement | null;
+          if (inner) inner.style.transform = `scaleX(${target.f})`;
+        }
       }
+      callbacks.current.onMove({ x: p.x, y: p.y, f: facing.current });
 
       const near = nearest();
       if ((near?.id ?? null) !== lastNear) {
@@ -286,7 +322,7 @@ export function CampusWorld({
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [T, blocked, targets, interactRef]);
+  }, [T, blocked, targets, interactRef, peerPositions]);
 
   // Teclado: movimiento + X/Enter/Espacio para interactuar (no mientras se escribe)
   useEffect(() => {
@@ -426,6 +462,35 @@ export function CampusWorld({
             </div>
             <span className="mt-0.5 rounded-full bg-navy/85 px-1.5 py-px text-[10px] font-bold whitespace-nowrap text-white">{p.name}</span>
             {nearId !== p.id && <span className="text-[9px] font-bold whitespace-nowrap text-navy/60">{p.caption}</span>}
+          </div>
+        ))}
+
+        {/* Personas conectadas ahora mismo */}
+        {peers.map((peer) => (
+          <div
+            key={peer.id}
+            ref={(el) => {
+              if (el) peerEls.current.set(peer.id, el);
+              else {
+                peerEls.current.delete(peer.id);
+                peerDrawn.current.delete(peer.id);
+              }
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              callbacks.current.onOpen(`/tutor/${peer.id}`);
+            }}
+            className="absolute top-0 left-0 flex cursor-pointer flex-col items-center opacity-0 transition-opacity"
+            style={{ width: T }}
+            title={`Ver el perfil de ${peer.name}`}
+          >
+            <div className="player-body">
+              <Avatar config={peer.avatar} equipped={peer.equipped} size={T * 0.95} label={peer.name} />
+            </div>
+            <span className="mt-0.5 flex items-center gap-1 rounded-full bg-navy/85 px-1.5 py-px text-[10px] font-bold whitespace-nowrap text-white">
+              <span className="size-1.5 rounded-full bg-mint" />
+              {peer.name}
+            </span>
           </div>
         ))}
 

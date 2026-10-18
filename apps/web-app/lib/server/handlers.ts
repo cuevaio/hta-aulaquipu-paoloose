@@ -23,7 +23,7 @@ import {
   type TopicRow,
 } from "@/lib/server/data";
 import { normalizeTopic } from "@/lib/server/topics";
-import { closeRoom, createRoomToken } from "@/lib/server/livekit";
+import { closeRoom, createCampusToken, createRoomToken } from "@/lib/server/livekit";
 import type {
   Group,
   IncomingRequest,
@@ -446,6 +446,18 @@ export async function myUpcoming(userId: string): Promise<UpcomingClass[]> {
       liveSessionId: live.find((s) => s.group_id === g.id)?.id ?? null,
     };
   });
+}
+
+// ---------- campus multijugador ----------
+
+export async function campusToken(userId: string) {
+  const [profile, equipped] = await Promise.all([profileOf(userId), equippedFor([userId])]);
+  const metadata = JSON.stringify({
+    name: profile.display_name.split(" ")[0],
+    avatar: profile.avatar_config,
+    equipped: equipped.get(userId),
+  });
+  return createCampusToken({ identity: `profile:${userId}`, name: profile.display_name, metadata });
 }
 
 // ---------- tutor ----------
