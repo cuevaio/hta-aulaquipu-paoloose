@@ -51,7 +51,10 @@ Live test of round 2: GPT-Live made zero tool calls (graph, image) and claimed "
 - [x] T16 — Director API: `POST /api/sessions/:id/director` {source: student|tutor, text, context?} (participant of a live session only, rate-limited) → OpenAI text model with JSON schema output (reuse `OPENAI_API_KEY` like `lib/server/topics.ts`) → validated actions `graph_set` / `graph_clear` / `quiz` / `image`. Quiz answer key kept server-side; `POST /api/sessions/:id/quiz/:quizId/answer` judges and logs to `session_events`.
 - [x] T17 — Classroom wiring (priority graph + Actividad): student chat messages and final tutor subtitles (prefiltered) go to the director; graph actions render in Desmos and broadcast to other participants; quiz actions open the Actividad card; answers go to the server; result + avatar celebrate. Works in LiveKit and local mode.
 - [x] T18 — Tell the voice tutor what happened (`aulaquipu:control` {type:'director_done', summary}) so it says "listo" only after the action; images via the director using server-side Wikimedia search (optional if time).
-- [ ] T19 — Live validation (orchestrator): graph and Actividad must work end-to-end.
+- [x] T19 — Live validation (orchestrator): graph and Actividad work end-to-end.
+  - Director via LiveKit Inference (no OPENAI_API_KEY on the web server; commit e92db5f). API: "grafica y = x al cuadrado y en rojo la recta y = 2x + 1" → y=x^2 (no color) + y=2x+1 #C74440; tutor "voy a graficar la recta y igual a un medio de x" → y=\frac{1}{2}x; "hola" → []; quiz with real answer options, server-side grading (wrong answer → correctIndex 2 + explanation).
+  - Browser (class 8cff57cc, Quipu, Cinemática): typed graph request → parabola blue + red line in Desmos ~8 s, Graficador auto-opened, chips "✓ Graficado". Quiz request → Actividad auto-opened with 4-option card; verdict "¡Correcto!" + explanation; avatar celebrating.
+  - Not verified: voice tutor acknowledging `director_done` — the local agent worker received no job for this class (tutor card "conectando…"); another worker on the same LiveKit project may be taking jobs.
 
 ## Acceptance criteria
 - Asking the tutor to graph produces a graph and a confirmation, or an explicit failure message — never a false "listo".
