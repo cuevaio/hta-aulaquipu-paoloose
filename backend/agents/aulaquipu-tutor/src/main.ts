@@ -152,9 +152,11 @@ export default defineAgent({
       io.setParticipant(identity);
       speakerName = name || speakerName;
       try {
-        const chat = agent.chatCtx.copy();
-        chat.addMessage({ role: 'system', content: speakerNote(speakerName) });
-        await agent.updateChatCtx(chat);
+        // Solo la nota, como contexto silencioso: con updateChatCtx cada cambio diferenciaba el
+        // historial completo y la nota de sistema se sumaba a las instrucciones permanentes
+        (agent.duplexSession as unknown as { appendThinking(text: string): void }).appendThinking(
+          speakerNote(speakerName),
+        );
       } catch (err) {
         console.warn('[tutor] no se pudo avisar quién habla', err instanceof Error ? err.message : err);
       }

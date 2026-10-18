@@ -50,12 +50,15 @@ export class SpeakerSwitcher {
   private latest: Speaker[] = [];
   private lastSwitch = Number.NEGATIVE_INFINITY;
   private timer: unknown = null;
+  /** A quién apunta el temporizador pendiente. */
+  private pending: string | null = null;
   private readonly o: Required<SwitcherOptions>;
 
   constructor(opts: SwitcherOptions) {
     this.o = {
-      settleMs: 600,
-      minGapMs: 2500,
+      // Cada ms de espera es inicio de frase que el modelo no oye: lo justo para descartar una tos
+      settleMs: 300,
+      minGapMs: 1500,
       now: () => Date.now(),
       schedule: (fn, ms) => setTimeout(fn, ms),
       cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
@@ -66,18 +69,27 @@ export class SpeakerSwitcher {
   update(speakers: Speaker[]) {
     this.latest = speakers;
     const pick = nextSpeaker(speakers, this.o.linked());
+    // LiveKit reenvía la lista cada vez que cambian los volúmenes: si sigue siendo la misma persona,
+    // el temporizador en curso se respeta (reiniciarlo en cada evento postergaba el cambio sin fin)
+    if (pick && pick.identity === this.pending) return;
     this.clear();
-    if (pick) this.timer = this.o.schedule(() => this.check(pick.identity), this.o.settleMs);
+    if (pick) this.arm(pick.identity, this.o.settleMs);
+  }
+
+  private arm(identity: string, ms: number) {
+    this.pending = identity;
+    this.timer = this.o.schedule(() => this.check(identity), ms);
   }
 
   private check(identity: string) {
     this.timer = null;
+    this.pending = null;
     const pick = nextSpeaker(this.latest, this.o.linked());
     if (!pick || pick.identity !== identity) return;
     const wait = this.lastSwitch + this.o.minGapMs - this.o.now();
     if (wait > 0 || this.o.agentSpeaking()) {
       // Se vuelve a mirar en un rato: si para entonces sigue hablando, se le escucha
-      this.timer = this.o.schedule(() => this.check(identity), Math.max(wait, 400));
+      this.arm(identity, Math.max(wait, 200));
       return;
     }
     this.lastSwitch = this.o.now();
@@ -87,6 +99,7 @@ export class SpeakerSwitcher {
   private clear() {
     if (this.timer !== null) this.o.cancel(this.timer);
     this.timer = null;
+    this.pending = null;
   }
 
   dispose() {

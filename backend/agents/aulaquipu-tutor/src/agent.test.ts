@@ -295,9 +295,17 @@ describe('cambio de quién se escucha, con calma', () => {
   it('espera a que el nuevo siga hablando antes de cambiar', () => {
     const t = setup();
     t.sw.update([luis]);
-    t.advance(300);
+    t.advance(150);
     expect(t.switched).toEqual([]);
-    t.advance(400);
+    t.advance(200);
+    expect(t.switched).toEqual(['Luis']);
+  });
+  it('los avisos repetidos de LiveKit no postergan el cambio', () => {
+    const t = setup();
+    for (let i = 0; i < 5; i++) {
+      t.sw.update([luis]);
+      t.advance(100);
+    }
     expect(t.switched).toEqual(['Luis']);
   });
   it('un ruido corto no cambia nada', () => {
@@ -317,14 +325,14 @@ describe('cambio de quién se escucha, con calma', () => {
     t.advance(500);
     expect(t.switched).toEqual(['Luis']);
   });
-  it('no cambia dos veces seguidas en menos de 2,5 s', () => {
+  it('no cambia dos veces seguidas en menos de 1,5 s', () => {
     const t = setup();
     t.sw.update([luis]);
-    t.advance(700);
+    t.advance(400);
     t.sw.update([ana]);
-    t.advance(700);
+    t.advance(400);
     expect(t.switched).toEqual(['Luis']);
-    t.advance(2000);
+    t.advance(1200);
     expect(t.switched).toEqual(['Luis', 'Ana']);
   });
 });
