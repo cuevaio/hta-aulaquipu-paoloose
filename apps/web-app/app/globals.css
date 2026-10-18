@@ -215,3 +215,15 @@
 @media (prefers-reduced-motion: reduce) {
   [class*="tutor-anim-"] { animation: none !important; }
 }
+
+/* Nube de humo al cambiarse de ropa: bolitas que crecen hacia afuera y se desvanecen */
+@keyframes smoke-puff {
+  0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+  20% { opacity: 1; }
+  70% { opacity: 0.9; }
+  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(var(--s)); opacity: 0; }
+}
+.smoke-puff-dot { animation: smoke-puff 0.8s ease-out forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .smoke-puff-dot { animation-duration: 0.01s; }
+}

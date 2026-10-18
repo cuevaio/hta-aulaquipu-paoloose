@@ -138,7 +138,7 @@ const BIG_EMOJI = new Set(["plant", "tree", "fountain"]);
 function WalkingAvatar({ id, ...props }: React.ComponentProps<typeof Avatar> & { id: string }) {
   const walking = useWalking(id);
   const direction = useDirection(id);
-  return <Avatar {...props} walking={walking} direction={direction} bare />;
+  return <Avatar {...props} walking={walking} direction={direction} puff bare />;
 }
 
 export function CampusWorld({

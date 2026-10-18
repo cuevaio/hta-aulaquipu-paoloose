@@ -3,6 +3,7 @@
 // lista de temas existentes; si no hay clave o falla, cae a palabras clave.
 
 import { db, env, HttpError, must } from "@/lib/server/core";
+import { cleanTopicName } from "@/lib/topic-name";
 
 interface TopicRow {
   id: string;
@@ -50,17 +51,6 @@ function byKeywords(text: string, topics: TopicRow[]): TopicRow | null {
     if (score > 0 && (!best || score > best.score)) best = { t, score };
   }
   return best?.t ?? null;
-}
-
-function guessNewName(text: string): string {
-  const name = text
-    .replace(/^(no entiendo|necesito|quiero aprender|ayuda con|me cuesta|me traba|me trabo con)\s+/i, "")
-    .replace(/^(lo de |las |los |el |la |sobre )/i, "")
-    .replace(/[.?!¿¡]+/g, "")
-    .trim()
-    .toLowerCase()
-    .slice(0, 40);
-  return name || "tema nuevo";
 }
 
 interface LlmVerdict {
@@ -137,5 +127,5 @@ export async function normalizeTopic(text: string, userId: string): Promise<Topi
       return existing ?? createTopic(verdict.new_topic, userId);
     }
   }
-  return byKeywords(text, topics) ?? createTopic(guessNewName(text), userId);
+  return byKeywords(text, topics) ?? createTopic(cleanTopicName(text), userId);
 }

@@ -4,6 +4,7 @@
 // Si no hay sprites cargados, el llamador hace fallback al blob SVG.
 
 import { useEffect, useState } from "react";
+import { SmokePuff } from "@/components/smoke-puff";
 import { SpriteFigure, type FigureLayer, type FigureView } from "@/components/sprite-figure";
 import { parseItem, type SpritesheetManifest } from "@/lib/figure";
 import { FRAME_STYLES } from "@/lib/skins";
@@ -186,8 +187,11 @@ export function SpriteAvatar({
   view,
   walking = false,
   direction = 2,
+  puff = false,
 }: {
   specs: SpriteSpec[];
+  /** Nube de humo al cambiar de look; la figura nueva aparece con la nube ya densa. */
+  puff?: boolean;
   /** Dirección Habbo 0–7 (2 = de frente, tres cuartos a la derecha). */
   direction?: number;
   /** Muestra la animación de caminar (ver SpriteFigure). */
@@ -203,7 +207,24 @@ export function SpriteAvatar({
   /** Recorte dentro del círculo; por defecto busto en tamaños chicos y cuerpo entero en grandes. */
   view?: FigureView;
 }) {
-  const layers = useSpriteLayers(specs, colors);
+  const loaded = useSpriteLayers(specs, colors);
+
+  // Nube al cambiar de look (no en la primera carga): se detecta en el render, sin efectos
+  const lookKey = JSON.stringify([specs.map((s) => s.item), colors?.accent, colors?.skin, colors?.hair]);
+  const [prevLook, setPrevLook] = useState(lookKey);
+  const [puffs, setPuffs] = useState(0);
+  if (lookKey !== prevLook) {
+    setPrevLook(lookKey);
+    if (puff) setPuffs((n) => n + 1);
+  }
+
+  // La figura nueva se muestra a media nube; sin puff (o la primera vez) aparece enseguida
+  const [layers, setShown] = useState<FigureLayer[] | null>(null);
+  useEffect(() => {
+    if (!loaded) return;
+    const t = setTimeout(() => setShown(loaded), puff && puffs > 0 ? 260 : 0);
+    return () => clearTimeout(t);
+  }, [loaded, puff, puffs]);
   const ready = layers && layers.length > 0;
 
   return (
@@ -219,6 +240,14 @@ export function SpriteAvatar({
       )}
       style={{ width: size, height: size }}
     >
+      {puffs > 0 && (
+        <SmokePuff
+          key={puffs}
+          size={bare ? size * 1.5 : size}
+          // Figura de pie (bare): su centro queda ~1.1 tamaños sobre la base; en el círculo, al medio
+          style={{ left: "50%", top: bare ? -size * 0.1 : "50%" }}
+        />
+      )}
       {ready &&
         (bare ? (
           <SpriteFigure

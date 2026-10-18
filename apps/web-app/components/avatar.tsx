@@ -1,6 +1,6 @@
 import type { AvatarConfig, Equipped, Skin, SkinMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { FRAME_STYLES, avatarColor, avatarLook, frameOf, spriteSlot } from "@/lib/skins";
+import { FRAME_STYLES, avatarColor, avatarLook, figureSlot, frameOf, headSprite, spriteSlot } from "@/lib/skins";
 import { SpriteAvatar, type SpriteSpec } from "@/components/sprite-avatar";
 import type { FigureView } from "@/components/sprite-figure";
 
@@ -139,7 +139,7 @@ function logFallbackOnce(payload: Record<string, unknown>) {
 }
 
 /** Capas sprite equipadas: slot = tipo de figura (hh, hd, hr, ch, lg, sh, ha, fa…). */
-function spriteLayersOf(config: AvatarConfig, meta: SkinMeta | undefined, parts: Skin[] = []): SpriteSpec[] {
+function spriteLayersOf(config: AvatarConfig, meta: SkinMeta | undefined, parts: Skin[] = [], head?: SkinMeta): SpriteSpec[] {
   // Una pieza por slot: lo comprado en la tienda reemplaza a lo del creador en ese slot
   const out = new Map<string, string>();
   for (const [slot, item] of Object.entries(config.slots ?? {})) {
@@ -149,6 +149,8 @@ function spriteLayersOf(config: AvatarConfig, meta: SkinMeta | undefined, parts:
     if (m?.item) out.set(spriteSlot(m), m.item);
   };
   add(meta);
+  const headItem = headSprite(head);
+  if (headItem) out.set(figureSlot(headItem) ?? "ha", headItem);
   for (const p of parts) add(p.meta);
   return [...out.entries()].map(([slot, item]) => ({ slot, item }));
 }
@@ -164,6 +166,7 @@ export function Avatar({
   view,
   walking,
   direction,
+  puff,
 }: {
   config: AvatarConfig;
   equipped?: Partial<Equipped> | null;
@@ -176,6 +179,8 @@ export function Avatar({
   walking?: boolean;
   /** Dirección Habbo 0–7 hacia donde mira (solo sprites). */
   direction?: number;
+  /** Nube de humo al cambiar de look (solo sprites): para avatares principales, no para miniaturas. */
+  puff?: boolean;
 }) {
   const look = avatarLook(equipped?.avatar?.meta);
   const color = look.color ?? avatarColor(config);
@@ -183,7 +188,7 @@ export function Avatar({
   // El diseño de cabeza manda; si no hay, algunas paletas antiguas traen su propio accesorio
   const accessory = equipped?.head?.meta.accessory ?? look.accessory;
   const frame = frameOf(equipped?.frame?.meta);
-  const spriteLayers = spriteLayersOf(config, equipped?.avatar?.meta, equipped?.parts ?? []);
+  const spriteLayers = spriteLayersOf(config, equipped?.avatar?.meta, equipped?.parts ?? [], equipped?.head?.meta);
 
   if (spriteLayers.length > 0) {
     return (
@@ -193,6 +198,7 @@ export function Avatar({
         view={view}
         walking={walking}
         direction={direction}
+        puff={puff}
         frame={frame}
         size={size}
         className={className}

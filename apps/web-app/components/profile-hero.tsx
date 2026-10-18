@@ -41,7 +41,7 @@ export function ProfileHero({
         <div aria-hidden className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/35 to-transparent" />
         {/* Figura entera de pie sobre una sombra; crece hacia arriba dentro del banner */}
         <div className="relative shrink-0 pt-6">
-          <Avatar config={profile.avatar_config} equipped={equipped} size={76} bare label={profile.display_name} />
+          <Avatar config={profile.avatar_config} equipped={equipped} size={76} bare puff label={profile.display_name} />
           <span aria-hidden className="absolute bottom-0 left-1/2 h-3 w-20 -translate-x-1/2 rounded-[50%] bg-black/25 blur-[2px]" />
         </div>
         <div className="relative min-w-0 flex-1 pb-4 text-white [text-shadow:0_1px_6px_rgb(0_0_0/0.45)]">
