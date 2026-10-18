@@ -24,8 +24,8 @@ const withSlots = (id: string, color: string, extra: Record<string, string>): Av
 };
 
 const HERO_FIGURES = [
-  { id: "Valeria", config: withSlots("usr-valeria", "#7C6BF2", { ha: "hat_U_camocap" }), pose: { action: "wav", frame: 0 }, direction: 2, className: "top-[16%] left-[22%]", delay: "0s" },
-  { id: "Diego", config: withSlots("usr-diego", "#ED5C50", { ca: "acc_chest_U_backpack" }), pose: { action: "std", frame: 0 }, direction: 3, className: "top-[20%] right-[16%]", delay: ".5s" },
+  { id: "Valeria", config: withSlots("usr-valeria", "#7C6BF2", { ha: "hat_U_camocap" }), pose: { action: "wav", frame: 0 }, direction: 2, className: "top-[22%] left-[20%]", delay: "0s" },
+  { id: "Diego", config: withSlots("usr-diego", "#ED5C50", { ca: "acc_chest_U_backpack" }), pose: { action: "std", frame: 0 }, direction: 3, className: "top-[25%] right-[14%]", delay: ".5s" },
   { id: "Camila", config: withSlots("usr-camila", "#E7B027", { ea: "acc_eye_U_brownglasses" }), pose: { action: "spk", frame: 0 }, direction: 2, className: "bottom-[10%] left-[40%]", delay: ".2s" },
 ] as const;
 
@@ -42,7 +42,7 @@ function Room({ floor, label, className, children }: { floor: readonly [string, 
       className={cn("relative overflow-hidden rounded-xl shadow-[inset_0_6px_0_rgba(43,37,80,.35)]", className)}
       style={{ backgroundColor: floor[0], backgroundImage: `repeating-conic-gradient(${floor[1]} 0 25%, transparent 0 50%)`, backgroundSize: "28px 28px" }}
     >
-      <span className="absolute top-1.5 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#15142c]/85 px-2 py-0.5 text-[10px] font-extrabold whitespace-nowrap text-cream">{label}</span>
+      <span className="absolute top-1.5 left-2 z-10 rounded-full bg-[#15142c]/85 px-2 py-0.5 text-[10px] font-extrabold whitespace-nowrap text-cream">{label}</span>
       {children}
     </div>
   );
