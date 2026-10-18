@@ -43,6 +43,8 @@ export type ClassroomEvent =
   | { type: "speaking"; actor: string; on: boolean }
   | { type: "chat"; actor: string; name: string; text: string }
   | { type: "notebook_image"; actor: string; url: string }
+  /** Quita la foto del cuaderno (los trazos se quedan). */
+  | { type: "notebook_clear"; actor: string }
   /** Tarjeta de opción múltiple del tutor (herramienta quizAsk). La clave de respuestas no viaja. */
   | { type: "quiz_ask"; actor: string; id: string; question: string; options: string[] }
   /** El alumno eligió una opción: va al agente, que la califica. */
@@ -58,16 +60,19 @@ export type ClassroomEvent =
   | { type: "tool_action"; actor: string; tool: string; label: string }
   | { type: "session_event"; actor: string; kind: string; payload: Record<string, unknown> };
 
-/** Aplica un evento de pizarra a la lista de trazos (idempotente por id de trazo). */
+/**
+ * Aplica un evento del cuaderno a la lista de trazos (idempotente por id de trazo). Pizarra y cuaderno
+ * son un solo lienzo: el `target` de eventos antiguos ("board" / "notebook") ya no separa los trazos.
+ */
 export function applyBoardEvent(strokes: Stroke[], e: ClassroomEvent): Stroke[] {
   switch (e.type) {
     case "board_draw":
       return strokes.some((s) => s.id === e.stroke.id) ? strokes : [...strokes, e.stroke];
     case "board_clear":
-      return strokes.filter((s) => s.target !== e.target);
+      return [];
     case "board_erase": {
       const ids = new Set(e.ids);
-      return strokes.filter((s) => s.target !== e.target || !ids.has(s.id));
+      return strokes.filter((s) => !ids.has(s.id));
     }
     default:
       return strokes;

@@ -223,6 +223,9 @@ export default function ClassroomPage() {
           setNotebookImg(e.url);
           if (e.actor !== myActor) setTool("notebook");
           break;
+        case "notebook_clear":
+          setNotebookImg(null);
+          break;
         case "graph_set":
           desmos.current?.setExpression(e.id, e.latex, e.color, fromAi);
           markBusy("graphing");
@@ -620,13 +623,13 @@ export default function ClassroomPage() {
                 visible={tool === "notebook"}
                 background={notebookImg}
                 onBackground={(url) => transport?.send({ type: "notebook_image", actor: myActor, url })}
-                strokes={strokes.filter((s) => s.target === "notebook")}
+                onRemoveBackground={() => sendBoard({ type: "notebook_clear", actor: myActor })}
+                strokes={strokes}
                 onStroke={(stroke) => sendBoard({ type: "board_draw", actor: myActor, stroke })}
                 onErase={(ids) => sendBoard({ type: "board_erase", actor: myActor, target: "notebook", ids })}
                 onClear={() => sendBoard({ type: "board_clear", actor: myActor, target: "notebook" })}
               />
             </div>
-
             <div className={cn("absolute inset-0", tool !== "activity" && "invisible")}>
               <ActivityPanel quiz={quiz} tutorName={aiTutor?.name ?? "tu tutor"} onPick={pickOption} onDismiss={() => setQuiz(null)} />
             </div>

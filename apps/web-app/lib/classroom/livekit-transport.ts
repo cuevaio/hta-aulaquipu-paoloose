@@ -32,6 +32,7 @@ const PEER_EVENTS = new Set<ClassroomEvent["type"]>([
   "board_clear",
   "board_erase",
   "focus_tool",
+  "notebook_clear",
   "session_event",
 ]);
 

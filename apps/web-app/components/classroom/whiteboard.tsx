@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Eraser, ImagePlus, Trash2 } from "lucide-react";
+import { Eraser, ImagePlus, ImageOff, Trash2 } from "lucide-react";
 import type { Point, Stroke } from "@/lib/classroom/events";
 import { cn } from "@/lib/utils";
 
@@ -29,8 +29,9 @@ async function compressImage(file: File): Promise<string> {
 }
 
 /**
- * Pizarra compartida: los trazos se guardan normalizados (0..1) al cuadrado centrado de la pizarra o,
- * en el cuaderno, al rectángulo de la foto, para verse igual, sin deformarse, en cualquier pantalla.
+ * Cuaderno compartido: lienzo de dibujo libre con una foto opcional de fondo. Los trazos se guardan
+ * normalizados (0..1) al rectángulo de la foto si hay una y, si no, al cuadrado centrado, para verse
+ * igual, sin deformarse, en cualquier pantalla.
  */
 /** Radio del borrador en píxeles CSS: un trazo se borra si el borrador pasa a esta distancia. */
 const ERASE_RADIUS = 14;
@@ -67,6 +68,7 @@ export function Whiteboard({
   target,
   background,
   onBackground,
+  onRemoveBackground,
   visible,
 }: {
   strokes: Stroke[];
@@ -77,6 +79,7 @@ export function Whiteboard({
   target: "board" | "notebook";
   background?: string | null;
   onBackground?: (dataUrl: string) => void;
+  onRemoveBackground?: () => void;
   visible: boolean;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -249,6 +252,15 @@ export function Whiteboard({
             />
           </label>
         )}
+        {onRemoveBackground && background && (
+          <button
+            onClick={onRemoveBackground}
+            className="flex items-center gap-1 rounded-xl px-2 py-1.5 text-xs font-bold text-muted-foreground hover:bg-muted"
+            aria-label="Quitar foto"
+          >
+            <ImageOff className="size-4" /> Quitar foto
+          </button>
+        )}
         <button onClick={onClear} className="flex items-center gap-1 rounded-xl px-2 py-1.5 text-xs font-bold text-muted-foreground hover:bg-muted" aria-label="Limpiar trazos">
           <Trash2 className="size-4" /> Limpiar
         </button>
@@ -288,7 +300,7 @@ export function Whiteboard({
         )}
         {onBackground && !background && (
           <p className="pointer-events-none absolute inset-0 grid place-items-center px-6 text-center text-sm font-semibold text-muted-foreground">
-            Sube una foto de tu ejercicio y márcala encima.
+            Dibuja aquí con libertad o sube una foto de tu cuaderno y márcala encima.
           </p>
         )}
       </div>
