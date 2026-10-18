@@ -79,6 +79,8 @@ function sanitizeOne(raw: unknown): RawAction | null {
       if (!question || options.length < 2 || options.length > 4 || options.some((o) => o === null)) return null;
       const opts = options as string[];
       if (new Set(opts.map((o) => o.toLowerCase())).size !== opts.length) return null;
+      // Las opciones son respuestas: si el modelo devolvió preguntas (o repitió la pregunta), se descarta
+      if (opts.some((o) => o.trim().endsWith("?") || o.toLowerCase() === question.toLowerCase())) return null;
       if (typeof idx !== "number" || !Number.isInteger(idx) || idx < 0 || idx >= opts.length) return null;
       return { type: "quiz", question, options: opts, correctIndex: idx, explanation };
     }
