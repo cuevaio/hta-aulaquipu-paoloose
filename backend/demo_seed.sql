@@ -8,16 +8,16 @@ begin;
 -- PERFILES (todos inician con 100 quipus vía mint)
 -- ============================================================
 insert into profiles (id, username, display_name, grade, school, avatar_config) values
-  ('10000000-0000-0000-0000-000000000001','valentina5','Valentina Quispe',5,'I.E. José Faustino Sánchez Carrión','{"palette":"sun"}'),
-  ('10000000-0000-0000-0000-000000000002','diego5','Diego Ramos',5,'I.E. Santa María','{"palette":"condor"}'),
-  ('10000000-0000-0000-0000-000000000003','camila4','Camila Torres',4,'I.E. Nuestra Señora de Guadalupe','{"palette":"andes"}'),
-  ('10000000-0000-0000-0000-000000000004','mateo4','Mateo Chávez',4,'I.E. José Faustino Sánchez Carrión','{"palette":"sun"}'),
-  ('10000000-0000-0000-0000-000000000005','luciana3','Luciana Fernández',3,'I.E. Santa María','{"palette":"condor"}'),
-  ('10000000-0000-0000-0000-000000000006','sebastian2','Sebastián López',2,'I.E. Nuestra Señora de Guadalupe','{"palette":"andes"}'),
-  ('10000000-0000-0000-0000-000000000007','ana1','Ana Villanueva',1,'I.E. José Faustino Sánchez Carrión','{"palette":"sun"}'),
-  ('10000000-0000-0000-0000-000000000008','joaquin3','Joaquín Medina',3,'I.E. Santa María','{"palette":"condor"}'),
-  ('10000000-0000-0000-0000-000000000009','renata4','Renata Salazar',4,'I.E. Santa María','{"palette":"andes"}'),
-  ('10000000-0000-0000-0000-000000000010','lucas5','Lucas Paredes',5,'I.E. Nuestra Señora de Guadalupe','{"palette":"sun"}')
+  ('10000000-0000-0000-0000-000000000001','valentina5','Valentina Quispe',5,'I.E. José Faustino Sánchez Carrión','{}'),
+  ('10000000-0000-0000-0000-000000000002','diego5','Diego Ramos',5,'I.E. Santa María','{}'),
+  ('10000000-0000-0000-0000-000000000003','camila4','Camila Torres',4,'I.E. Nuestra Señora de Guadalupe','{}'),
+  ('10000000-0000-0000-0000-000000000004','mateo4','Mateo Chávez',4,'I.E. José Faustino Sánchez Carrión','{}'),
+  ('10000000-0000-0000-0000-000000000005','luciana3','Luciana Fernández',3,'I.E. Santa María','{}'),
+  ('10000000-0000-0000-0000-000000000006','sebastian2','Sebastián López',2,'I.E. Nuestra Señora de Guadalupe','{}'),
+  ('10000000-0000-0000-0000-000000000007','ana1','Ana Villanueva',1,'I.E. José Faustino Sánchez Carrión','{}'),
+  ('10000000-0000-0000-0000-000000000008','joaquin3','Joaquín Medina',3,'I.E. Santa María','{}'),
+  ('10000000-0000-0000-0000-000000000009','renata4','Renata Salazar',4,'I.E. Santa María','{}'),
+  ('10000000-0000-0000-0000-000000000010','lucas5','Lucas Paredes',5,'I.E. Nuestra Señora de Guadalupe','{}')
 on conflict (id) do nothing;
 
 insert into quipus_ledger (to_profile, amount, kind)
@@ -116,11 +116,7 @@ select * from (values
   ('40000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000007',null,30,'ai_session'),
   ('40000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000006',null,30,'ai_session'),
   ('40000000-0000-0000-0000-000000000005','10000000-0000-0000-0000-000000000010','10000000-0000-0000-0000-000000000003',15,'session_payment'),
-  ('40000000-0000-0000-0000-000000000006','10000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000009',10,'session_payment'),
-  (null,'10000000-0000-0000-0000-000000000005',null,20,'skin_purchase'),
-  (null,'10000000-0000-0000-0000-000000000002',null,25,'skin_purchase'),
-  (null,'10000000-0000-0000-0000-000000000003',null,15,'skin_purchase'),
-  (null,'10000000-0000-0000-0000-000000000001',null,50,'skin_purchase')
+  ('40000000-0000-0000-0000-000000000006','10000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000009',10,'session_payment')
 ) as v(session_id, from_profile, to_profile, amount, kind)
 where not exists (
   select 1 from quipus_ledger l
@@ -144,16 +140,6 @@ insert into reviews (id, session_id, reviewer_id, tutor_id, ai_tutor_id, stars, 
   ('50000000-0000-0000-0000-000000000006','40000000-0000-0000-0000-000000000005','10000000-0000-0000-0000-000000000010','10000000-0000-0000-0000-000000000003',null,5,'Camila corrigió mi pronunciación sin hacerme sentir mal. Ya me atrevo a hablar en voz alta.'),
   ('50000000-0000-0000-0000-000000000007','40000000-0000-0000-0000-000000000006','10000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000009',null,5,'Renata revisó mi conclusión palabra por palabra. Ahora sé cerrar un texto.')
 on conflict (id) do nothing;
-
--- ============================================================
--- SKINS compradas y equipadas
--- ============================================================
-insert into profile_skins (profile_id, skin_id, equipped) values
-  ('10000000-0000-0000-0000-000000000005', (select id from skins where name='Avatar Sol'), true),
-  ('10000000-0000-0000-0000-000000000002', (select id from skins where name='Marco Dorado'), true),
-  ('10000000-0000-0000-0000-000000000003', (select id from skins where name='Decoración Estrellas'), false),
-  ('10000000-0000-0000-0000-000000000001', (select id from skins where name='Insignia Primer Tutor'), true)
-on conflict do nothing;
 
 -- ============================================================
 -- SESSION_EVENTS (evidencia de las clases)

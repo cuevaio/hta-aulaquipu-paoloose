@@ -83,6 +83,26 @@ lk app env --write --destination .env.local
 
 </details>
 
+## Class memory (AtomicMemory)
+
+The tutor remembers each student's progress across classes with [AtomicMemory Cloud](https://docs.atomicstrata.ai). Add the credentials to `.env.local` (keep the key out of git and out of chat):
+
+```console
+ATOMICMEMORY_API_URL=https://api.atomicstrata.ai
+ATOMICMEMORY_API_KEY=your_amc_key
+```
+
+At class start the agent recalls what the student worked on before (`memoryRecall`), and during class it saves durable progress notes (`memorySave`). Memories are scoped per student. Without the key the agent runs normally, just without memory.
+
+The [`am` CLI](https://docs.atomicstrata.ai/cli#install) reaches the same memory from a terminal:
+
+```console
+curl -fsSL https://get.atomicstrata.ai/install.sh | sh
+source "$HOME/.atomicmemory/env"
+am init
+am memory search "progreso del alumno"
+```
+
 ## Run the agent
 
 The `lk agent console`, `lk agent dev`, and `lk agent debugger` commands run your agent on your own machine. To talk to it in your terminal:

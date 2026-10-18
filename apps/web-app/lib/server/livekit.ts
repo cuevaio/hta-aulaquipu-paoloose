@@ -29,6 +29,7 @@ export interface AgentContext {
   studentName: string;
   /** Guía de enseñanza del tema definida en el panel de admin (opcional, ≤ ~4000 caracteres). */
   guide?: string;
+  studentId: string;
 }
 
 export async function createRoomToken(opts: {

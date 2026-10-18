@@ -1,5 +1,7 @@
 // Tipos de dominio. Reflejan el DDL de backend/database.sql (§7 del documento de diseño).
 
+import type { FigureSlot } from "@/lib/figure";
+
 export type UUID = string;
 
 export type Grade = 1 | 2 | 3 | 4 | 5;
@@ -18,6 +20,10 @@ export interface AvatarConfig {
   shape?: "blob" | "round" | "bean";
   /** Formato de la base (demo_seed.sql): paleta con nombre. */
   palette?: string;
+  /** Paperdoll: partes equipadas por slot (figura canónica). */
+  slots?: Partial<Record<FigureSlot, string>>;
+  /** Figure string compacto derivado (para URLs/compartir), p.ej. "aq.body=blob.hat=chullo". */
+  figure?: string;
 }
 
 export interface Profile {
@@ -162,15 +168,16 @@ export interface SkinMeta {
   frame?: "basico" | "dorado" | "arcoiris" | "andino";
   deco?: "andes" | "cosmos" | "selva";
   color?: string;
+  /** Paperdoll: slot + id de parte del registro (lib/avatar-parts) o de un spritesheet. */
+  slot?: FigureSlot;
+  item?: string;
   // Claves del catálogo en la base (database.sql): se traducen en lib/skins.ts
   palette?: string;
   border?: string;
   bg?: string;
   icon?: string;
-  /** Ítems de un sistema de sprites en preparación (no se dibujan con <Avatar>). */
+  /** Ítems de un sistema de sprites (meta.sprite). Se dibujan como capas paperdoll. */
   sprite?: boolean;
-  slot?: string;
-  item?: string;
 }
 
 export interface Skin {
@@ -210,6 +217,8 @@ export interface Equipped {
   head?: Skin | null;
   frame: Skin | null;
   deco: Skin | null;
+  /** Partes paperdoll equipadas (meta.item): una por slot, capas simultáneas. */
+  parts: Skin[];
 }
 
 export interface Me {

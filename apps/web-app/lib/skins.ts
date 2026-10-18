@@ -3,11 +3,11 @@
 
 import type { AvatarConfig, SkinMeta } from "@/lib/types";
 
-const PALETTES: Record<string, { color: string; accessory?: SkinMeta["accessory"] }> = {
-  sun: { color: "#FFB547", accessory: "lentes" },
-  condor: { color: "#5B6B8C", accessory: "chullo" },
+const PALETTES: Record<string, { color: string }> = {
+  sun: { color: "#FFB547" },
+  condor: { color: "#5B6B8C" },
   andes: { color: "#2FD3A3" },
-  quipu: { color: "#7C6BF2", accessory: "corona" },
+  quipu: { color: "#7C6BF2" },
 };
 
 const BORDERS: Record<string, NonNullable<SkinMeta["frame"]>> = {
@@ -33,11 +33,11 @@ export function avatarColor(config: AvatarConfig): string {
   return config.color ?? (config.palette ? PALETTES[config.palette]?.color : undefined) ?? "#7C6BF2";
 }
 
-/** Skin de avatar: puede cambiar el color del blob y/o ponerle un accesorio. */
+/** Skin de avatar: color base y accesorio de paletas antiguas. */
 export function avatarLook(meta: SkinMeta | undefined): { color?: string; accessory?: SkinMeta["accessory"] } {
   if (!meta) return {};
   const palette = meta.palette ? PALETTES[meta.palette] : undefined;
-  return { color: meta.color ?? palette?.color, accessory: meta.accessory ?? palette?.accessory };
+  return { color: meta.color ?? palette?.color, accessory: meta.accessory };
 }
 
 export function frameOf(meta: SkinMeta | undefined): NonNullable<SkinMeta["frame"]> {
@@ -49,5 +49,12 @@ export function decoOf(meta: SkinMeta | undefined): SkinMeta["deco"] | undefined
 }
 
 export function badgeIcon(meta: SkinMeta | undefined): string {
-  return (meta?.icon && ICONS[meta.icon]) || "🏅";
+  return (meta?.icon && ICONS[meta?.icon]) || "🏅";
 }
+
+export const FRAME_STYLES: Record<NonNullable<SkinMeta["frame"]>, string> = {
+  basico: "ring-2 ring-white/80",
+  dorado: "ring-4 ring-[#FFC94D] shadow-[0_0_0_2px_#C98A00]",
+  andino: "ring-4 ring-[#E5484D] shadow-[0_0_0_3px_#FFC94D,0_0_0_5px_#2FD3A3]",
+  arcoiris: "ring-0 p-[3px] bg-[conic-gradient(#E5484D,#FFC94D,#2FD3A3,#4FA3FF,#7C6BF2,#F06EAA,#E5484D)]",
+};

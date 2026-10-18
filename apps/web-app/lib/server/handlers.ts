@@ -356,6 +356,7 @@ export async function roomToken(userId: string, id: string): Promise<RoomToken> 
       topic: topic.id ? topic.name.toLowerCase() : "",
       studentName: firstName,
       ...(guide ? { guide } : {}),
+      studentId: userId,
     };
   }
 
@@ -588,13 +589,19 @@ export async function equipSkin(userId: string, id: string, body: Body) {
   if (!skin) throw new HttpError(404, "Ese artículo no existe.", "not_found");
   const owned = await must<{ skin_id: string }[]>(db().from("profile_skins").select("skin_id").eq("profile_id", userId).eq("skin_id", skinId));
   if (!owned.length && skin.price_quipus > 0) throw new HttpError(403, "Solo puedes equipar lo que es tuyo.", "forbidden");
-  if (equip && !isSpriteSkin(skin.meta)) {
-    // Una sola skin equipada por tipo. Los ítems de sprite (otro sistema) no se tocan.
-    const sameKind = (await must<Skin[]>(db().from("skins").select("id, meta").eq("kind", skin.kind))).filter(
-      (k) => !isSpriteSkin(k.meta),
-    );
+  if (equip) {
+    // Dos sistemas conviven: las partes sprite compiten por su slot; las skins de
+    // diseño (color/cabeza) compiten solo entre sí por tipo. Nunca se pisan entre sí.
+    const sameKind = await must<Skin[]>(db().from("skins").select("*").eq("kind", skin.kind));
+    const isSprite = isSpriteSkin(skin.meta);
+    const conflicts = sameKind.filter((k) => {
+      const kSprite = isSpriteSkin(k.meta);
+      if (kSprite !== isSprite) return false;
+      if (isSprite) return (k.meta?.slot ?? "acc") === (skin.meta?.slot ?? "acc");
+      return true;
+    });
     await must(
-      db().from("profile_skins").update({ equipped: false }).eq("profile_id", userId).in("skin_id", sameKind.map((k) => k.id)),
+      db().from("profile_skins").update({ equipped: false }).eq("profile_id", userId).in("skin_id", conflicts.map((k) => k.id)),
     );
   }
   await must(db().from("profile_skins").upsert({ profile_id: userId, skin_id: skinId, equipped: equip }));

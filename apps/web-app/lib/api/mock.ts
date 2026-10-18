@@ -160,9 +160,15 @@ function statsOf(s: DbState, tutorId: UUID): TutorStats {
 
 function equippedOf(s: DbState, id: UUID): Equipped {
   const mine = s.profile_skins.filter((ps) => ps.profile_id === id && ps.equipped);
-  const skin = (kind: string) =>
-    mine.map((ps) => s.skins.find((k) => k.id === ps.skin_id)!).find((k) => k && k.kind === kind) ?? null;
-  return { avatar: skin("avatar"), head: skin("head"), frame: skin("frame"), deco: skin("profile_deco") };
+  const skins = mine.map((ps) => s.skins.find((k) => k.id === ps.skin_id)!).filter(Boolean);
+  const byKind = (kind: string) => skins.find((k) => k.kind === kind && !k.meta?.item) ?? null;
+  return {
+    avatar: byKind("avatar"),
+    head: byKind("head"),
+    frame: byKind("frame"),
+    deco: byKind("profile_deco"),
+    parts: skins.filter((k) => !!k.meta?.item),
+  };
 }
 
 function badgesOf(s: DbState, id: UUID): Badge[] {

@@ -4,6 +4,8 @@ import { z } from 'zod';
 export type TutorHooks = {
   publish: (msg: Record<string, unknown>, topic: string) => Promise<void>;
   logEvent: (kind: string, payload: Record<string, unknown>) => Promise<void>;
+  remember: (content: string) => Promise<boolean>;
+  recall: (query: string) => Promise<string>;
 };
 
 export type ClassContext = {
@@ -14,6 +16,7 @@ export type ClassContext = {
   studentName: string;
   /** Guía del tema definida por la plataforma (admin). Vacía si el tema no tiene guía. */
   guide: string;
+  studentId: string;
 };
 
 const DEFAULT_CONTEXT: ClassContext = {
@@ -23,6 +26,7 @@ const DEFAULT_CONTEXT: ClassContext = {
   topic: '',
   studentName: '',
   guide: '',
+  studentId: '',
 };
 
 function classBrief(c: ClassContext): string {
@@ -46,10 +50,14 @@ function guideBrief(c: ClassContext): string {
   );
 }
 
+function memorySection(brief: string): string {
+  return brief ? `\n# Memoria de clases anteriores\n${brief}\n` : '';
+}
+
 // Instrucciones del modelo de razonamiento al que GPT-Live delega el trabajo. El modelo de voz
 // NO ve las herramientas: solo decide qué delegar; este modelo es el que las llama
 // (https://docs.livekit.io/agents/models/realtime/gpt-live/).
-function backendInstructions(c: ClassContext): string {
+function backendInstructions(c: ClassContext, memoryBrief: string): string {
   return (
     dedent`
       Atiendes lo que delega ${c.tutorName}, tutor de voz de AulaQuipu, en una clase de secundaria en Perú.
@@ -63,17 +71,25 @@ function backendInstructions(c: ClassContext): string {
       - Funciones, rectas, parábolas o puntos: llama graphSet con LaTeX de Desmos, por ejemplo "y=2x+1",
         "y=\\frac{1}{2}x" o "(1,3)". Usa ids cortos como "f1", "f2"; reutiliza el id para cambiar una curva.
         El color es opcional (hexadecimal, por ejemplo "#7C6BF2"): úsalo para distinguir varias curvas.
+      - Memoria de clases: llama memoryRecall cuando necesites saber qué trabajó o le costó al alumno
+        antes, y memorySave con hechos duraderos de su progreso (qué domina, qué le cuesta, acuerdos)
+        durante la clase y al cerrarla.
       - Puedes llamar varias herramientas seguidas.
       - Responde al tutor con una sola frase corta que pueda decir en voz alta, sin markdown.
     ` +
     (c.topic ? `\nEl tema de la clase es: ${c.topic}.` : '') +
     (c.guide
       ? `\nGuía del tema (escribe en el documento los pasos y ejercicios siguiendo esta guía):\n${c.guide}`
-      : '')
+      : '') +
+    memorySection(memoryBrief)
   );
 }
 
-export function createAgent(hooks: TutorHooks, context: ClassContext = DEFAULT_CONTEXT) {
+export function createAgent(
+  hooks: TutorHooks,
+  context: ClassContext = DEFAULT_CONTEXT,
+  memoryBrief = '',
+) {
   return Agent.create({
     instructions:
       dedent`
@@ -89,6 +105,8 @@ export function createAgent(hooks: TutorHooks, context: ClassContext = DEFAULT_C
       # Qué delegar
       - Delega SIEMPRE que expliques un procedimiento, des un ejemplo resuelto, propongas un ejercicio o cierres con un resumen: pide que se escriba en el documento de la clase.
       - Delega cuando haya una tabla útil (comparaciones, valores) o algo que se entienda mejor graficado (funciones, rectas, puntos).
+      - Al cerrar la clase, o cuando el alumno domine algo nuevo, delega memorySave con un registro breve de su progreso.
+      - Si el alumno menciona clases anteriores o retoman algo ya trabajado, delega memoryRecall antes de responder.
       - Mientras se escribe, di en una frase qué estás anotando ("te lo anoto en el documento").
       - Saludos, preguntas de diagnóstico, ánimo y respuestas cortas: respóndelos tú, sin delegar.
       - Nunca digas que ya escribiste o graficaste algo si no lo delegaste.
@@ -104,13 +122,17 @@ export function createAgent(hooks: TutorHooks, context: ClassContext = DEFAULT_C
       - Anima al alumno: reconocer el progreso es parte del trabajo.
     ` +
       classBrief(context) +
-      guideBrief(context),
+      guideBrief(context) +
+      memorySection(memoryBrief),
     llm: new inference.DuplexModel({
       model: 'openai/gpt-live-1',
       voice: 'marin',
       modelOptions: {
         delegation: 'responses',
-        responsesOptions: { instructions: backendInstructions(context), parallelToolCalls: true },
+        responsesOptions: {
+          instructions: backendInstructions(context, memoryBrief),
+          parallelToolCalls: true,
+        },
       },
     }),
     tools: [
@@ -175,6 +197,34 @@ export function createAgent(hooks: TutorHooks, context: ClassContext = DEFAULT_C
           await hooks.publish({ type: 'graph_op', op: 'remove', id }, 'aulaquipu:graph');
           await hooks.logEvent('tool_call', { tool: 'graphRemove', id });
           return `Curva ${id} quitada del graficador.`;
+        },
+      }),
+      tool({
+        name: 'memorySave',
+        description:
+          'Guarda en la memoria de clases un hecho duradero sobre el alumno: qué domina, qué le cuesta, su nivel o acuerdos. Úsalo durante la clase y al cerrarla.',
+        parameters: z.object({
+          content: z.string().describe('Hecho breve y concreto sobre el progreso del alumno'),
+        }),
+        execute: async ({ content }) => {
+          const saved = await hooks.remember(content);
+          await hooks.logEvent('tool_call', { tool: 'memorySave', saved });
+          return saved
+            ? 'Progreso guardado en la memoria de clases.'
+            : 'La memoria de clases no está disponible; continúa sin guardar.';
+        },
+      }),
+      tool({
+        name: 'memoryRecall',
+        description:
+          'Busca en la memoria de clases qué se trabajó o le costó al alumno en clases anteriores.',
+        parameters: z.object({
+          query: z.string().describe('Qué quieres saber del alumno'),
+        }),
+        execute: async ({ query }) => {
+          const brief = await hooks.recall(query);
+          await hooks.logEvent('tool_call', { tool: 'memoryRecall', query });
+          return brief || 'Sin registros de clases anteriores.';
         },
       }),
     ],

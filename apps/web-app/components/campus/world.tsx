@@ -550,11 +550,11 @@ export function CampusWorld({
             className="absolute flex cursor-pointer flex-col items-center"
             style={{ left: p.x * T, top: p.y * T - T * 0.35, width: T, zIndex: (p.y + 1) * 10 + 5 }}
           >
-            <div className={cn("float rounded-full", nearId === p.id && "ring-4 ring-gold")}>
+            <div className={cn("float", nearId === p.id && "rounded-xl ring-4 ring-gold")}>
               {p.ai ? (
                 <AiAvatar emoji={p.ai.emoji} color={p.ai.color} size={T * 0.95} />
               ) : (
-                <Avatar config={p.avatar ?? {}} equipped={p.equipped} size={T * 0.95} label={p.name} />
+                <Avatar config={p.avatar ?? {}} equipped={p.equipped} size={T * 0.95} label={p.name} bare />
               )}
             </div>
             <span className="mt-0.5 rounded-full bg-navy/85 px-1.5 py-px text-[10px] font-bold whitespace-nowrap text-white">{p.name}</span>
@@ -587,7 +587,7 @@ export function CampusWorld({
               className="hidden absolute bottom-full left-1/2 z-10 mb-1 w-max max-w-[11rem] -translate-x-1/2 rounded-2xl rounded-bl-sm bg-white px-2.5 py-1.5 text-xs leading-snug font-semibold break-words text-navy shadow-lg ring-1 ring-black/10"
             />
             <div className="player-body">
-              <Avatar config={peer.avatar} equipped={peer.equipped} size={T * 0.95} label={peer.name} />
+              <Avatar config={peer.avatar} equipped={peer.equipped} size={T * 0.95} label={peer.name} bare />
             </div>
             <span className="mt-0.5 flex items-center gap-1 rounded-full bg-navy/85 px-1.5 py-px text-[10px] font-bold whitespace-nowrap text-white">
               <span className="size-1.5 rounded-full bg-mint" />
@@ -604,7 +604,7 @@ export function CampusWorld({
               className="hidden absolute bottom-full left-1/2 z-10 mb-1 w-max max-w-[11rem] -translate-x-1/2 rounded-2xl rounded-bl-sm bg-white px-2.5 py-1.5 text-xs leading-snug font-semibold break-words text-navy shadow-lg ring-1 ring-black/10"
             />
           <div ref={body} className="player-body">
-            <Avatar config={me.avatar} equipped={me.equipped} size={T * 0.95} label={me.name} />
+            <Avatar config={me.avatar} equipped={me.equipped} size={T * 0.95} label={me.name} bare />
           </div>
           <span className="mt-0.5 rounded-full bg-mint px-1.5 py-px text-[10px] font-black whitespace-nowrap text-navy shadow">
             {me.name} (tú)

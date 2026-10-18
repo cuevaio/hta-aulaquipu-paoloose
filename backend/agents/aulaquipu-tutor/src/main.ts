@@ -2,9 +2,10 @@ import { ServerOptions, cli, defineAgent, voice } from '@livekit/agents';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { type ClassContext, createAgent } from './agent.ts';
+import { memoryScope, recallBrief, remember } from './memory.ts';
 
 dotenv.config({ path: '.env.local' });
-dotenv.config({ path: '../.env' });
+dotenv.config({ path: '../../.env' });
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
@@ -28,9 +29,10 @@ function classContextFrom(metadata: string | undefined): ClassContext {
       studentName: typeof raw.studentName === 'string' ? raw.studentName : '',
       // Tope defensivo: la web ya la recorta, pero el metadata viene de fuera del proceso
       guide: typeof raw.guide === 'string' ? raw.guide.trim().slice(0, 4500) : '',
+      studentId: typeof raw.studentId === 'string' ? raw.studentId : '',
     };
   } catch {
-    return { tutorName: 'Quipu', style: '', focus: '', topic: '', studentName: '', guide: '' };
+    return { tutorName: 'Quipu', style: '', focus: '', topic: '', studentName: '', guide: '', studentId: '' };
   }
 }
 
@@ -85,8 +87,21 @@ export default defineAgent({
 
     const session = new voice.AgentSession({});
 
+    const scope = memoryScope(klass.studentId, sessionId ?? '');
+    const hooks = {
+      publish,
+      logEvent,
+      remember: (content: string) => remember(scope, content),
+      recall: (query: string) => recallBrief(scope, query),
+    };
+    const memoryBrief = await hooks.recall(
+      klass.topic
+        ? `progreso del alumno en ${klass.topic}`
+        : 'progreso del alumno y temas vistos en clases anteriores',
+    );
+
     await session.start({
-      agent: createAgent({ publish, logEvent }, klass),
+      agent: createAgent(hooks, klass, memoryBrief),
       room: ctx.room,
     });
 

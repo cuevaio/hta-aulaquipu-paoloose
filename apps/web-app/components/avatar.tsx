@@ -1,6 +1,9 @@
-import type { AvatarConfig, Equipped, SkinMeta } from "@/lib/types";
+import type { AvatarConfig, Equipped, Skin, SkinMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { avatarColor, avatarLook, frameOf } from "@/lib/skins";
+import { FRAME_STYLES, avatarColor, avatarLook, frameOf } from "@/lib/skins";
+import { SpriteAvatar, type SpriteSpec } from "@/components/sprite-avatar";
+
+const loggedFallbacks = new Set<string>();
 
 const SHAPES: Record<NonNullable<AvatarConfig["shape"]>, string> = {
   blob: "M50 10c20 0 34 14 34 36s-10 44-34 44S16 68 16 46 30 10 50 10z",
@@ -127,12 +130,26 @@ function Accessory({ kind }: { kind: SkinMeta["accessory"] }) {
   }
 }
 
-const FRAME_STYLES: Record<NonNullable<SkinMeta["frame"]>, string> = {
-  basico: "ring-2 ring-white/80",
-  dorado: "ring-4 ring-[#FFC94D] shadow-[0_0_0_2px_#C98A00]",
-  andino: "ring-4 ring-[#E5484D] shadow-[0_0_0_3px_#FFC94D,0_0_0_5px_#2FD3A3]",
-  arcoiris: "ring-0 p-[3px] bg-[conic-gradient(#E5484D,#FFC94D,#2FD3A3,#4FA3FF,#7C6BF2,#F06EAA,#E5484D)]",
-};
+function logFallbackOnce(payload: Record<string, unknown>) {
+  const key = JSON.stringify([payload.quien, payload.slots, payload.avatarSkinMeta, payload.parts]);
+  if (loggedFallbacks.has(key)) return;
+  loggedFallbacks.add(key);
+  console.warn("[avatar] FALLBACK — sin items sprite que renderizar", payload);
+}
+
+/** Capas sprite equipadas: slot = tipo de figura (hh, hd, hr, ch, lg, sh, ha, fa…). */
+function spriteLayersOf(config: AvatarConfig, meta: SkinMeta | undefined, parts: Skin[] = []): SpriteSpec[] {
+  const out = new Map<string, string>();
+  for (const [slot, item] of Object.entries(config.slots ?? {})) {
+    if (item) out.set(item, slot);
+  }
+  const add = (m?: SkinMeta) => {
+    if (m?.item) out.set(m.item, m.slot ?? "hh");
+  };
+  add(meta);
+  for (const p of parts) add(p.meta);
+  return [...out.entries()].map(([item, slot]) => ({ item, slot }));
+}
 
 export function Avatar({
   config,
@@ -141,6 +158,7 @@ export function Avatar({
   className,
   speaking,
   label,
+  bare = false,
 }: {
   config: AvatarConfig;
   equipped?: Partial<Equipped> | null;
@@ -148,6 +166,7 @@ export function Avatar({
   className?: string;
   speaking?: boolean;
   label?: string;
+  bare?: boolean;
 }) {
   const look = avatarLook(equipped?.avatar?.meta);
   const color = look.color ?? avatarColor(config);
@@ -155,15 +174,40 @@ export function Avatar({
   // El diseño de cabeza manda; si no hay, algunas paletas antiguas traen su propio accesorio
   const accessory = equipped?.head?.meta.accessory ?? look.accessory;
   const frame = frameOf(equipped?.frame?.meta);
+  const spriteLayers = spriteLayersOf(config, equipped?.avatar?.meta, equipped?.parts ?? []);
+
+  if (spriteLayers.length > 0) {
+    return (
+      <SpriteAvatar
+        specs={spriteLayers}
+        frame={frame}
+        size={size}
+        className={className}
+        speaking={speaking}
+        label={label}
+        bare={bare}
+      />
+    );
+  }
+
+  logFallbackOnce({
+    quien: label ?? "(sin nombre)",
+    slots: config.slots ?? "(vacío)",
+    avatarSkinMeta: equipped?.avatar?.meta ?? "(sin avatar skin equipada)",
+    parts: (equipped?.parts ?? []).map((p) => ({ name: p.name, meta: p.meta })),
+  });
 
   return (
     <div
       role="img"
       aria-label={label ?? "Avatar"}
-      className={cn("relative shrink-0 rounded-full", FRAME_STYLES[frame], speaking && "speaking", className)}
+      className={cn("relative shrink-0", !bare && "rounded-full", !bare && FRAME_STYLES[frame], speaking && "speaking", className)}
       style={{ width: size, height: size }}
     >
-      <div className="size-full overflow-hidden rounded-full" style={{ background: `${color}33` }}>
+      <div
+        className={cn("size-full", !bare && "overflow-hidden rounded-full")}
+        style={{ background: bare ? "transparent" : `${color}33` }}
+      >
         <svg viewBox="0 0 100 100" className="size-full">
           <path d={shape} fill={color} transform="translate(0 6)" />
           <ellipse cx="50" cy="92" rx="22" ry="4" fill="#000" opacity=".08" />

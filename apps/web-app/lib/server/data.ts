@@ -115,15 +115,18 @@ export async function aiTutors(ids?: string[], opts: { onlyActive?: boolean } = 
 
 export async function equippedFor(ids: string[]): Promise<Map<string, Equipped>> {
   const unique = [...new Set(ids.filter(Boolean))];
-  const out = new Map<string, Equipped>(unique.map((id) => [id, { avatar: null, frame: null, deco: null }]));
+  const out = new Map<string, Equipped>(unique.map((id) => [id, { avatar: null, frame: null, deco: null, parts: [] }]));
   if (!unique.length) return out;
   const rows = await must<{ profile_id: string; skin: Skin | null }[]>(
     db().from("profile_skins").select("profile_id, skin:skins(*)").in("profile_id", unique).eq("equipped", true),
   );
   for (const r of rows) {
     const e = out.get(r.profile_id);
-    // Los ítems de sprite son de otro sistema de avatar: no pisan el color ni el diseño
-    if (!e || !r.skin || isSpriteSkin(r.skin.meta)) continue;
+    if (!e || !r.skin) continue;
+    if (isSpriteSkin(r.skin.meta)) {
+      e.parts.push(r.skin);
+      continue;
+    }
     if (r.skin.kind === "avatar") e.avatar = r.skin;
     if (r.skin.kind === "frame") e.frame = r.skin;
     if (r.skin.kind === "profile_deco") e.deco = r.skin;
@@ -268,7 +271,7 @@ export async function sessionDetails(rows: SessionRow[], userId: string): Promis
       students: students
         .map((id) => profiles.get(id))
         .filter((p): p is Profile => !!p)
-        .map((p) => ({ ...p, equipped: equipped.get(p.id) ?? { avatar: null, frame: null, deco: null } })),
+        .map((p) => ({ ...p, equipped: equipped.get(p.id) ?? { avatar: null, frame: null, deco: null, parts: [] } })),
       tutorEquipped: r.tutor_id ? equipped.get(r.tutor_id) ?? null : null,
       myReview: myReviews.find((x) => x.session_id === r.id) ?? null,
     };
