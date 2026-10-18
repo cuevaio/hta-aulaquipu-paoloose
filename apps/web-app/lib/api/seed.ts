@@ -1,7 +1,7 @@
 // Datos ficticios para la demo. Imitan los seeds de backend/database.sql
 // (tutores IA, skins, temas) más alumnos precargados con su mint de 100 quipus.
 
-import type { AiPromotion, TopicGuide } from "@/lib/admin-types";
+import type { Announcement, AiPromotion, TopicGuide } from "@/lib/admin-types";
 import type { AuditRow } from "@/lib/admin-types";
 import type {
   AiTutor,
@@ -54,9 +54,11 @@ export interface DbState {
   admin_audit: AuditRow[];
   ai_promotions: AiPromotion[];
   ai_guides: (TopicGuide & { topic_id: string; updated_at: string })[];
+  announcements: Announcement[];
+  chat_reports: { id: string; reporter_id: string; reported_id: string; text: string; created_at: string; resolved_at: string | null }[];
 }
 
-export const SEED_VERSION = 7;
+export const SEED_VERSION = 8;
 
 const t = (id: string, name: string): Topic => ({ id, name, proposed_by: null, status: "active" });
 
@@ -372,6 +374,8 @@ export function buildSeed(): DbState {
     admin_audit: [],
     ai_promotions: [],
     ai_guides: [],
+    announcements: [],
+    chat_reports: [],
   };
 }
 

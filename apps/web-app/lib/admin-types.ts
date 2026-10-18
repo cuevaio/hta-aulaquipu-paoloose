@@ -187,3 +187,50 @@ export interface AdminSkin extends SkinInput {
   id: UUID;
   owners: number;
 }
+
+// ---------- moderación y anuncios ----------
+
+/** Clases en vivo desde hace más de esto se consideran atascadas. */
+export const STUCK_AFTER_MIN = 90;
+export const ANNOUNCEMENT_MAX = 160;
+
+export interface ModUser extends AdminUser {
+  /** Clases completadas como alumno 1:1 o como tutor. */
+  sessions: number;
+  suspended_at: string | null;
+  suspended_reason: string | null;
+}
+
+export interface ChatReport {
+  id: UUID;
+  reporter_id: UUID;
+  reporter_name: string;
+  reported_id: UUID;
+  reported_name: string;
+  reported_suspended: boolean;
+  text: string;
+  created_at: string;
+}
+
+export interface StuckSession {
+  id: UUID;
+  topic: string | null;
+  tutor_kind: "human" | "ai";
+  tutor_name: string;
+  student_names: string[];
+  started_at: string;
+  minutes: number;
+  /** Quipus retenidos a los alumnos mientras la clase sigue en vivo. */
+  held: number;
+}
+
+export interface Announcement {
+  id: UUID;
+  text: string;
+  active: boolean;
+  starts_at: string;
+  ends_at: string | null;
+  created_at: string;
+}
+
+export type AnnouncementInput = Pick<Announcement, "text" | "active" | "starts_at" | "ends_at">;

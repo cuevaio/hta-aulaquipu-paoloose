@@ -56,6 +56,17 @@ const admin: AdminApi = {
     id ? call(u, "PUT", `/admin/ai-tutors/${q(id)}`, input) : call(u, "POST", "/admin/ai-tutors", input),
   skins: (u) => call(u, "GET", "/admin/skins"),
   saveSkin: (u, id, input) => (id ? call(u, "PUT", `/admin/skins/${q(id)}`, input) : call(u, "POST", "/admin/skins", input)),
+  moderationUsers: (u, query) => call(u, "GET", `/admin/moderation/users?query=${q(query)}`),
+  suspendUser: (u, id, reason) => call(u, "POST", `/admin/users/${q(id)}/suspend`, { reason }),
+  reactivateUser: (u, id) => call(u, "POST", `/admin/users/${q(id)}/reactivate`),
+  chatReports: (u) => call(u, "GET", "/admin/reports"),
+  resolveReport: (u, id, suspend) => call(u, "POST", `/admin/reports/${q(id)}/resolve`, { suspend }),
+  stuckSessions: (u) => call(u, "GET", "/admin/sessions/stuck"),
+  cancelSession: (u, id) => call(u, "POST", `/admin/sessions/${q(id)}/cancel`),
+  announcements: (u) => call(u, "GET", "/admin/announcements"),
+  saveAnnouncement: (u, id, input) =>
+    id ? call(u, "PUT", `/admin/announcements/${q(id)}`, input) : call(u, "POST", "/admin/announcements", input),
+  deleteAnnouncement: (u, id) => call(u, "DELETE", `/admin/announcements/${q(id)}`),
 };
 
 export const httpApi: ApiClient = {
@@ -92,6 +103,8 @@ export const httpApi: ApiClient = {
   buySkin: (u, id) => call(u, "POST", `/skins/${q(id)}/buy`),
   equipSkin: (u, id, equip) => call(u, "POST", `/skins/${q(id)}/equip`, { equip }),
   ledger: (u) => call(u, "GET", "/ledger/mine"),
+  activeAnnouncements: (u) => call(u, "GET", "/announcements/active"),
+  reportChat: (u, reportedId, text) => call(u, "POST", "/chat/report", { reportedId, text }),
   campusToken: (u) => call(u, "POST", "/campus/token"),
   resetDemo: async () => {
     throw new ApiError("Reiniciar la demo solo existe en modo mock.", "invalid");

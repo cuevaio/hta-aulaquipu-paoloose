@@ -25,6 +25,13 @@ const LABEL: Record<string, string> = {
   "skin.price": "Cambió el precio de un artículo",
   "skin.hide": "Ocultó un artículo de la tienda",
   "skin.show": "Mostró un artículo de la tienda",
+  "user.suspend": "Suspendió una cuenta",
+  "user.reactivate": "Reactivó una cuenta",
+  "report.resolve": "Resolvió un reporte del chat",
+  "session.cancel": "Cerró una clase atascada sin cobro",
+  "announcement.create": "Creó un anuncio",
+  "announcement.update": "Editó un anuncio",
+  "announcement.delete": "Eliminó un anuncio",
   "guide.save": "Guardó una guía de enseñanza IA",
   "guide.delete": "Quitó una guía de enseñanza IA",
 };

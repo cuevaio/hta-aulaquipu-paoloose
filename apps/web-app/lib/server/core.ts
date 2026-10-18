@@ -103,6 +103,7 @@ const RPC_ERRORS: Record<string, [number, string, HttpError["code"]]> = {
   perfil_no_existe: [404, "No encontramos a ese alumno.", "not_found"],
   tema_no_existe: [404, "Ese tema no existe.", "not_found"],
   tema_invalido: [400, "Elige dos temas distintos para unir.", "invalid"],
+  clase_no_existe: [404, "No encontramos esa clase.", "not_found"],
   tutor_pausado: [409, "Este tutor IA está en pausa por ahora. Elige otro.", "conflict"],
 };
 

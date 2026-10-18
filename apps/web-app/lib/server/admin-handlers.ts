@@ -2,14 +2,19 @@
 // cada mutación llama a audit() (o lo hace la función SQL, como admin_grant).
 
 import { db, fromDbError, HttpError, must, rpc } from "@/lib/server/core";
-import { audit } from "@/lib/server/admin";
-import { profilesById } from "@/lib/server/data";
-import { toAi } from "@/lib/server/data";
+import { audit, forgetUser, isAdmin } from "@/lib/server/admin";
+import { aiTutors, membersOf, profilesById, toAi, topicsById } from "@/lib/server/data";
+import { closeRoom } from "@/lib/server/livekit";
 import { str, uuidParam, type Body } from "@/lib/server/handlers";
 import { GUIDE_FIELD_MAX } from "@/lib/admin-types";
-import { parseAiTutorInput, parseSkinInput, parseTopicName, type Parsed } from "@/lib/admin-validate";
+import { parseAiTutorInput, parseAnnouncement, parseReason, parseReportText, parseSkinInput, parseTopicName, type Parsed } from "@/lib/admin-validate";
+import { STUCK_AFTER_MIN } from "@/lib/admin-types";
 import type {
   AdminAiTutor,
+  Announcement,
+  ChatReport,
+  ModUser,
+  StuckSession,
   AiTutorInput,
   AdminSkin,
   AdminTopic,
@@ -440,4 +445,215 @@ export async function updateSkin(adminId: string, id: string, body: Body): Promi
   if (v.price_quipus !== before.price_quipus) await audit(adminId, "skin.price", skinId, { name: v.name, from: before.price_quipus, to: v.price_quipus });
   if (v.active !== (before.active !== false)) await audit(adminId, v.active ? "skin.show" : "skin.hide", skinId, { name: v.name });
   return toAdminSkin(row, 0);
+}
+
+// ---------- moderación: usuarios ----------
+
+interface ModProfileRow {
+  id: string;
+  username: string;
+  display_name: string;
+  grade: number;
+  school: string | null;
+  suspended_at: string | null;
+  suspended_reason: string | null;
+}
+
+const MOD_COLUMNS = "id, username, display_name, grade, school, suspended_at, suspended_reason";
+
+async function toModUsers(rows: ModProfileRow[]): Promise<ModUser[]> {
+  if (!rows.length) return [];
+  const ids = rows.map((r) => r.id);
+  const [balances, counts] = await Promise.all([
+    must<{ profile_id: string; quipus: number | string }[]>(db().from("balances").select("profile_id, quipus").in("profile_id", ids)),
+    Promise.all(
+      ids.map(async (id) => {
+        const { count, error } = await db()
+          .from("sessions")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "completed")
+          .or(`student_id.eq.${id},tutor_id.eq.${id}`);
+        if (error) throw fromDbError(error);
+        return [id, count ?? 0] as const;
+      }),
+    ),
+  ]);
+  const bal = new Map(balances.map((b) => [b.profile_id, Number(b.quipus)]));
+  const sessions = new Map(counts);
+  return rows.map((r) => ({
+    id: r.id,
+    username: r.username,
+    display_name: r.display_name,
+    grade: r.grade,
+    school: r.school,
+    balance: bal.get(r.id) ?? 0,
+    sessions: sessions.get(r.id) ?? 0,
+    suspended_at: r.suspended_at,
+    suspended_reason: r.suspended_reason,
+  }));
+}
+
+/** Con 2+ caracteres busca por nombre o usuario; sin búsqueda lista a los suspendidos. */
+export async function moderationUsers(query: URLSearchParams): Promise<ModUser[]> {
+  const text = (query.get("query") ?? "").replace(/[^\p{L}\p{N} _.-]/gu, "").trim().slice(0, 40);
+  let q = db().from("profiles").select(MOD_COLUMNS);
+  if (text.length >= 2) q = q.or(`username.ilike.%${text}%,display_name.ilike.%${text}%`).order("display_name");
+  else q = q.not("suspended_at", "is", null).order("suspended_at", { ascending: false });
+  return toModUsers(await must<ModProfileRow[]>(q.limit(10)));
+}
+
+async function suspend(adminId: string, userId: string, reason: string) {
+  if (userId === adminId) throw new HttpError(400, "No puedes suspender tu propia cuenta.");
+  if (await isAdmin(userId)) throw new HttpError(400, "No puedes suspender a un administrador.");
+  const rows = await must<{ id: string; display_name: string; suspended_at: string | null }[]>(
+    db().from("profiles").select("id, display_name, suspended_at").eq("id", userId).limit(1),
+  );
+  if (!rows.length) throw new HttpError(404, "No encontramos a ese alumno.", "not_found");
+  await must(db().from("profiles").update({ suspended_at: new Date().toISOString(), suspended_reason: reason }).eq("id", userId));
+  forgetUser(userId);
+  await audit(adminId, "user.suspend", userId, { name: rows[0].display_name, reason });
+}
+
+export async function suspendUser(adminId: string, id: string, body: Body) {
+  await suspend(adminId, uuidParam(id, "alumno"), check(parseReason(body.reason)));
+}
+
+export async function reactivateUser(adminId: string, id: string) {
+  const userId = uuidParam(id, "alumno");
+  const rows = await must<{ id: string; display_name: string }[]>(
+    db().from("profiles").update({ suspended_at: null, suspended_reason: null }).eq("id", userId).select("id, display_name"),
+  );
+  if (!rows.length) throw new HttpError(404, "No encontramos a ese alumno.", "not_found");
+  forgetUser(userId);
+  await audit(adminId, "user.reactivate", userId, { name: rows[0].display_name });
+}
+
+// ---------- moderación: reportes del chat ----------
+
+const reportLog = new Map<string, number[]>();
+const REPORT_MAX_PER_HOUR = 8;
+
+/** Alumno: reporta un mensaje del chat del campus. Autenticado y con tope por hora. */
+export async function reportChat(userId: string, body: Body) {
+  const reportedId = uuidParam(body.reportedId as string, "alumno");
+  if (reportedId === userId) throw new HttpError(400, "No puedes reportarte a ti mismo.");
+  const text = check(parseReportText(body.text));
+  const now = Date.now();
+  const recent = (reportLog.get(userId) ?? []).filter((t) => now - t < 3600_000);
+  if (recent.length >= REPORT_MAX_PER_HOUR) throw new HttpError(429, "Enviaste varios reportes seguidos. Espera un rato.", "forbidden");
+  const exists = await must<{ id: string }[]>(db().from("profiles").select("id").eq("id", reportedId).limit(1));
+  if (!exists.length) throw new HttpError(404, "No encontramos a ese alumno.", "not_found");
+  // Mismo tope en la base, por si el servidor se reinicia o hay varias instancias
+  const since = new Date(now - 3600_000).toISOString();
+  const { count, error } = await db().from("chat_reports").select("id", { count: "exact", head: true }).eq("reporter_id", userId).gt("created_at", since);
+  if (error) throw fromDbError(error);
+  if ((count ?? 0) >= REPORT_MAX_PER_HOUR) throw new HttpError(429, "Enviaste varios reportes seguidos. Espera un rato.", "forbidden");
+  await must(db().from("chat_reports").insert({ reporter_id: userId, reported_id: reportedId, text }));
+  reportLog.set(userId, [...recent, now]);
+}
+
+export async function chatReports(): Promise<ChatReport[]> {
+  const rows = await must<{ id: string; reporter_id: string; reported_id: string; text: string; created_at: string }[]>(
+    db().from("chat_reports").select("id, reporter_id, reported_id, text, created_at").is("resolved_at", null).order("created_at", { ascending: false }).limit(100),
+  );
+  const ids = [...new Set(rows.flatMap((r) => [r.reporter_id, r.reported_id]))];
+  const people = await profilesById(ids);
+  const susp = ids.length
+    ? await must<{ id: string; suspended_at: string | null }[]>(db().from("profiles").select("id, suspended_at").in("id", ids))
+    : [];
+  const suspended = new Set(susp.filter((p) => p.suspended_at).map((p) => p.id));
+  return rows.map((r) => ({
+    id: r.id,
+    reporter_id: r.reporter_id,
+    reporter_name: people.get(r.reporter_id)?.display_name ?? "Alguien",
+    reported_id: r.reported_id,
+    reported_name: people.get(r.reported_id)?.display_name ?? "Alguien",
+    reported_suspended: suspended.has(r.reported_id),
+    text: r.text,
+    created_at: r.created_at,
+  }));
+}
+
+export async function resolveReport(adminId: string, id: string, body: Body) {
+  const reportId = uuidParam(id, "reporte");
+  const [report] = await must<{ id: string; reported_id: string; resolved_at: string | null }[]>(
+    db().from("chat_reports").select("id, reported_id, resolved_at").eq("id", reportId).limit(1),
+  );
+  if (!report) throw new HttpError(404, "Ese reporte no existe.", "not_found");
+  const suspendToo = body.suspend === true;
+  // Si la suspensión falla (p. ej. es admin) el reporte sigue abierto
+  if (suspendToo) await suspend(adminId, report.reported_id, check(parseReason(body.reason ?? "Reporte del chat del campus")));
+  if (!report.resolved_at) {
+    await must(db().from("chat_reports").update({ resolved_at: new Date().toISOString(), resolved_by: adminId }).eq("id", reportId));
+  }
+  await audit(adminId, "report.resolve", reportId, { reported: report.reported_id, suspended: suspendToo });
+}
+
+// ---------- moderación: clases atascadas ----------
+
+export async function stuckSessions(): Promise<StuckSession[]> {
+  const cutoff = new Date(Date.now() - STUCK_AFTER_MIN * 60_000).toISOString();
+  const rows = await must<
+    { id: string; group_id: string | null; student_id: string | null; tutor_kind: "human" | "ai"; tutor_id: string | null; ai_tutor_id: string | null; topic_id: string | null; price_quipus: number; started_at: string; request_id: string | null }[]
+  >(db().from("sessions").select("id, group_id, student_id, tutor_kind, tutor_id, ai_tutor_id, topic_id, price_quipus, started_at, request_id").eq("status", "live").lt("started_at", cutoff).order("started_at").limit(50));
+  if (!rows.length) return [];
+  const groupIds = [...new Set(rows.map((r) => r.group_id).filter((x): x is string => !!x))];
+  const [members, topics, ais, requests] = await Promise.all([
+    groupIds.length ? membersOf(groupIds) : Promise.resolve(new Map<string, { student_id: string; share_quipus: number }[]>()),
+    topicsById(rows.map((r) => r.topic_id)),
+    aiTutors([...new Set(rows.map((r) => r.ai_tutor_id).filter((x): x is string => !!x))]),
+    must<{ id: string; student_id: string }[]>(db().from("requests").select("id, student_id").in("id", rows.map((r) => r.request_id).filter((x): x is string => !!x))),
+  ]);
+  const reqStudent = new Map(requests.map((r) => [r.id, r.student_id]));
+  const studentIds = (r: (typeof rows)[number]) =>
+    r.group_id ? (members.get(r.group_id) ?? []).map((m) => m.student_id) : [r.student_id ?? reqStudent.get(r.request_id ?? "")].filter((x): x is string => !!x);
+  const people = await profilesById([...rows.flatMap(studentIds), ...rows.map((r) => r.tutor_id ?? "")]);
+  const now = Date.now();
+  return rows.map((r) => ({
+    id: r.id,
+    topic: r.topic_id ? (topics.get(r.topic_id)?.name ?? null) : null,
+    tutor_kind: r.tutor_kind,
+    tutor_name: r.tutor_kind === "ai" ? (ais.find((a) => a.id === r.ai_tutor_id)?.name ?? "Tutor IA") : (people.get(r.tutor_id ?? "")?.display_name ?? "Tutor"),
+    student_names: studentIds(r).map((id) => people.get(id)?.display_name ?? "Alumno"),
+    started_at: r.started_at,
+    minutes: Math.round((now - Date.parse(r.started_at)) / 60_000),
+    held: r.group_id ? (members.get(r.group_id) ?? []).reduce((a, m) => a + m.share_quipus, 0) : r.tutor_kind === "ai" ? r.price_quipus : 0,
+  }));
+}
+
+export async function cancelSession(adminId: string, id: string) {
+  const res = await rpc<{ room_name: string; released: number }>("admin_cancel_session", {
+    p_admin_id: adminId,
+    p_session_id: uuidParam(id, "clase"),
+  });
+  await closeRoom(res.room_name);
+  return { released: res.released };
+}
+
+// ---------- anuncios ----------
+
+export const announcements = () =>
+  must<Announcement[]>(db().from("announcements").select("id, text, active, starts_at, ends_at, created_at").order("created_at", { ascending: false }).limit(50));
+
+export async function createAnnouncement(adminId: string, body: Body): Promise<Announcement> {
+  const v = check(parseAnnouncement(body));
+  const [row] = await must<Announcement[]>(db().from("announcements").insert({ ...v, created_by: adminId }).select("id, text, active, starts_at, ends_at, created_at"));
+  await audit(adminId, "announcement.create", row.id, { text: v.text, active: v.active, ends_at: v.ends_at });
+  return row;
+}
+
+export async function updateAnnouncement(adminId: string, id: string, body: Body): Promise<Announcement> {
+  const annId = uuidParam(id, "anuncio");
+  const v = check(parseAnnouncement(body));
+  const rows = await must<Announcement[]>(db().from("announcements").update(v).eq("id", annId).select("id, text, active, starts_at, ends_at, created_at"));
+  if (!rows.length) throw new HttpError(404, "Ese anuncio no existe.", "not_found");
+  await audit(adminId, "announcement.update", annId, { text: v.text, active: v.active, ends_at: v.ends_at });
+  return rows[0];
+}
+
+export async function deleteAnnouncement(adminId: string, id: string) {
+  const annId = uuidParam(id, "anuncio");
+  const rows = await must<{ text: string }[]>(db().from("announcements").delete().eq("id", annId).select("text"));
+  if (!rows.length) throw new HttpError(404, "Ese anuncio no existe.", "not_found");
+  await audit(adminId, "announcement.delete", annId, { text: rows[0].text });
 }

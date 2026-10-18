@@ -653,3 +653,25 @@ export async function ledger(userId: string): Promise<LedgerLine[]> {
     return { ...l, amount: Number(l.amount), direction: l.to_profile === userId ? ("in" as const) : ("out" as const), description };
   });
 }
+
+// ---------- anuncios del campus ----------
+
+/** Banners vigentes. Sin migración (tabla ausente) no hay anuncios: el campus no debe fallar por esto. */
+export async function activeAnnouncements() {
+  const nowIso = new Date().toISOString();
+  const { data, error } = await db()
+    .from("announcements")
+    .select("id, text, ends_at")
+    .eq("active", true)
+    .lte("starts_at", nowIso)
+    .order("created_at", { ascending: false })
+    .limit(10);
+  if (error) {
+    if (!isMissingSchema(error)) console.error("[api] no se pudieron leer los anuncios", error.code, error.message);
+    return [];
+  }
+  return (data ?? [])
+    .filter((a) => !a.ends_at || Date.parse(a.ends_at) > Date.now())
+    .slice(0, 3)
+    .map((a) => ({ id: a.id as string, text: a.text as string }));
+}

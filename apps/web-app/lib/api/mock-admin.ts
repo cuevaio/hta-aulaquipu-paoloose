@@ -5,8 +5,9 @@ import type { AdminApi } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
 import type { DbState } from "@/lib/api/seed";
 import type { AdminMetrics } from "@/lib/admin-types";
+import { STUCK_AFTER_MIN } from "@/lib/admin-types";
 import type { AdminAiTutor, AdminGuide, AdminSkin, AdminTopic, AuditRow, TopicGuide } from "@/lib/admin-types";
-import { parseAiTutorInput, parseSkinInput, parseTopicName, type Parsed } from "@/lib/admin-validate";
+import { parseAiTutorInput, parseAnnouncement, parseReason, parseSkinInput, parseTopicName, type Parsed } from "@/lib/admin-validate";
 import { GUIDE_FIELD_MAX } from "@/lib/admin-types";
 import type { LedgerKind, UUID } from "@/lib/types";
 
@@ -28,7 +29,7 @@ function requireAdmin(s: DbState, userId: UUID) {
   if (!isMockAdmin(s, userId)) throw new ApiError("Solo administradores.", "forbidden");
 }
 
-function check<T>(r: Parsed<T>): T {
+export function check<T>(r: Parsed<T>): T {
   if (!r.ok) throw new ApiError(r.error);
   return r.value;
 }
@@ -89,6 +90,16 @@ export function buildMockAdmin(h: MockHelpers): AdminApi {
       created_at: h.now(),
     };
     s.admin_audit.push(row);
+  };
+
+  const suspendIn = (s: DbState, adminId: UUID, id: UUID, reason: string) => {
+    if (id === adminId) throw new ApiError("No puedes suspender tu propia cuenta.");
+    if (s.admins.includes(id)) throw new ApiError("No puedes suspender a un administrador.");
+    const p = s.profiles.find((x) => x.id === id);
+    if (!p) throw new ApiError("No encontramos a ese alumno.", "not_found");
+    p.suspended_at = new Date().toISOString();
+    p.suspended_reason = reason;
+    audit(s, adminId, "user.suspend", id, { name: p.display_name, reason });
   };
 
   const scopeIds = (s: DbState, scope: string, value?: string): UUID[] => {
@@ -508,6 +519,147 @@ export function buildMockAdmin(h: MockHelpers): AdminApi {
         if (from !== v.price_quipus) audit(s, u, "skin.price", before.id, { name: v.name, from, to: v.price_quipus });
         if (wasActive !== v.active) audit(s, u, v.active ? "skin.show" : "skin.hide", before.id, { name: v.name });
         return skinView(s, before);
+      }),
+
+    moderationUsers: (u, query) =>
+      h.read((s) => {
+        requireAdmin(s, u);
+        const q = query.trim().toLowerCase();
+        const rows =
+          q.length >= 2
+            ? s.profiles.filter((p) => p.username.toLowerCase().includes(q) || p.display_name.toLowerCase().includes(q))
+            : s.profiles.filter((p) => p.suspended_at);
+        return rows.slice(0, 10).map((p) => ({
+          id: p.id,
+          username: p.username,
+          display_name: p.display_name,
+          grade: p.grade,
+          school: p.school,
+          balance: h.balanceOf(s, p.id),
+          sessions: s.sessions.filter((x) => x.status === "completed" && (x.tutor_id === p.id || x.student_ids.includes(p.id))).length,
+          suspended_at: p.suspended_at ?? null,
+          suspended_reason: p.suspended_reason ?? null,
+        }));
+      }),
+
+    suspendUser: (u, id, reason) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        suspendIn(s, u, id, check(parseReason(reason)));
+      }),
+
+    reactivateUser: (u, id) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const p = s.profiles.find((x) => x.id === id);
+        if (!p) throw new ApiError("No encontramos a ese alumno.", "not_found");
+        p.suspended_at = null;
+        p.suspended_reason = null;
+        audit(s, u, "user.reactivate", id, { name: p.display_name });
+      }),
+
+    chatReports: (u) =>
+      h.read((s) => {
+        requireAdmin(s, u);
+        const name = (id: UUID) => s.profiles.find((p) => p.id === id)?.display_name ?? "Alguien";
+        return s.chat_reports
+          .filter((r) => !r.resolved_at)
+          .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+          .map((r) => ({
+            id: r.id,
+            reporter_id: r.reporter_id,
+            reporter_name: name(r.reporter_id),
+            reported_id: r.reported_id,
+            reported_name: name(r.reported_id),
+            reported_suspended: !!s.profiles.find((p) => p.id === r.reported_id)?.suspended_at,
+            text: r.text,
+            created_at: r.created_at,
+          }));
+      }),
+
+    resolveReport: (u, id, suspend) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const r = s.chat_reports.find((x) => x.id === id);
+        if (!r) throw new ApiError("Ese reporte no existe.", "not_found");
+        if (suspend) suspendIn(s, u, r.reported_id, "Reporte del chat del campus");
+        r.resolved_at ??= h.now();
+        audit(s, u, "report.resolve", id, { reported: r.reported_id, suspended: suspend });
+      }),
+
+    stuckSessions: (u) =>
+      h.read((s) => {
+        requireAdmin(s, u);
+        const cutoff = Date.now() - STUCK_AFTER_MIN * 60_000;
+        const name = (id: UUID | null) => s.profiles.find((p) => p.id === id)?.display_name ?? "Alguien";
+        return s.sessions
+          .filter((x) => x.status === "live" && Date.parse(x.started_at) < cutoff)
+          .sort((a, b) => Date.parse(a.started_at) - Date.parse(b.started_at))
+          .map((x) => ({
+            id: x.id,
+            topic: s.topics.find((t) => t.id === x.topic_id)?.name ?? null,
+            tutor_kind: x.tutor_kind,
+            tutor_name: x.tutor_kind === "ai" ? (s.ai_tutors.find((a) => a.id === x.ai_tutor_id)?.name ?? "Tutor IA") : name(x.tutor_id),
+            student_names: x.student_ids.map(name),
+            started_at: x.started_at,
+            minutes: Math.round((Date.now() - Date.parse(x.started_at)) / 60_000),
+            held: x.tutor_kind === "ai" ? x.price_quipus : x.group_id ? (s.group_members.filter((m) => m.group_id === x.group_id && m.status === "joined").reduce((a, m) => a + m.share_quipus, 0)) : 0,
+          }));
+      }),
+
+    cancelSession: (u, id) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const x = s.sessions.find((v) => v.id === id);
+        if (!x) throw new ApiError("No encontramos esa clase.", "not_found");
+        if (x.status !== "live") throw new ApiError("Esta clase ya terminó.", "conflict");
+        // El cobro se escribe al terminar la clase: cancelar no deja asientos y libera lo retenido
+        const group = x.group_id ? s.groups.find((g) => g.id === x.group_id) : undefined;
+        const released = x.tutor_kind === "ai" ? x.price_quipus : group ? s.group_members.filter((m) => m.group_id === group.id && m.status === "joined").reduce((a, m) => a + m.share_quipus, 0) : 0;
+        x.status = "cancelled";
+        x.ended_at = h.now();
+        if (group) {
+          group.status = "cancelled";
+          const members = s.group_members.filter((m) => m.group_id === group.id && m.status === "joined").map((m) => m.student_id);
+          s.requests.filter((r) => r.status === "matched" && r.topic_id === group.topic_id && members.includes(r.student_id)).forEach((r) => (r.status = "open"));
+        } else if (x.request_id) {
+          const r = s.requests.find((q) => q.id === x.request_id);
+          if (r?.status === "matched") r.status = "open";
+        }
+        audit(s, u, "session.cancel", id, { tutor_kind: x.tutor_kind, topic_id: x.topic_id, started_at: x.started_at, released });
+        return { released };
+      }),
+
+    announcements: (u) =>
+      h.read((s) => {
+        requireAdmin(s, u);
+        return [...s.announcements].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+      }),
+
+    saveAnnouncement: (u, id, input) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const v = check(parseAnnouncement(input as unknown as Record<string, unknown>));
+        if (id) {
+          const row = s.announcements.find((a) => a.id === id);
+          if (!row) throw new ApiError("Ese anuncio no existe.", "not_found");
+          Object.assign(row, v);
+          audit(s, u, "announcement.update", id, { text: v.text, active: v.active, ends_at: v.ends_at });
+          return row;
+        }
+        const row = { ...v, id: h.uid("ann"), created_at: h.now() };
+        s.announcements.push(row);
+        audit(s, u, "announcement.create", row.id, { text: v.text, active: v.active, ends_at: v.ends_at });
+        return row;
+      }),
+
+    deleteAnnouncement: (u, id) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const i = s.announcements.findIndex((a) => a.id === id);
+        if (i < 0) throw new ApiError("Ese anuncio no existe.", "not_found");
+        audit(s, u, "announcement.delete", id, { text: s.announcements[i].text });
+        s.announcements.splice(i, 1);
       }),
   };
 }

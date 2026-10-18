@@ -5,6 +5,7 @@
 // El envío va solo a quienes están cerca; quien recibe vuelve a comprobarlo con sus propios datos.
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { api } from "@/lib/api";
 import type { CampusPeer, PeerPosition } from "@/lib/campus/use-campus-presence";
 import { CHAT_RADIUS, CHAT_RADIUS_TOLERANCE, LOG_SIZE, isNearby, prepareMessage, rateLimit } from "@/lib/campus/chat-rules";
 
@@ -177,5 +178,19 @@ export function useCampusChat(userId: string | null, presence: Presence, onBubbl
     [blockKey],
   );
 
-  return { enabled, setEnabled, online, log, hearers, blocked, block, unblock, send };
+  /** Reporta un mensaje a los administradores. Devuelve el motivo si falló, o null si se envió. */
+  const report = useCallback(
+    async (line: ChatLine): Promise<string | null> => {
+      if (!userId || line.from === "me") return "No se puede reportar este mensaje";
+      try {
+        await api.reportChat(userId, line.from, line.text);
+        return null;
+      } catch (e) {
+        return e instanceof Error ? e.message : "No pudimos enviar el reporte";
+      }
+    },
+    [userId],
+  );
+
+  return { enabled, setEnabled, online, log, hearers, blocked, block, unblock, send, report };
 }

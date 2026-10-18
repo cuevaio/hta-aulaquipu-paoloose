@@ -1,7 +1,7 @@
 // Validación compartida de lo que edita el panel de administración (servidor y modo mock),
 // para que las mismas reglas valgan en los dos. Devuelve el valor limpio o un mensaje en español.
 
-import type { AiTutorInput, SkinInput } from "@/lib/admin-types";
+import { ANNOUNCEMENT_MAX, type AiTutorInput, type AnnouncementInput, type SkinInput } from "@/lib/admin-types";
 import type { SkinKind, SkinMeta } from "@/lib/types";
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -97,4 +97,33 @@ export function parseAiTutorInput(raw: Record<string, unknown>): Parsed<AiTutorI
       topic_ids: [...new Set(topics as string[])],
     },
   };
+}
+
+export function parseReason(raw: unknown, what = "El motivo"): Parsed<string> {
+  const reason = text(raw);
+  if (reason.length < 3 || reason.length > 140) return fail(`${what} debe tener entre 3 y 140 caracteres.`);
+  return { ok: true, value: reason };
+}
+
+export function parseAnnouncement(raw: Record<string, unknown>): Parsed<AnnouncementInput> {
+  const t = text(raw.text).replace(/\s+/g, " ");
+  if (t.length < 1 || t.length > ANNOUNCEMENT_MAX) return fail(`El anuncio debe tener entre 1 y ${ANNOUNCEMENT_MAX} caracteres.`);
+  const starts = typeof raw.starts_at === "string" ? Date.parse(raw.starts_at) : NaN;
+  if (Number.isNaN(starts)) return fail("Fecha de inicio inválida.");
+  let ends: string | null = null;
+  if (raw.ends_at !== null && raw.ends_at !== undefined && raw.ends_at !== "") {
+    const e = typeof raw.ends_at === "string" ? Date.parse(raw.ends_at) : NaN;
+    if (Number.isNaN(e)) return fail("Fecha de fin inválida.");
+    if (e <= starts) return fail("El anuncio debe terminar después de empezar.");
+    ends = new Date(e).toISOString();
+  }
+  return { ok: true, value: { text: t, active: raw.active !== false, starts_at: new Date(starts).toISOString(), ends_at: ends } };
+}
+
+/** Texto de un reporte del chat: sin controles, una sola línea, hasta 140 caracteres (como el chat). */
+export function parseReportText(raw: unknown): Parsed<string> {
+  const t = (typeof raw === "string" ? raw : "").replace(/\p{Cc}/gu, " ").replace(/\s+/g, " ").trim();
+  if (!t) return fail("No hay mensaje que reportar.");
+  if (t.length > 140) return fail("El mensaje es demasiado largo.");
+  return { ok: true, value: t };
 }

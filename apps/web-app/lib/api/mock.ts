@@ -12,7 +12,8 @@ import type {
   UpcomingClass,
 } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
-import { buildMockAdmin, isMockAdmin } from "@/lib/api/mock-admin";
+import { buildMockAdmin, check, isMockAdmin } from "@/lib/api/mock-admin";
+import { parseReportText } from "@/lib/admin-validate";
 import { aiPrice, priceWithPromos } from "@/lib/pricing";
 import { buildSeed, SEED_VERSION, TOPIC_KEYWORDS, type DbState } from "@/lib/api/seed";
 import type {
@@ -787,6 +788,26 @@ export const mockApi: ApiClient = {
     ),
 
   // En modo demo no hay sala compartida: cada navegador está solo
+  activeAnnouncements: () =>
+    read((s) => {
+      const t = Date.now();
+      return s.announcements
+        .filter((a) => a.active && Date.parse(a.starts_at) <= t && (!a.ends_at || Date.parse(a.ends_at) > t))
+        .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+        .slice(0, 3)
+        .map((a) => ({ id: a.id, text: a.text }));
+    }),
+
+  reportChat: (userId, reportedId, text) =>
+    write((s) => {
+      const clean = check(parseReportText(text));
+      if (reportedId === userId) throw new ApiError("No puedes reportarte a ti mismo.");
+      profileOf(s, reportedId);
+      const recent = s.chat_reports.filter((r) => r.reporter_id === userId && Date.now() - Date.parse(r.created_at) < 3600_000);
+      if (recent.length >= 8) throw new ApiError("Enviaste varios reportes seguidos. Espera un rato.", "forbidden");
+      s.chat_reports.push({ id: uid("rep"), reporter_id: userId, reported_id: reportedId, text: clean, created_at: now(), resolved_at: null });
+    }),
+
   campusToken: async () => null,
 
   resetDemo: async () => {

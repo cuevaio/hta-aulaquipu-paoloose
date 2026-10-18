@@ -15,7 +15,8 @@
 --   6. Suspensión de cuentas (profiles.suspended_*), pausa de tutores IA (ai_tutors.active)
 --      y artículos de la tienda ocultos (skins.active).
 --   7. Funciones: admin_grant (créditos atómicos), admin_metrics (métricas en una llamada),
---      admin_merge_topics (unir temas duplicados) y buy_skin / book_ai que respetan active.
+--      admin_merge_topics (unir temas duplicados), admin_cancel_session (cerrar una clase
+--      atascada sin cobrar) y buy_skin / book_ai que respetan active.
 --   8. Seguridad: todo solo vía API (service role). Las columnas de suspensión no se leen
 --      con la clave pública.
 --   9. Administrador demo: valentina5 (profile 10000000-0000-0000-0000-000000000001).
@@ -365,6 +366,50 @@ begin
     'groups', v_grp, 'sessions', v_ses, 'guide_moved', v_guide > 0);
 end $$;
 
+-- Cierra una clase atascada (en vivo desde hace demasiado) SIN cobrar: el cobro de toda clase
+-- se escribe recién en end_session, así que cancelar no deja asientos en el ledger y libera los
+-- quipus retenidos (available_balance solo cuenta clases IA en vivo y grupos activos). Los
+-- pedidos que quedaron "matched" vuelven a "open" para que el alumno pueda reservar de nuevo.
+-- Devuelve la sala (para cerrarla en LiveKit) y cuánto se liberó. Escribe su propia auditoría.
+create or replace function admin_cancel_session(p_admin_id uuid, p_session_id uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v sessions%rowtype;
+  v_topic uuid;
+  v_held bigint := 0;
+begin
+  update sessions
+    set status = 'cancelled', ended_at = now()
+    where id = p_session_id and status = 'live'
+    returning * into v;
+  if not found then
+    if exists (select 1 from sessions where id = p_session_id) then
+      raise exception 'clase_terminada';
+    end if;
+    raise exception 'clase_no_existe';
+  end if;
+  if v.group_id is not null then
+    select coalesce(sum(share_quipus), 0) into v_held
+      from group_members where group_id = v.group_id and status = 'joined';
+    select topic_id into v_topic from groups where id = v.group_id;
+    update groups set status = 'cancelled' where id = v.group_id;
+    update requests set status = 'open'
+      where status = 'matched' and topic_id = v_topic
+        and student_id in (select student_id from group_members where group_id = v.group_id and status = 'joined');
+  else
+    if v.tutor_kind = 'ai' then
+      v_held := v.price_quipus;
+    end if;
+    if v.request_id is not null then
+      update requests set status = 'open' where id = v.request_id and status = 'matched';
+    end if;
+  end if;
+  insert into admin_audit (admin_id, action, target, payload)
+  values (p_admin_id, 'session.cancel', p_session_id::text, jsonb_build_object(
+    'tutor_kind', v.tutor_kind, 'topic_id', v.topic_id, 'started_at', v.started_at, 'released', v_held));
+  return jsonb_build_object('room_name', v.room_name, 'released', v_held);
+end $$;
+
 -- Créditos: p_amount > 0 regala quipus (grant), p_amount < 0 los descuenta (adjust).
 -- p_scope: 'user' (p_value = id del perfil) | 'grade' (1..5) | 'school' (nombre exacto) | 'all'.
 -- Todo ocurre en una sola transacción. Los descuentos que dejarían un saldo negativo se
@@ -567,6 +612,8 @@ revoke execute on function admin_metrics() from public, anon, authenticated;
 grant execute on function admin_metrics() to service_role;
 revoke execute on function admin_merge_topics(uuid, uuid, uuid) from public, anon, authenticated;
 grant execute on function admin_merge_topics(uuid, uuid, uuid) to service_role;
+revoke execute on function admin_cancel_session(uuid, uuid) from public, anon, authenticated;
+grant execute on function admin_cancel_session(uuid, uuid) to service_role;
 
 revoke execute on function
   ai_price_for(uuid, uuid), admin_grant(uuid, text, text, bigint, text),

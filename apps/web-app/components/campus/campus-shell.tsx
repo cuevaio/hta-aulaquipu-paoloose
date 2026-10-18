@@ -13,6 +13,7 @@ import { aiPrice } from "@/lib/pricing";
 import { Logo } from "@/components/logo";
 import { MissionCard, WelcomeOverlay, useFlag, writeFlag } from "@/components/campus/welcome";
 import { CampusWorld, type CampusPerson, type Interactable } from "@/components/campus/world";
+import { AnnouncementBanner } from "@/components/campus/announcement-banner";
 import { ChatPanel } from "@/components/campus/chat-panel";
 import { useCampusChat } from "@/lib/campus/use-campus-chat";
 import { useCampusPresence } from "@/lib/campus/use-campus-presence";
@@ -270,6 +271,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
+      {!panelOpen && !welcome && <AnnouncementBanner />}
       {!panelOpen && !welcome && <ChatPanel chat={chat} />}
 
       {/* Barra inferior */}

@@ -29,6 +29,7 @@ export interface Profile {
   created_at: string;
   /** Solo el mock lo usa: la API real nunca expone la suspensión. */
   suspended_at?: string | null;
+  suspended_reason?: string | null;
 }
 
 export interface Topic {
@@ -267,4 +268,10 @@ export interface LedgerLine extends LedgerEntry {
 
 export interface PrivateReview extends Review {
   topic: Topic | null;
+}
+
+/** Anuncio vigente que se muestra como banner en el campus. */
+export interface ActiveAnnouncement {
+  id: UUID;
+  text: string;
 }

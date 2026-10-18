@@ -8,6 +8,9 @@ import type {
   AdminGuide,
   AdminGuideTopic,
   AdminSkin,
+  Announcement,
+  AnnouncementInput,
+  ChatReport,
   AdminTopic,
   AiTutorInput,
   AdminMetrics,
@@ -19,12 +22,15 @@ import type {
   CreditsInput,
   CreditsResult,
   MergeResult,
+  ModUser,
   PromotionInput,
   SkinInput,
+  StuckSession,
   TopicPatch,
   TopicGuide,
 } from "@/lib/admin-types";
 import type {
+  ActiveAnnouncement,
   AiTutor,
   Group,
   IncomingRequest,
@@ -118,6 +124,19 @@ export interface AdminApi {
   skins(userId: UUID): Promise<AdminSkin[]>;
   /** id = null crea; con id edita (el tipo no cambia). */
   saveSkin(userId: UUID, id: UUID | null, input: SkinInput): Promise<AdminSkin>;
+  /** Con 2+ caracteres busca; sin búsqueda lista a los suspendidos. */
+  moderationUsers(userId: UUID, query: string): Promise<ModUser[]>;
+  suspendUser(userId: UUID, targetId: UUID, reason: string): Promise<void>;
+  reactivateUser(userId: UUID, targetId: UUID): Promise<void>;
+  chatReports(userId: UUID): Promise<ChatReport[]>;
+  /** `suspend` suspende además a la persona reportada. */
+  resolveReport(userId: UUID, reportId: UUID, suspend: boolean): Promise<void>;
+  stuckSessions(userId: UUID): Promise<StuckSession[]>;
+  /** Cierra sin cobrar y libera los quipus retenidos. */
+  cancelSession(userId: UUID, sessionId: UUID): Promise<{ released: number }>;
+  announcements(userId: UUID): Promise<Announcement[]>;
+  saveAnnouncement(userId: UUID, id: UUID | null, input: AnnouncementInput): Promise<Announcement>;
+  deleteAnnouncement(userId: UUID, id: UUID): Promise<void>;
 }
 
 export interface ApiClient {
@@ -164,6 +183,11 @@ export interface ApiClient {
   equipSkin(userId: UUID, skinId: UUID, equip: boolean): Promise<void>;
 
   ledger(userId: UUID): Promise<LedgerLine[]>;
+
+  /** Anuncios vigentes para el banner del campus. */
+  activeAnnouncements(userId: UUID): Promise<ActiveAnnouncement[]>;
+  /** Reporta un mensaje del chat del campus (texto de hasta 140 caracteres). */
+  reportChat(userId: UUID, reportedId: UUID, text: string): Promise<void>;
 
   /** Token para el campus compartido (LiveKit). null si el servidor no tiene LiveKit. */
   campusToken(userId: UUID): Promise<{ url: string; token: string } | null>;
