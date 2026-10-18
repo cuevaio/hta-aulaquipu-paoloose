@@ -5,13 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, GraduationCap, LayoutDashboard, HelpCircle, LogOut, User, X } from "lucide-react";
 import { api, API_MODE } from "@/lib/api";
-import { AI_SPOTS, STUDENT_SPOTS, TUTOR_SPOTS, type Room } from "@/lib/campus/map";
-import { useQuery, useSession } from "@/components/providers";
+import { AI_SPOTS, CLASS_DOORS, STUDENT_SPOTS, TUTOR_SPOTS, type Room } from "@/lib/campus/map";
+import { useQuery, useSession, useToast } from "@/components/providers";
 import { Avatar } from "@/components/avatar";
-import { Quipus } from "@/components/bits";
+import { Quipus, friendlyWhen } from "@/components/bits";
 import { Logo } from "@/components/logo";
 import { MissionCard, WelcomeOverlay, useFlag, writeFlag } from "@/components/campus/welcome";
-import { CampusWorld, type CampusPerson, type Interactable } from "@/components/campus/world";
+import { CampusWorld, type CampusPerson, type ClassDoor, type Interactable } from "@/components/campus/world";
 import { ChatPanel } from "@/components/campus/chat-panel";
 import { useCampusChat } from "@/lib/campus/use-campus-chat";
 import { useCampusPresence } from "@/lib/campus/use-campus-presence";
@@ -31,6 +31,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const panelOpen = pathname !== "/campus";
   const interactRef = useRef<(() => void) | null>(null);
+  const goToRef = useRef<((targetId: string) => void) | null>(null);
   const bubbleRef = useRef<((id: string, text: string) => void) | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [banner, setBanner] = useState<Room | null>(null);
@@ -72,8 +73,34 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
     const others = await Promise.all(users.filter((x) => x.id !== u).map((x) => api.tutorProfile(x.id)));
     const ais = await api.listAiTutors();
     const upcoming = await api.myUpcoming(u);
-    return { others, ais, live: upcoming.some((c) => c.liveSessionId) };
+    return { others, ais, upcoming };
   });
+
+  // Cada clase del alumno es una puerta del pasillo (la 5ª muestra "+N más" si hay muchas)
+  const doors = useMemo<ClassDoor[]>(() => {
+    const list = crowd.data?.upcoming ?? [];
+    const shown = list.length > CLASS_DOORS.length ? list.slice(0, CLASS_DOORS.length - 1) : list;
+    const out: ClassDoor[] = shown.map((c) => {
+      const live = !!c.liveSessionId;
+      const who = c.role === "tutor" ? "Enseñas tú" : c.tutor ? `con ${c.tutor.display_name.split(" ")[0]}` : "";
+      return {
+        title: c.topic.name,
+        subtitle: live ? who || "En vivo" : `${friendlyWhen(c.group.scheduled_at)}${who ? ` · ${who}` : ""}`,
+        live,
+        href: live ? `/aula/${c.liveSessionId}` : `class:${c.group.id}`,
+        prompt: live ? `Entrar a ${c.topic.name} (en vivo)` : `Entrar a tu clase de ${c.topic.name}`,
+      };
+    });
+    if (list.length > CLASS_DOORS.length)
+      out.push({
+        title: `+${list.length - shown.length} clases más`,
+        subtitle: "Ver todas",
+        live: false,
+        href: "/home#clases",
+        prompt: "Ver todas tus clases",
+      });
+    return out;
+  }, [crowd.data]);
 
   const people = useMemo<CampusPerson[]>(() => {
     if (!crowd.data) return [];
@@ -126,7 +153,23 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
     [reportPosition],
   );
 
-  const open = useCallback((href: string) => router.push(href), [router]);
+  const toastMsg = useToast();
+  const open = useCallback(
+    async (href: string) => {
+      // Puerta de una clase agendada: se abre el aula (la sesión se crea si aún no existe)
+      if (href.startsWith("class:") && userId) {
+        try {
+          const { sessionId } = await api.startGroupSession(userId, href.slice("class:".length));
+          router.push(`/aula/${sessionId}`);
+        } catch (e) {
+          toastMsg(e instanceof Error ? e.message : "No se pudo abrir el aula", "error");
+        }
+        return;
+      }
+      router.push(href);
+    },
+    [router, userId, toastMsg],
+  );
   const close = useCallback(() => router.push("/campus"), [router]);
 
   const onRoomChange = useCallback((r: Room | null) => {
@@ -166,11 +209,12 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         peers={presence.peers}
         peerPositions={presence.positions}
         onMove={onMove}
-        liveClass={!!crowd.data?.live}
+        doors={doors}
         onOpen={open}
         onRoomChange={onRoomChange}
         onNearChange={setNear}
         interactRef={interactRef}
+        goToRef={goToRef}
         bubbleRef={bubbleRef}
       />
 
@@ -195,6 +239,24 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
             </span>
           )}
         </div>
+        {/* Atajo a la próxima clase: el avatar camina solo hasta su puerta y la abre */}
+        {doors[0] && !panelOpen && doors[0].href !== "/home#clases" && (
+          <button
+            onClick={() => goToRef.current?.(CLASS_DOORS[0].id)}
+            className={cn(
+              "pointer-events-auto absolute top-16 left-3 flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-2xl px-3 py-2 text-left text-xs font-extrabold shadow-lg",
+              doors[0].live ? "bg-coral text-white" : "bg-gold text-gold-foreground",
+            )}
+          >
+            <span aria-hidden>{doors[0].live ? "🔴" : "🚪"}</span>
+            <span className="min-w-0">
+              <span className="block truncate">{doors[0].live ? "Tu clase está en vivo: ir" : "Ir a mi clase"}</span>
+              <span className="block truncate font-semibold opacity-80">
+                {doors[0].title} · {doors[0].subtitle}
+              </span>
+            </span>
+          </button>
+        )}
         <div className="pointer-events-auto relative flex items-center gap-2 rounded-2xl bg-navy/90 py-1.5 pr-1.5 pl-3 shadow-lg backdrop-blur">
           <Link href="/quipus" className="text-gold" aria-label={`${me.balance} quipus, ver historial`}>
             <Quipus amount={me.balance} className="text-base" />

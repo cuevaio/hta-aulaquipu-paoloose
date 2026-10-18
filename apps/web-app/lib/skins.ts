@@ -24,6 +24,11 @@ const BACKGROUNDS: Record<string, NonNullable<SkinMeta["deco"]>> = {
 
 const ICONS: Record<string, string> = { star: "⭐", trophy: "🏆", book: "📚", quipu: "🪢" };
 
+/** Ítems de sprite (otro sistema de avatar en preparación): la app actual no los dibuja. */
+export function isSpriteSkin(meta: SkinMeta | undefined): boolean {
+  return meta?.sprite === true;
+}
+
 export function avatarColor(config: AvatarConfig): string {
   return config.color ?? (config.palette ? PALETTES[config.palette]?.color : undefined) ?? "#7C6BF2";
 }

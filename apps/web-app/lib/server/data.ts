@@ -1,7 +1,7 @@
 // Lecturas y mapeos de la base a los tipos del frontend (lib/types.ts).
 
 import { db, HttpError, must, rpc } from "@/lib/server/core";
-import { badgeIcon } from "@/lib/skins";
+import { badgeIcon, isSpriteSkin } from "@/lib/skins";
 import type {
   AiTutor,
   Badge,
@@ -115,10 +115,12 @@ export async function equippedFor(ids: string[]): Promise<Map<string, Equipped>>
   );
   for (const r of rows) {
     const e = out.get(r.profile_id);
-    if (!e || !r.skin) continue;
+    // Los ítems de sprite son de otro sistema de avatar: no pisan el color ni el diseño
+    if (!e || !r.skin || isSpriteSkin(r.skin.meta)) continue;
     if (r.skin.kind === "avatar") e.avatar = r.skin;
     if (r.skin.kind === "frame") e.frame = r.skin;
     if (r.skin.kind === "profile_deco") e.deco = r.skin;
+    if (r.skin.kind === "head") e.head = r.skin;
   }
   return out;
 }

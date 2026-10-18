@@ -10,7 +10,8 @@ export type GroupStatus = "forming" | "scheduled" | "live" | "completed" | "canc
 export type SessionStatus = "live" | "completed" | "cancelled";
 export type TutorKind = "human" | "ai";
 export type LedgerKind = "mint" | "session_payment" | "ai_session" | "skin_purchase" | "refund";
-export type SkinKind = "avatar" | "frame" | "badge" | "profile_deco";
+/** avatar = color del cuerpo · head = diseño de cabeza · frame · badge · profile_deco */
+export type SkinKind = "avatar" | "head" | "frame" | "badge" | "profile_deco";
 
 export interface AvatarConfig {
   color?: string;
@@ -125,7 +126,20 @@ export interface Review {
 }
 
 export interface SkinMeta {
-  accessory?: "chullo" | "lentes" | "corona" | "audifonos" | "birrete" | "flor";
+  accessory?:
+    | "chullo"
+    | "lentes"
+    | "corona"
+    | "audifonos"
+    | "birrete"
+    | "flor"
+    | "gorra"
+    | "cresta"
+    | "gato"
+    | "lazo"
+    | "sombrero"
+    | "rulos"
+    | "antenas";
   frame?: "basico" | "dorado" | "arcoiris" | "andino";
   deco?: "andes" | "cosmos" | "selva";
   color?: string;
@@ -134,6 +148,10 @@ export interface SkinMeta {
   border?: string;
   bg?: string;
   icon?: string;
+  /** Ítems de un sistema de sprites en preparación (no se dibujan con <Avatar>). */
+  sprite?: boolean;
+  slot?: string;
+  item?: string;
 }
 
 export interface Skin {
@@ -165,7 +183,10 @@ export interface Badge {
 }
 
 export interface Equipped {
+  /** Color del cuerpo */
   avatar: Skin | null;
+  /** Diseño de cabeza (gorra, peinado, orejas…); se combina con el color */
+  head?: Skin | null;
   frame: Skin | null;
   deco: Skin | null;
 }

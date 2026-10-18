@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Check, ChevronDown, Minus, Plus, Trash2, Users } from "lucide-react";
+import { CalendarClock, Check, ChevronDown, Minus, Plus, Users, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Level, Topic } from "@/lib/types";
 import { useMutation, useQuery } from "@/components/providers";
 import { Avatar } from "@/components/avatar";
-import { Card, LEVEL_LABEL, Pill, Quipus, SectionTitle, Skeleton, btn, formatWhen, timeAgo } from "@/components/bits";
+import { Card, Pill, Quipus, SectionTitle, Skeleton, btn, friendlyWhen, timeAgo } from "@/components/bits";
 import { cn } from "@/lib/utils";
+import { LEVEL_FRIENDLY, groupBySubject, subjectOf } from "@/lib/subjects";
 
 const DAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const HOURS = ["10:00", "15:00", "16:00", "17:00", "18:00"];
@@ -88,8 +89,6 @@ export default function TutorPanelPage() {
   const feed = useQuery((u) => api.openRequestsFeed(u));
   const { run, pending } = useMutation();
 
-  const [newTopic, setNewTopic] = useState("");
-  const [level, setLevel] = useState<Level>("intermedio");
   // Borradores locales: null = sin editar, se muestra lo guardado
   const [draftPrice, setDraftPrice] = useState<number | null>(null);
   const [draftAvailability, setDraftAvailability] = useState<string[] | null>(null);
@@ -118,6 +117,7 @@ export default function TutorPanelPage() {
     }
     return [...byTopic.values()].sort((a, b) => b.count - a.count);
   }, [feed.data, declared]);
+  const demandCount = useMemo(() => new Map(demand.map((d) => [d.topic.id, d.count])), [demand]);
 
   // Un precio "listo" = ya guardaste tus ajustes (hay horarios) o lo cambiaste del valor inicial
   const saved = panel.data;
@@ -194,68 +194,78 @@ export default function TutorPanelPage() {
             open={isOpen(1)}
             onToggle={() => toggle(1)}
           >
-            <div className="space-y-2">
-              {saved.topics.map((t) => (
-                <div key={t.topic_id} className="flex items-center gap-2 rounded-2xl bg-muted px-3 py-2">
-                  <span className="flex-1 font-bold">{t.topic.name}</span>
-                  <select
-                    value={t.level}
-                    onChange={(e) => run((u) => api.declareTopic(u, t.topic_id, e.target.value as Level))}
-                    className="rounded-xl bg-card px-2 py-1 text-sm font-semibold ring-1 ring-border"
-                    aria-label={`Nivel en ${t.topic.name}`}
-                  >
-                    {Object.entries(LEVEL_LABEL).map(([v, l]) => (
-                      <option key={v} value={v}>
-                        {l}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => run((u) => api.removeTopic(u, t.topic_id))}
-                    className="rounded-xl p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    aria-label={`Quitar ${t.topic.name}`}
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
+            {saved.topics.length > 0 && (
+              <div className="space-y-2">
+                {saved.topics.map((t) => (
+                  <div key={t.topic_id} className="rounded-2xl bg-muted p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="flex-1 font-extrabold">
+                        {subjectOf(t.topic.name).emoji} {t.topic.name}
+                      </span>
+                      <button
+                        onClick={() => run((u) => api.removeTopic(u, t.topic_id))}
+                        className="rounded-xl p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        aria-label={`Ya no enseñar ${t.topic.name}`}
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-1.5" role="radiogroup" aria-label={`Qué tan bien sabes ${t.topic.name}`}>
+                      {(Object.keys(LEVEL_FRIENDLY) as Level[]).map((lv) => (
+                        <button
+                          key={lv}
+                          role="radio"
+                          aria-checked={t.level === lv}
+                          title={LEVEL_FRIENDLY[lv].hint}
+                          onClick={() => t.level !== lv && run((u) => api.declareTopic(u, t.topic_id, lv))}
+                          className={cn(
+                            "rounded-xl px-2 py-2 text-xs font-extrabold transition-colors",
+                            t.level === lv ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary",
+                          )}
+                        >
+                          <span aria-hidden>{LEVEL_FRIENDLY[lv].emoji}</span> {LEVEL_FRIENDLY[lv].label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className={cn("text-sm font-extrabold", saved.topics.length > 0 && "mt-5")}>
+              {saved.topics.length ? "¿Sabes algo más? Toca para agregarlo" : "Toca los temas que sabes explicar"}
+            </p>
+            <div className="mt-2 space-y-3">
+              {groupBySubject(available).map(({ subject, topics: list }) => (
+                <div key={subject.id}>
+                  <p className="mb-1.5 text-xs font-bold text-muted-foreground">
+                    {subject.emoji} {subject.name}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {list.map((t) => {
+                      const wanted = demandCount.get(t.id) ?? 0;
+                      return (
+                        <button
+                          key={t.id}
+                          disabled={pending}
+                          onClick={() => {
+                            // El paso sigue abierto: así se puede elegir el nivel o sumar otro tema
+                            setManualOpen((m) => ({ ...m, 1: true }));
+                            void run((u) => api.declareTopic(u, t.id, "intermedio"), `Ahora enseñas ${t.name} 💪`);
+                          }}
+                          className="flex items-center gap-1.5 rounded-2xl bg-card px-3 py-2 text-sm font-extrabold ring-1 ring-border transition-all hover:ring-2 hover:ring-mint active:scale-[0.98]"
+                        >
+                          <Plus className="size-3.5 text-accent-foreground" /> {t.name}
+                          {wanted > 0 && (
+                            <span className="rounded-full bg-coral/15 px-1.5 text-[11px] text-coral" title={`${wanted} alumno(s) lo buscan`}>
+                              🔥 {wanted}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2 rounded-2xl border-2 border-dashed border-border p-3">
-              <select
-                value={newTopic}
-                onChange={(e) => setNewTopic(e.target.value)}
-                className="min-w-40 flex-1 rounded-xl bg-card px-3 py-2 text-sm font-semibold ring-1 ring-border"
-                aria-label="Tema"
-              >
-                <option value="">Elige un tema…</option>
-                {available.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={level}
-                onChange={(e) => setLevel(e.target.value as Level)}
-                className="rounded-xl bg-card px-3 py-2 text-sm font-semibold ring-1 ring-border"
-                aria-label="Nivel"
-              >
-                {Object.entries(LEVEL_LABEL).map(([v, l]) => (
-                  <option key={v} value={v}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-              <button
-                disabled={!newTopic || pending}
-                onClick={async () => {
-                  await run((u) => api.declareTopic(u, newTopic, level), "Tema agregado");
-                  setNewTopic("");
-                }}
-                className={cn(btn.primary, btn.sm)}
-              >
-                <Plus className="size-4" /> Agregar
-              </button>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">Sin barrera de entrada: tu reputación se construye con cada clase.</p>
           </Step>
@@ -379,7 +389,7 @@ export default function TutorPanelPage() {
                   <div>
                     <p className="font-heading text-lg font-semibold">{g.topic.name}</p>
                     <p className="flex items-center gap-1 text-sm text-muted-foreground">
-                      <CalendarClock className="size-4" /> {formatWhen(g.scheduled_at)}
+                      <CalendarClock className="size-4" /> {friendlyWhen(g.scheduled_at)}
                     </p>
                   </div>
                   <Quipus amount={g.total_price_quipus} className="text-lg" />

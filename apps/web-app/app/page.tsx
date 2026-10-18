@@ -66,8 +66,8 @@ export default function LoginPage() {
         <div className="relative mx-auto hidden h-64 w-full max-w-md lg:block" aria-hidden>
           <div className="room-floor absolute inset-0 rounded-[2rem] ring-4 ring-white/10" />
           <div className="absolute top-5 left-5 rounded-xl bg-[#ecd2ae] px-3 py-2 text-xs font-extrabold text-navy shadow-[inset_0_-4px_0_#c9a57a]">📚 Biblioteca</div>
-          <div className="absolute top-5 right-5 rounded-xl bg-[#cdf3e5] px-3 py-2 text-xs font-extrabold text-navy shadow-[inset_0_-4px_0_#a5dcc6]">🎓 Sala de tutores</div>
-          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-xl bg-[#e3ddff] px-3 py-2 text-xs font-extrabold text-navy shadow-[inset_0_-4px_0_#c1b8f0]">✨ Aulas IA</div>
+          <div className="absolute top-5 right-5 rounded-xl bg-[#cdf3e5] px-3 py-2 text-xs font-extrabold text-navy shadow-[inset_0_-4px_0_#a5dcc6]">🎓 Sala de profesores</div>
+          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-xl bg-[#e3ddff] px-3 py-2 text-xs font-extrabold text-navy shadow-[inset_0_-4px_0_#c1b8f0]">✨ Laboratorio IA</div>
           <div className="float absolute top-20 left-16">
             <Avatar config={{ color: "#7C6BF2" }} equipped={{ avatar: { id: "", name: "", kind: "avatar", price_quipus: 0, meta: { accessory: "chullo" } } }} size={52} />
           </div>

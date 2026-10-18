@@ -157,7 +157,7 @@ function equippedOf(s: DbState, id: UUID): Equipped {
   const mine = s.profile_skins.filter((ps) => ps.profile_id === id && ps.equipped);
   const skin = (kind: string) =>
     mine.map((ps) => s.skins.find((k) => k.id === ps.skin_id)!).find((k) => k && k.kind === kind) ?? null;
-  return { avatar: skin("avatar"), frame: skin("frame"), deco: skin("profile_deco") };
+  return { avatar: skin("avatar"), head: skin("head"), frame: skin("frame"), deco: skin("profile_deco") };
 }
 
 function badgesOf(s: DbState, id: UUID): Badge[] {

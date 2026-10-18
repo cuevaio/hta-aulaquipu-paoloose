@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AvatarConfig, Equipped } from "@/lib/types";
 import { AiAvatar, Avatar } from "@/components/avatar";
 import {
+  CLASS_DOORS,
   COLS,
+  doorTiles,
   FLOOR,
   OBJECTS,
   ROOMS,
@@ -35,6 +37,15 @@ export interface CampusPerson {
   ai?: { emoji: string; color: string };
 }
 
+/** Una clase del alumno puesta en una puerta del pasillo. */
+export interface ClassDoor {
+  title: string;
+  subtitle: string;
+  live: boolean;
+  href: string;
+  prompt: string;
+}
+
 export interface Interactable {
   id: string;
   rect: { x: number; y: number; w: number; h: number };
@@ -58,6 +69,8 @@ const FLOOR_COLORS: Record<Floor, [string, string]> = {
   s: ["#ffe2cf", "#fbd7c1"],
   q: ["#fff0c4", "#fbe7b0"],
   w: ["#7cc8f2", "#7cc8f2"],
+  e: ["#e8e4f0", "#dfdaea"],
+  c: ["#e2ecf5", "#d7e3ef"],
 };
 
 function drawFloor(canvas: HTMLCanvasElement, T: number) {
@@ -112,6 +125,8 @@ const OBJECT_STYLE: Partial<Record<WorldObject["kind"], string>> = {
   counter: "bg-mint shadow-[inset_0_-6px_0_oklch(0.62_0.13_170)]",
   display: "bg-white ring-2 ring-[#2b2550]/10 shadow-[inset_0_-4px_0_#ece7fa]",
   vault: "bg-[#6b7088] shadow-[inset_0_-6px_0_#50546a]",
+  locker: "bg-[#7ea6d6] shadow-[inset_0_-6px_0_#5b84b8] ring-1 ring-[#5b84b8]/40",
+  gate: "bg-[#8a5a3c] shadow-[inset_0_-6px_0_#6b432b] ring-2 ring-[#2b2550]/20",
 };
 const BIG_EMOJI = new Set(["plant", "tree", "fountain"]);
 
@@ -121,11 +136,12 @@ export function CampusWorld({
   peers,
   peerPositions,
   onMove,
-  liveClass,
+  doors,
   onOpen,
   onRoomChange,
   onNearChange,
   interactRef,
+  goToRef,
   bubbleRef,
 }: {
   me: { name: string; avatar: AvatarConfig; equipped: Equipped | null };
@@ -134,12 +150,15 @@ export function CampusWorld({
   peers: CampusPeer[];
   peerPositions: React.RefObject<Map<string, PeerPosition>>;
   onMove: (pos: PeerPosition) => void;
-  liveClass: boolean;
+  /** Clases del alumno: cada una ocupa una puerta del pasillo, en orden. */
+  doors: ClassDoor[];
   onOpen: (href: string) => void;
   onRoomChange: (room: Room | null) => void;
   onNearChange: (target: Interactable | null) => void;
   /** El HUD llama a esto para interactuar con lo que está cerca (botón en móvil). */
   interactRef: React.RefObject<(() => void) | null>;
+  /** Camina solo hasta un objetivo (p. ej. "door-0") y lo abre al llegar. */
+  goToRef: React.RefObject<((targetId: string) => void) | null>;
   /** El chat llama a esto para mostrar un globo sobre alguien ("me" = el jugador). */
   bubbleRef: React.RefObject<((id: string, text: string) => void) | null>;
 }) {
@@ -192,10 +211,12 @@ export function CampusWorld({
         prompt: o.prompt ?? o.label ?? "",
       })),
       ...people.map((p) => ({ id: p.id, rect: { x: p.x, y: p.y, w: 1, h: 1 }, href: p.href, prompt: p.prompt })),
+      // Solo existen las puertas que tienen una clase
+      ...doors.slice(0, CLASS_DOORS.length).map((d, i) => ({ id: CLASS_DOORS[i].id, rect: CLASS_DOORS[i], href: d.href, prompt: d.prompt })),
     ],
-    [people],
+    [people, doors],
   );
-  const blocked = useMemo(() => makeBlocked(people), [people]);
+  const blocked = useMemo(() => makeBlocked([...people, ...doorTiles(doors.length)]), [people, doors.length]);
 
   useEffect(() => {
     callbacks.current = { onOpen, onRoomChange, onNearChange, onMove };
@@ -245,6 +266,20 @@ export function CampusWorld({
     interactRef.current = () => {
       const t = nearest();
       if (t) callbacks.current.onOpen(t.href);
+    };
+
+    goToRef.current = (targetId) => {
+      const t = targets.find((x) => x.id === targetId);
+      if (!t) return;
+      if (distToRect(pos.current.x, pos.current.y, t.rect) <= REACH) {
+        callbacks.current.onOpen(t.href);
+        return;
+      }
+      const found = findPath(blocked, pos.current, (x, y) => distToRect(x + 0.5, y + 0.5, t.rect) <= REACH);
+      if (found) {
+        path.current = found;
+        pending.current = t;
+      }
     };
 
     const step = (now: number) => {
@@ -347,7 +382,7 @@ export function CampusWorld({
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [T, blocked, targets, interactRef, peerPositions]);
+  }, [T, blocked, targets, interactRef, goToRef, peerPositions]);
 
   // Teclado: movimiento + X/Enter/Espacio para interactuar (no mientras se escribe)
   useEffect(() => {
@@ -417,7 +452,7 @@ export function CampusWorld({
         <canvas ref={canvas} className="absolute inset-0" style={{ width: W, height: H }} />
 
         {/* Nombre de cada sala pintado en el piso */}
-        {ROOMS.filter((r) => r.id !== "plaza").map((r) => (
+        {ROOMS.filter((r) => r.id !== "patio").map((r) => (
           <div
             key={r.id}
             className="pointer-events-none absolute flex -translate-x-1/2 flex-col items-center text-center font-heading leading-none font-semibold text-navy/25"
@@ -463,14 +498,51 @@ export function CampusWorld({
                   {o.label}
                 </span>
               )}
-              {o.id === "aula-board" && liveClass && (
-                <span className="absolute -right-2 -bottom-2 flex items-center gap-1 rounded-full bg-coral px-2 py-0.5 text-[10px] font-black text-white shadow">
+            </div>
+          );
+        })}
+
+        {/* Puertas del pasillo: solo las de tus clases */}
+        {doors.slice(0, CLASS_DOORS.length).map((d, i) => {
+          const slot = CLASS_DOORS[i];
+          const near = nearId === slot.id;
+          return (
+            <div
+              key={slot.id}
+              className={cn(
+                "absolute flex cursor-pointer flex-col items-center justify-end rounded-t-[14px] border-x-4 border-t-4 transition-shadow",
+                d.live ? "border-coral bg-[#b5704a]" : "border-[#6b432b] bg-[#9a6a44]",
+                near && "ring-4 ring-gold",
+              )}
+              style={{ left: slot.x * T + 4, top: slot.y * T - T * 0.55, width: slot.w * T - 8, height: T * 1.5, zIndex: (slot.y + 1) * 10 }}
+            >
+              <span className="absolute top-1/2 right-2 size-2 rounded-full bg-gold" aria-hidden />
+              <span
+                className={cn(
+                  "absolute -top-2 left-1/2 max-w-[150%] -translate-x-1/2 -translate-y-full truncate rounded-lg px-2 py-0.5 text-center text-[10px] leading-tight font-extrabold whitespace-nowrap shadow-md",
+                  near ? "bg-gold text-gold-foreground" : "bg-navy text-white",
+                )}
+              >
+                {d.title}
+                <span className="block font-semibold opacity-80">{d.subtitle}</span>
+              </span>
+              {d.live && (
+                <span className="mb-1 flex items-center gap-1 rounded-full bg-coral px-1.5 py-px text-[9px] font-black text-white">
                   <span className="size-1.5 animate-pulse rounded-full bg-white" /> EN VIVO
                 </span>
               )}
             </div>
           );
         })}
+        {doors.length === 0 && (
+          <div
+            className="pointer-events-none absolute -translate-x-1/2 rounded-2xl bg-white/85 px-4 py-2 text-center text-xs font-extrabold text-navy shadow"
+            style={{ left: 13 * T, top: 18.3 * T }}
+          >
+            Aún no tienes clases 🙂
+            <span className="block font-semibold text-muted-foreground">Pide una en la 📚 Biblioteca y aparecerá aquí su puerta</span>
+          </div>
+        )}
 
         {people.map((p) => (
           <div

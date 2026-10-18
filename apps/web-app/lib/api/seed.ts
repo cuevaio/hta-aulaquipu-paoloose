@@ -49,7 +49,7 @@ export interface DbState {
   profile_skins: ProfileSkin[];
 }
 
-export const SEED_VERSION = 4;
+export const SEED_VERSION = 5;
 
 const t = (id: string, name: string): Topic => ({ id, name, proposed_by: null, status: "active" });
 
@@ -166,11 +166,31 @@ export function buildSeed(): DbState {
 
   const skins: Skin[] = [
     { id: "skn-blob", name: "Blob clásico", kind: "avatar", price_quipus: 0, meta: {} },
-    { id: "skn-chullo", name: "Chullo andino", kind: "avatar", price_quipus: 15, meta: { accessory: "chullo" } },
-    { id: "skn-lentes", name: "Lentes de sol", kind: "avatar", price_quipus: 10, meta: { accessory: "lentes" } },
-    { id: "skn-audifonos", name: "Audífonos", kind: "avatar", price_quipus: 20, meta: { accessory: "audifonos" } },
-    { id: "skn-birrete", name: "Birrete", kind: "avatar", price_quipus: 25, meta: { accessory: "birrete" } },
-    { id: "skn-corona", name: "Corona inca", kind: "avatar", price_quipus: 45, meta: { accessory: "corona" } },
+    // Colores del cuerpo (igual que backend/migrations/002_more_skins.sql)
+    { id: "skn-color-rojo", name: "Rojo fuego", kind: "avatar", price_quipus: 10, meta: { color: "#E5484D" } },
+    { id: "skn-color-mandarina", name: "Mandarina", kind: "avatar", price_quipus: 10, meta: { color: "#FF8A65" } },
+    { id: "skn-color-amarillo", name: "Amarillo pollito", kind: "avatar", price_quipus: 10, meta: { color: "#FFC94D" } },
+    { id: "skn-color-menta", name: "Verde menta", kind: "avatar", price_quipus: 10, meta: { color: "#2FD3A3" } },
+    { id: "skn-color-cielo", name: "Azul cielo", kind: "avatar", price_quipus: 10, meta: { color: "#4FA3FF" } },
+    { id: "skn-color-galaxia", name: "Morado galaxia", kind: "avatar", price_quipus: 15, meta: { color: "#7C6BF2" } },
+    { id: "skn-color-chicle", name: "Rosa chicle", kind: "avatar", price_quipus: 15, meta: { color: "#F06EAA" } },
+    { id: "skn-color-turquesa", name: "Turquesa", kind: "avatar", price_quipus: 15, meta: { color: "#14B8A6" } },
+    { id: "skn-color-lunar", name: "Gris lunar", kind: "avatar", price_quipus: 20, meta: { color: "#9AA0B5" } },
+    { id: "skn-color-noche", name: "Negro noche", kind: "avatar", price_quipus: 25, meta: { color: "#3B3F5C" } },
+    // Diseños de cabeza
+    { id: "skn-lazo", name: "Lazo", kind: "head", price_quipus: 10, meta: { accessory: "lazo" } },
+    { id: "skn-lentes", name: "Lentes de sol", kind: "head", price_quipus: 10, meta: { accessory: "lentes" } },
+    { id: "skn-flor", name: "Flor", kind: "head", price_quipus: 10, meta: { accessory: "flor" } },
+    { id: "skn-gorra", name: "Gorra", kind: "head", price_quipus: 12, meta: { accessory: "gorra" } },
+    { id: "skn-chullo", name: "Chullo andino", kind: "head", price_quipus: 15, meta: { accessory: "chullo" } },
+    { id: "skn-gato", name: "Orejas de gato", kind: "head", price_quipus: 15, meta: { accessory: "gato" } },
+    { id: "skn-sombrero", name: "Sombrero de paja", kind: "head", price_quipus: 15, meta: { accessory: "sombrero" } },
+    { id: "skn-cresta", name: "Cresta punk", kind: "head", price_quipus: 18, meta: { accessory: "cresta" } },
+    { id: "skn-rulos", name: "Rulos", kind: "head", price_quipus: 20, meta: { accessory: "rulos" } },
+    { id: "skn-antenas", name: "Antenas", kind: "head", price_quipus: 20, meta: { accessory: "antenas" } },
+    { id: "skn-audifonos", name: "Audífonos", kind: "head", price_quipus: 20, meta: { accessory: "audifonos" } },
+    { id: "skn-birrete", name: "Birrete", kind: "head", price_quipus: 25, meta: { accessory: "birrete" } },
+    { id: "skn-corona", name: "Corona inca", kind: "head", price_quipus: 45, meta: { accessory: "corona" } },
     { id: "skn-marco-basico", name: "Marco básico", kind: "frame", price_quipus: 0, meta: { frame: "basico" } },
     { id: "skn-marco-dorado", name: "Marco dorado", kind: "frame", price_quipus: 25, meta: { frame: "dorado" } },
     { id: "skn-marco-andino", name: "Marco andino", kind: "frame", price_quipus: 30, meta: { frame: "andino" } },

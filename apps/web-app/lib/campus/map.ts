@@ -1,10 +1,10 @@
-// Mapa del campus 2D (estilo gather). Todo en unidades de baldosa; la posición de una
+// Mapa del campus 2D (estilo gather), armado como un colegio. Todo en unidades de baldosa; la posición de una
 // persona es el centro de su cuerpo (p. ej. 20.5, 14.5 = centro de la baldosa 20,14).
 
 export const COLS = 40;
-export const ROWS = 26;
+export const ROWS = 30;
 
-export type Floor = "#" | "g" | "p" | "b" | "i" | "t" | "a" | "s" | "q" | "w";
+export type Floor = "#" | "g" | "p" | "b" | "i" | "t" | "a" | "s" | "q" | "w" | "e" | "c";
 
 export interface Room {
   id: string;
@@ -18,15 +18,39 @@ export interface Room {
   floor: Floor;
 }
 
+// Un colegio: entras por la portería, el pasillo tiene una puerta por cada clase tuya,
+// y cada sala sirve para una sola cosa.
 export const ROOMS: Room[] = [
-  { id: "biblioteca", name: "Biblioteca", subtitle: "Quiero aprender", emoji: "📚", x: 1, y: 1, w: 12, h: 8, floor: "b" },
-  { id: "aulas-ia", name: "Aulas IA", subtitle: "Tutores disponibles ya", emoji: "✨", x: 14, y: 1, w: 12, h: 8, floor: "i" },
-  { id: "tutores", name: "Sala de tutores", subtitle: "Quiero enseñar", emoji: "🎓", x: 27, y: 1, w: 12, h: 8, floor: "t" },
-  { id: "plaza", name: "Plaza central", emoji: "⛲", x: 1, y: 10, w: 38, h: 6, floor: "p" },
-  { id: "aulas", name: "Aulas", subtitle: "Tus clases en vivo", emoji: "🏫", x: 1, y: 17, w: 12, h: 8, floor: "a" },
-  { id: "tienda", name: "Tienda", subtitle: "Skins y prestigio", emoji: "🛍️", x: 14, y: 17, w: 12, h: 8, floor: "s" },
-  { id: "banco", name: "Banco de quipus", subtitle: "Tu historial", emoji: "🪢", x: 27, y: 17, w: 12, h: 8, floor: "q" },
+  { id: "biblioteca", name: "Biblioteca", subtitle: "Aquí pides ayuda", emoji: "📚", x: 1, y: 1, w: 12, h: 8, floor: "b" },
+  { id: "laboratorio", name: "Laboratorio IA", subtitle: "Clases con tutores IA, al toque", emoji: "✨", x: 14, y: 1, w: 12, h: 8, floor: "i" },
+  { id: "profesores", name: "Sala de profesores", subtitle: "Aquí enseñas y ganas quipus", emoji: "🎓", x: 27, y: 1, w: 12, h: 8, floor: "t" },
+  { id: "patio", name: "Patio", subtitle: "Encuentra a tus compañeros", emoji: "⛲", x: 1, y: 10, w: 38, h: 6, floor: "p" },
+  { id: "pasillo", name: "Pasillo de aulas", subtitle: "Cada puerta es una de tus clases", emoji: "🚪", x: 1, y: 17, w: 25, h: 6, floor: "a" },
+  { id: "tesoreria", name: "Tesorería", subtitle: "Tu tarjeta y tus ahorros", emoji: "🏦", x: 27, y: 17, w: 12, h: 6, floor: "q" },
+  { id: "kiosko", name: "Kiosko", subtitle: "Skins y accesorios", emoji: "🛍️", x: 1, y: 24, w: 12, h: 5, floor: "s" },
+  { id: "porteria", name: "Portería", subtitle: "Bienvenido al colegio", emoji: "🏫", x: 14, y: 24, w: 12, h: 5, floor: "e" },
+  { id: "casilleros", name: "Casilleros", subtitle: "Tu perfil e insignias", emoji: "🗄️", x: 27, y: 24, w: 12, h: 5, floor: "c" },
 ];
+
+/** Baldosas de pared que se abren como puerta, con el piso que llevan. */
+const DOOR_TILES: { x: number; y: number; floor: Floor }[] = [
+  // Salas de arriba → patio
+  ...[6, 7, 19, 20, 32, 33].map((x) => ({ x, y: 9, floor: "p" as Floor })),
+  // Pasillo y tesorería → patio
+  ...[19, 20].map((x) => ({ x, y: 16, floor: "a" as Floor })),
+  ...[32, 33].map((x) => ({ x, y: 16, floor: "q" as Floor })),
+  // Kiosko y portería → pasillo
+  ...[6, 7].map((x) => ({ x, y: 23, floor: "s" as Floor })),
+  ...[19, 20].map((x) => ({ x, y: 23, floor: "e" as Floor })),
+  // Portería → casilleros (puerta lateral)
+  ...[26, 27].map((y) => ({ x: 26, y, floor: "c" as Floor })),
+];
+
+/**
+ * Puertas de aula en el pasillo: se llenan con las clases del alumno (ver CampusShell),
+ * empezando por las más cercanas a donde se entra al pasillo (x 19–20).
+ */
+export const CLASS_DOORS = [14, 22, 10, 6, 2].map((x, i) => ({ id: `door-${i}`, x, y: 17, w: 2, h: 1 }));
 
 export type ObjectKind =
   | "shelf"
@@ -43,7 +67,9 @@ export type ObjectKind =
   | "desk"
   | "counter"
   | "display"
-  | "vault";
+  | "vault"
+  | "locker"
+  | "gate";
 
 export interface WorldObject {
   id: string;
@@ -71,17 +97,17 @@ const o = (
 ): WorldObject => ({ id, kind, x, y, w, h, blocks: kind !== "rug", ...extra });
 
 export const OBJECTS: WorldObject[] = [
-  // Biblioteca
+  // Biblioteca: el mostrador es el único lugar para pedir ayuda
   o("lib-shelf-1", "shelf", 1, 1, 4, 1, { emoji: "📚" }),
   o("lib-shelf-2", "shelf", 9, 1, 4, 1, { emoji: "📚" }),
-  o("lib-board", "board", 5, 1, 4, 1, { emoji: "📌", label: "Mis pedidos", href: "/aprender", prompt: "Ver mis pedidos" }),
-  o("lib-kiosk", "kiosk", 6, 4, 2, 1, { emoji: "📝", label: "Publicar pedido", href: "/aprender", prompt: "Pedir una tutoría" }),
+  o("lib-shelf-3", "shelf", 5, 1, 4, 1, { emoji: "📖" }),
+  o("lib-kiosk", "kiosk", 6, 4, 2, 1, { emoji: "🙋", label: "Mostrador de ayuda", href: "/aprender", prompt: "Pedir ayuda con un tema" }),
   o("lib-table-1", "table", 2, 6, 2, 1, { emoji: "📖" }),
   o("lib-table-2", "table", 10, 6, 2, 1, { emoji: "✏️" }),
   o("lib-plant-1", "plant", 1, 8, 1, 1, { emoji: "🪴" }),
   o("lib-plant-2", "plant", 12, 8, 1, 1, { emoji: "🪴" }),
 
-  // Aulas IA
+  // Laboratorio IA
   o("ia-board-1", "board", 15, 1, 3, 1, { emoji: "🧮", label: "Tutores IA", href: "/tutores-ia", prompt: "Ver los tutores IA" }),
   o("ia-board-2", "board", 22, 1, 3, 1, { emoji: "📈" }),
   o("ia-rug-1", "rug", 15, 3, 3, 3),
@@ -89,15 +115,15 @@ export const OBJECTS: WorldObject[] = [
   o("ia-rug-3", "rug", 21, 3, 3, 3),
   o("ia-plant", "plant", 25, 8, 1, 1, { emoji: "🪴" }),
 
-  // Sala de tutores
-  o("tut-board", "board", 31, 1, 4, 1, { emoji: "📋", label: "Pedidos para ti", href: "/ensenar", prompt: "Ver pedidos y enseñar" }),
+  // Sala de profesores
+  o("tut-board", "board", 31, 1, 4, 1, { emoji: "📋", label: "Tablón de pedidos", href: "/ensenar", prompt: "Ver pedidos y enseñar" }),
   o("tut-sofa-1", "sofa", 28, 6, 3, 1, { emoji: "🛋️" }),
   o("tut-sofa-2", "sofa", 35, 6, 3, 1, { emoji: "🛋️" }),
   o("tut-plant-1", "plant", 27, 1, 1, 1, { emoji: "🪴" }),
   o("tut-plant-2", "plant", 38, 1, 1, 1, { emoji: "🪴" }),
   o("tut-table", "table", 32, 5, 2, 1, { emoji: "☕" }),
 
-  // Plaza
+  // Patio: para encontrarse (sin paneles)
   o("plaza-fountain", "fountain", 18, 12, 4, 2, { emoji: "⛲" }),
   o("plaza-tree-1", "tree", 1, 10, 1, 1, { emoji: "🌳" }),
   o("plaza-tree-2", "tree", 1, 15, 1, 1, { emoji: "🌳" }),
@@ -107,29 +133,38 @@ export const OBJECTS: WorldObject[] = [
   o("plaza-tree-6", "tree", 27, 12, 1, 1, { emoji: "🌲" }),
   o("plaza-bench-1", "bench", 14, 14, 2, 1, { emoji: "🪑" }),
   o("plaza-bench-2", "bench", 24, 14, 2, 1, { emoji: "🪑" }),
-  o("plaza-mirror", "mirror", 4, 12, 1, 2, { emoji: "🪞", label: "Espejo", href: "/perfil", prompt: "Ver mi perfil" }),
-  o("plaza-board", "board", 34, 12, 2, 1, { emoji: "🗒️", label: "Tablero", href: "/home", prompt: "Abrir mi tablero" }),
+  o("plaza-bench-3", "bench", 5, 12, 2, 1, { emoji: "🪑" }),
+  o("plaza-bench-4", "bench", 33, 12, 2, 1, { emoji: "🪑" }),
 
-  // Aulas
-  o("aula-board", "board", 8, 17, 4, 1, { emoji: "🏫", label: "Mis clases", href: "/home#clases", prompt: "Ver mis clases y entrar al aula" }),
-  ...[2, 5, 8].flatMap((x) => [
-    o(`aula-desk-${x}-a`, "desk", x, 20, 2, 1, { emoji: "📓" }),
-    o(`aula-desk-${x}-b`, "desk", x, 22, 2, 1, { emoji: "📐" }),
-  ]),
+  // Pasillo de aulas (las puertas van en CLASS_DOORS)
+  o("hall-plant-1", "plant", 1, 22, 1, 1, { emoji: "🪴" }),
+  o("hall-plant-2", "plant", 25, 22, 1, 1, { emoji: "🪴" }),
+  o("hall-water", "display", 25, 17, 1, 1, { emoji: "🚰" }),
 
-  // Tienda
-  o("shop-rack", "display", 14, 17, 3, 1, { emoji: "👕" }),
-  o("shop-counter", "counter", 18, 19, 4, 1, { emoji: "🛒", label: "Tienda", href: "/tienda", prompt: "Comprar skins" }),
-  o("shop-d1", "display", 15, 22, 1, 1, { emoji: "👑" }),
-  o("shop-d2", "display", 17, 22, 1, 1, { emoji: "🕶️" }),
-  o("shop-d3", "display", 22, 22, 1, 1, { emoji: "🎧" }),
-  o("shop-d4", "display", 24, 22, 1, 1, { emoji: "🎓" }),
+  // Tesorería
+  o("bank-atm", "counter", 28, 17, 2, 1, { emoji: "🏧", label: "Cajero", href: "/quipus", prompt: "Ver tu tarjeta y tus ahorros" }),
+  o("bank-counter", "counter", 31, 19, 4, 1, { emoji: "🏦", label: "Ventanilla", href: "/quipus", prompt: "Ver tus movimientos" }),
+  o("bank-vault", "vault", 36, 17, 2, 2, { emoji: "🔐" }),
+  o("bank-plant", "plant", 38, 22, 1, 1, { emoji: "🪴" }),
 
-  // Banco
-  o("bank-art", "board", 28, 17, 3, 1, { emoji: "🪢" }),
-  o("bank-counter", "counter", 31, 19, 4, 1, { emoji: "🏦", label: "Ventanilla", href: "/quipus", prompt: "Ver mis quipus" }),
-  o("bank-vault", "vault", 36, 17, 2, 2, { emoji: "🔐", label: "Insignias", href: "/perfil", prompt: "Ver mis insignias" }),
-  o("bank-plant", "plant", 27, 24, 1, 1, { emoji: "🪴" }),
+  // Kiosko
+  o("shop-counter", "counter", 4, 26, 4, 1, { emoji: "🛒", label: "Kiosko", href: "/tienda", prompt: "Ver skins y accesorios" }),
+  o("shop-d1", "display", 2, 28, 1, 1, { emoji: "👑" }),
+  o("shop-d2", "display", 4, 28, 1, 1, { emoji: "🕶️" }),
+  o("shop-d3", "display", 9, 28, 1, 1, { emoji: "🎧" }),
+  o("shop-d4", "display", 11, 28, 1, 1, { emoji: "🎓" }),
+
+  // Portería: la entrada al colegio
+  o("gate", "gate", 19, 28, 2, 1, { emoji: "🚪" }),
+  o("mural", "board", 15, 24, 3, 1, { emoji: "📣", label: "Mural de anuncios", href: "/home", prompt: "Ver tu tablero del día" }),
+  o("gate-plant-1", "plant", 14, 28, 1, 1, { emoji: "🪴" }),
+  o("gate-plant-2", "plant", 25, 28, 1, 1, { emoji: "🪴" }),
+
+  // Casilleros
+  o("lockers-1", "locker", 27, 24, 5, 1, { emoji: "🗄️" }),
+  o("my-locker", "locker", 32, 24, 2, 1, { emoji: "🎒", label: "Tu casillero", href: "/perfil", prompt: "Ver tu perfil e insignias" }),
+  o("lockers-2", "locker", 34, 24, 5, 1, { emoji: "🗄️" }),
+  o("lockers-bench", "bench", 31, 27, 4, 1, { emoji: "🪑" }),
 ];
 
 /** Lugares para los demás alumnos, en orden: primero la sala de tutores (para quienes enseñan). */
@@ -156,21 +191,16 @@ export const AI_SPOTS = [
   { x: 22, y: 4 },
 ];
 
-export const SPAWN = { x: 20.5, y: 14.5 };
+/** Se entra al colegio por la portería, frente a la puerta principal. */
+export const SPAWN = { x: 20.5, y: 26.5 };
 
 // ---------- grilla de colisiones ----------
 
 function buildFloor(): Floor[][] {
   const g: Floor[][] = Array.from({ length: ROWS }, () => Array<Floor>(COLS).fill("#"));
   for (const r of ROOMS) for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) g[y][x] = r.floor;
-  // Puertas de 2 baldosas entre cada sala y la plaza
-  for (const r of ROOMS) {
-    if (r.id === "plaza") continue;
-    const doorRow = r.y === 1 ? 9 : 16;
-    g[doorRow][r.x + 5] = "p";
-    g[doorRow][r.x + 6] = "p";
-  }
-  // Pasto en las esquinas de la plaza
+  for (const d of DOOR_TILES) g[d.y][d.x] = d.floor;
+  // Pasto en las esquinas del patio
   for (const [x, y] of [
     [1, 10], [2, 10], [1, 11], [37, 10], [38, 10], [38, 11], [1, 14], [1, 15], [2, 15], [38, 14], [37, 15], [38, 15],
   ])
@@ -181,14 +211,18 @@ function buildFloor(): Floor[][] {
 
 export const FLOOR = buildFloor();
 
-export const DOORS = ROOMS.filter((r) => r.id !== "plaza").map((r) => ({ x: r.x + 5, y: r.y === 1 ? 9 : 16, w: 2 }));
 
 const staticBlocked: boolean[][] = (() => {
   const b = FLOOR.map((row) => row.map((f) => f === "#" || f === "w"));
-  for (const ob of OBJECTS)
-    if (ob.blocks) for (let y = ob.y; y < ob.y + ob.h; y++) for (let x = ob.x; x < ob.x + ob.w; x++) b[y][x] = true;
+  for (const ob of OBJECTS.filter((x) => x.blocks))
+    for (let y = ob.y; y < ob.y + ob.h; y++) for (let x = ob.x; x < ob.x + ob.w; x++) b[y][x] = true;
   return b;
 })();
+
+/** Baldosas que ocupan las puertas de clase en uso (las que no tienen clase no existen). */
+export function doorTiles(count: number): { x: number; y: number }[] {
+  return CLASS_DOORS.slice(0, count).flatMap((d) => Array.from({ length: d.w }, (_, i) => ({ x: d.x + i, y: d.y })));
+}
 
 export function makeBlocked(extra: { x: number; y: number }[]) {
   const b = staticBlocked.map((row) => [...row]);

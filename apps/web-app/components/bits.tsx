@@ -130,6 +130,20 @@ export function formatWhen(iso: string | null) {
   );
 }
 
+/** Fecha en lenguaje de todos los días: "hoy 5:00 p. m.", "mañana 4:00 p. m.", "sáb 18 oct, 10:00 a. m." */
+export function friendlyWhen(iso: string | null): string {
+  if (!iso) return "Por coordinar";
+  const d = new Date(iso);
+  const hour = new Intl.DateTimeFormat("es-PE", { hour: "numeric", minute: "2-digit" }).format(d);
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((day(d) - day(new Date())) / 86_400_000);
+  if (diffDays === 0) return `hoy ${hour}`;
+  if (diffDays === 1) return `mañana ${hour}`;
+  if (diffDays > 1 && diffDays < 7)
+    return `${new Intl.DateTimeFormat("es-PE", { weekday: "long" }).format(d)} ${hour}`;
+  return `${new Intl.DateTimeFormat("es-PE", { weekday: "short", day: "numeric", month: "short" }).format(d)}, ${hour}`;
+}
+
 export function timeAgo(iso: string) {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
   if (diff < 60) return "hace un momento";

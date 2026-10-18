@@ -6,12 +6,13 @@ import { api } from "@/lib/api";
 import type { Equipped, Skin, SkinKind } from "@/lib/types";
 import { useMutation, useSession } from "@/components/providers";
 import { Avatar, DECO_BG } from "@/components/avatar";
-import { badgeIcon, decoOf } from "@/lib/skins";
+import { badgeIcon, decoOf, isSpriteSkin } from "@/lib/skins";
 import { Card, Quipus, SectionTitle, Skeleton, btn } from "@/components/bits";
 import { cn } from "@/lib/utils";
 
 const TABS: { kind: SkinKind; label: string }[] = [
-  { kind: "avatar", label: "Accesorios" },
+  { kind: "avatar", label: "🎨 Colores" },
+  { kind: "head", label: "🧢 Cabeza" },
   { kind: "frame", label: "Marcos" },
   { kind: "profile_deco", label: "Fondos" },
   { kind: "badge", label: "Insignias" },
@@ -28,6 +29,7 @@ const ALL_BADGES = [
 function withPreview(equipped: Equipped, skin: Skin | null): Equipped {
   if (!skin) return equipped;
   if (skin.kind === "avatar") return { ...equipped, avatar: skin };
+  if (skin.kind === "head") return { ...equipped, head: skin };
   if (skin.kind === "frame") return { ...equipped, frame: skin };
   if (skin.kind === "profile_deco") return { ...equipped, deco: skin };
   return equipped;
@@ -72,7 +74,7 @@ export default function ShopPage() {
           <p className="text-muted-foreground">Personaliza tu avatar con los quipus que ganas enseñando.</p>
         </div>
 
-        <div className="flex gap-2 rounded-2xl bg-muted p-1" role="tablist">
+        <div className="flex gap-1 overflow-x-auto rounded-2xl bg-muted p-1" role="tablist">
           {TABS.map((t) => (
             <button
               key={t.kind}
@@ -82,7 +84,10 @@ export default function ShopPage() {
                 setTab(t.kind);
                 setPreview(null);
               }}
-              className={cn("flex-1 rounded-xl py-2 text-sm font-extrabold", tab === t.kind ? "bg-card shadow-sm" : "text-muted-foreground")}
+              className={cn(
+                "flex-1 shrink-0 rounded-xl px-3 py-2 text-sm font-extrabold whitespace-nowrap",
+                tab === t.kind ? "bg-card shadow-sm" : "text-muted-foreground",
+              )}
             >
               {t.label}
             </button>
@@ -91,7 +96,8 @@ export default function ShopPage() {
 
         <div className="grid grid-cols-2 gap-3 @xl:grid-cols-3">
           {me.skins
-            .filter((s) => s.kind === tab)
+            // Los ítems de sprite son de otro sistema de avatar que aún no se dibuja aquí
+            .filter((s) => s.kind === tab && !isSpriteSkin(s.meta))
             .map((s) => {
               const short = !s.owned && me.available < s.price_quipus;
               return (

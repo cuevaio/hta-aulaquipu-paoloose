@@ -1,8 +1,8 @@
 -- AulaQuipu — schema completo (Postgres / Supabase)
--- Última corrección: 2026-10-17 (incluye migrations/001_web_app.sql en la sección 8)
+-- Última corrección: 2026-10-18 (incluye migrations/001_web_app.sql y 002_more_skins.sql, secciones 8 y 9)
 -- Ejecutar de una sola vez contra la base. Idempotente por sección (drop + create).
 -- Orden en una base nueva: database.sql → demo_seed.sql.
--- Base ya creada con la versión anterior: correr solo migrations/001_web_app.sql.
+-- Base ya creada con una versión anterior: correr las migraciones que falten (migrations/00N_*.sql).
 
 -- ============================================================
 -- 1. TABLAS
@@ -892,3 +892,42 @@ select p.id, '700000' || right(p.id::text, 2), extensions.crypt('aula2026', exte
 from profiles p
 where p.id::text like '10000000-0000-0000-0000-0000000000%'
 on conflict (profile_id) do nothing;
+
+-- ============================================================
+-- 9. MÁS SKINS: COLORES Y DISEÑOS DE CABEZA (= migrations/002_more_skins.sql)
+-- ============================================================
+
+alter table skins drop constraint if exists skins_kind_check;
+alter table skins add constraint skins_kind_check
+  check (kind in ('avatar', 'head', 'frame', 'badge', 'profile_deco'));
+
+insert into skins (name, kind, price_quipus, meta)
+select v.name, v.kind, v.price, v.meta::jsonb
+from (values
+  -- Colores del cuerpo
+  ('Rojo fuego',       'avatar', 10, '{"color":"#E5484D"}'),
+  ('Mandarina',        'avatar', 10, '{"color":"#FF8A65"}'),
+  ('Amarillo pollito', 'avatar', 10, '{"color":"#FFC94D"}'),
+  ('Verde menta',      'avatar', 10, '{"color":"#2FD3A3"}'),
+  ('Azul cielo',       'avatar', 10, '{"color":"#4FA3FF"}'),
+  ('Morado galaxia',   'avatar', 15, '{"color":"#7C6BF2"}'),
+  ('Rosa chicle',      'avatar', 15, '{"color":"#F06EAA"}'),
+  ('Turquesa',         'avatar', 15, '{"color":"#14B8A6"}'),
+  ('Gris lunar',       'avatar', 20, '{"color":"#9AA0B5"}'),
+  ('Negro noche',      'avatar', 25, '{"color":"#3B3F5C"}'),
+  -- Diseños de cabeza
+  ('Lazo',             'head',   10, '{"accessory":"lazo"}'),
+  ('Lentes de sol',    'head',   10, '{"accessory":"lentes"}'),
+  ('Flor',             'head',   10, '{"accessory":"flor"}'),
+  ('Gorra',            'head',   12, '{"accessory":"gorra"}'),
+  ('Chullo andino',    'head',   15, '{"accessory":"chullo"}'),
+  ('Orejas de gato',   'head',   15, '{"accessory":"gato"}'),
+  ('Sombrero de paja', 'head',   15, '{"accessory":"sombrero"}'),
+  ('Cresta punk',      'head',   18, '{"accessory":"cresta"}'),
+  ('Rulos',            'head',   20, '{"accessory":"rulos"}'),
+  ('Antenas',          'head',   20, '{"accessory":"antenas"}'),
+  ('Audífonos',        'head',   20, '{"accessory":"audifonos"}'),
+  ('Birrete',          'head',   25, '{"accessory":"birrete"}'),
+  ('Corona inca',      'head',   45, '{"accessory":"corona"}')
+) as v(name, kind, price, meta)
+where not exists (select 1 from skins s where s.name = v.name);

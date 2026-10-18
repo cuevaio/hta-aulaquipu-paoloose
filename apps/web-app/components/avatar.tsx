@@ -55,7 +55,73 @@ function Accessory({ kind }: { kind: SkinMeta["accessory"] }) {
         </g>
       );
     case "flor":
-      return <circle cx="72" cy="20" r="7" fill="#F06EAA" />;
+      return (
+        <g>
+          {[0, 72, 144, 216, 288].map((a) => (
+            <circle key={a} cx={72 + 6 * Math.cos((a * Math.PI) / 180)} cy={20 + 6 * Math.sin((a * Math.PI) / 180)} r="4.5" fill="#F06EAA" />
+          ))}
+          <circle cx="72" cy="20" r="3.5" fill="#FFC94D" />
+        </g>
+      );
+    case "gorra":
+      return (
+        <g>
+          <path d="M23 34c2-16 13-24 27-24s25 8 27 24z" fill="#4FA3FF" />
+          <path d="M60 33h28c3 0 3 5 0 5H57z" fill="#2B6FD1" />
+          <path d="M50 10v24" stroke="#2B6FD1" strokeWidth="2" opacity=".5" />
+          <circle cx="50" cy="11" r="3" fill="#2B6FD1" />
+        </g>
+      );
+    case "cresta":
+      return <path d="M38 24 L42 6 L46 20 L50 3 L54 20 L58 6 L62 24 Z" fill="#E5484D" stroke="#B3262B" strokeWidth="1.5" strokeLinejoin="round" />;
+    case "gato":
+      return (
+        <g>
+          <path d="M21 32 L25 7 L43 21 Z" fill="#2B2550" />
+          <path d="M79 32 L75 7 L57 21 Z" fill="#2B2550" />
+          <path d="M26 26 L28 14 L37 21 Z" fill="#F06EAA" />
+          <path d="M74 26 L72 14 L63 21 Z" fill="#F06EAA" />
+        </g>
+      );
+    case "lazo":
+      return (
+        <g>
+          <path d="M62 16 L77 7 L77 26 Z" fill="#F06EAA" />
+          <path d="M62 16 L47 7 L47 26 Z" fill="#F06EAA" />
+          <circle cx="62" cy="16" r="4.5" fill="#C2185B" />
+        </g>
+      );
+    case "sombrero":
+      return (
+        <g>
+          <ellipse cx="50" cy="31" rx="38" ry="7" fill="#E8C468" />
+          <path d="M32 31c0-13 8-21 18-21s18 8 18 21z" fill="#F2D27A" />
+          <rect x="32" y="24" width="36" height="5" fill="#E5484D" />
+        </g>
+      );
+    case "rulos":
+      return (
+        <g fill="#3B2A20">
+          {[
+            [24, 30, 8],
+            [31, 20, 9],
+            [42, 13, 9],
+            [54, 12, 9],
+            [66, 17, 9],
+            [75, 27, 8],
+          ].map(([cx, cy, r]) => (
+            <circle key={cx} cx={cx} cy={cy} r={r} />
+          ))}
+        </g>
+      );
+    case "antenas":
+      return (
+        <g>
+          <path d="M40 24 L33 7 M60 24 L67 7" stroke="#2FD3A3" strokeWidth="3.5" strokeLinecap="round" />
+          <circle cx="33" cy="7" r="4.5" fill="#FFC94D" />
+          <circle cx="67" cy="7" r="4.5" fill="#FFC94D" />
+        </g>
+      );
     default:
       return null;
   }
@@ -86,7 +152,8 @@ export function Avatar({
   const look = avatarLook(equipped?.avatar?.meta);
   const color = look.color ?? avatarColor(config);
   const shape = SHAPES[config.shape ?? "blob"];
-  const accessory = look.accessory;
+  // El diseño de cabeza manda; si no hay, algunas paletas antiguas traen su propio accesorio
+  const accessory = equipped?.head?.meta.accessory ?? look.accessory;
   const frame = frameOf(equipped?.frame?.meta);
 
   return (
