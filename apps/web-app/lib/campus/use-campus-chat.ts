@@ -1,8 +1,8 @@
 "use client";
 
 // Chat de texto por proximidad sobre la conexión del campus (sin segunda sala LiveKit).
-// Es opt-in por usuario (apagado por defecto), por lo que apagado ni envía ni muestra nada.
-// El envío va solo a quienes están cerca; quien recibe vuelve a comprobarlo con sus propios datos.
+// Viene activado por defecto; cada usuario puede apagarlo (apagado ni envía ni muestra nada).
+// Los globos los ve todo el campus; el registro del panel solo guarda lo dicho por quien está cerca.
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
@@ -60,7 +60,7 @@ export function useCampusChat(userId: string | null, presence: Presence, onBubbl
   const { peers, positions, online, getPosition, subscribeChat, publishChat } = presence;
   const enabledKey = userId ? `aq:chat:${userId}` : null;
   const blockKey = userId ? `aq:chat-block:${userId}` : null;
-  const enabled = useStored(enabledKey) === "1";
+  const enabled = useStored(enabledKey) !== "0";
   const blockedRaw = useStored(blockKey);
   const blocked = useMemo<Record<string, string>>(() => {
     try {
@@ -117,7 +117,7 @@ export function useCampusChat(userId: string | null, presence: Presence, onBubbl
       const sender = cur.peers.find((p) => p.id === fromId);
       const me = getPosition();
       const pos = positions.current?.get(fromId);
-      if (!sender || !me || !pos || !isNearby(me, pos, CHAT_RADIUS + CHAT_RADIUS_TOLERANCE)) return;
+      if (!sender) return;
       let text: unknown;
       try {
         text = JSON.parse(decoder.decode(data))?.text;
@@ -126,7 +126,8 @@ export function useCampusChat(userId: string | null, presence: Presence, onBubbl
       }
       const clean = prepareMessage(text);
       if (!clean.ok) return;
-      push({ from: fromId, name: sender.name, text: clean.text });
+      // El globo sale siempre; al registro solo entra lo dicho cerca (comprobado con mis datos)
+      if (me && pos && isNearby(me, pos, CHAT_RADIUS + CHAT_RADIUS_TOLERANCE)) push({ from: fromId, name: sender.name, text: clean.text });
       cur.onBubble(fromId, clean.text);
     });
   }, [subscribeChat, getPosition, positions, push]);
@@ -152,12 +153,12 @@ export function useCampusChat(userId: string | null, presence: Presence, onBubbl
       if (!clean.ok) return clean.error;
       const limited = rateLimit(sentAt.current, Date.now());
       if (limited) return limited;
-      if (!publishChat(clean.text, nearbyIds())) return "Sin conexión con el campus";
+      if (!publishChat(clean.text, live.current.peers.map((p) => p.id))) return "Sin conexión con el campus";
       push({ from: "me", name: "Tú", text: clean.text });
       live.current.onBubble("me", clean.text);
       return null;
     },
-    [enabled, online, publishChat, nearbyIds, push],
+    [enabled, online, publishChat, push],
   );
 
   const block = useCallback(

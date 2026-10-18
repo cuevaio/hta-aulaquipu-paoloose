@@ -505,7 +505,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
       {welcome && (
-        <WelcomeOverlay balance={me.balance} avatar={me.profile.avatar_config} firstVisit={welcomeSeen === false} onClose={closeWelcome} />
+        <WelcomeOverlay balance={me.balance} avatar={me.profile.avatar_config} onClose={closeWelcome} />
       )}
       {avatarOpen && !welcome && (
         <AvatarDialog avatar={me.profile.avatar_config} onClose={() => setAvatarOpen(false)} />

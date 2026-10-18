@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Lock, Palette, Star } from "lucide-react";
+import { Lock, Palette, Shirt, Star } from "lucide-react";
 import { api } from "@/lib/api";
 import { useQuery, useSession } from "@/components/providers";
 import { ProfileHero } from "@/components/profile-hero";
+import { AvatarDialog } from "@/components/campus/welcome";
 import { AiAvatar, Avatar } from "@/components/avatar";
 import { Card, LEVEL_LABEL, Pill, SectionTitle, Skeleton, btn, timeAgo } from "@/components/bits";
 import { cn } from "@/lib/utils";
@@ -16,16 +17,25 @@ export default function MyProfilePage() {
   const reviews = useQuery((u) => api.myPrivateReviews(u));
   const sessions = useQuery((u) => api.mySessions(u));
   const [showReviews, setShowReviews] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   if (!me) return <Skeleton className="h-72" />;
 
   return (
     <div className="space-y-8">
-      <ProfileHero profile={me.profile} equipped={me.equipped} stats={me.stats} badges={me.badges}>
+      <ProfileHero profile={me.profile} equipped={me.equipped} stats={me.stats} badges={me.badges} balance={me.balance}>
+        <button onClick={() => setEditing(true)} className={cn(btn.soft, btn.sm)}>
+          <Shirt className="size-4" /> Editar avatar
+        </button>
         <Link href="/tienda" className={cn(btn.soft, btn.sm)}>
-          <Palette className="size-4" /> Personalizar
+          <Palette className="size-4" /> Tienda
         </Link>
       </ProfileHero>
+      {editing && (
+        <div className="fixed inset-0 z-[80]">
+          <AvatarDialog avatar={me.profile.avatar_config} onClose={() => setEditing(false)} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-8 @5xl:grid-cols-2">
         <section>

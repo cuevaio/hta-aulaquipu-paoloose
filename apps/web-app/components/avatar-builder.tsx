@@ -94,7 +94,8 @@ export function AvatarBuilder({
     });
   };
   const withSlot = (slot: string, item: string): AvatarConfig => ({ ...config, slots: { ...slots, [slot]: item } });
-  const tileEquipped = (slot: string) => equippedWithout(new Set(touched).add(slot));
+  // Al elegir pelo se quita también el gorro de la miniatura, que si no lo taparía
+  const tileEquipped = (slot: string) => equippedWithout(new Set(touched).add(slot).add(slot === "hr" ? "ha" : slot));
   // Mientras una compra ocupe el slot, la pieza del creador no se ve: no se marca como puesta
   const shadowed = (slot: string) => !touched.has(slot) && storeParts.some((p) => spriteSlot(p.meta) === slot);
 

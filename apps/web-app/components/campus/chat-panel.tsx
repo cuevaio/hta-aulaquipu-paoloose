@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 type Chat = ReturnType<typeof useCampusChat>;
 
-/** Chat de proximidad: apagado por defecto, con registro reciente, bloqueo por persona y aviso de quién te escucha. */
+/** Chat cercano: activado por defecto, con registro reciente, bloqueo por persona y aviso de quién te escucha. */
 export function ChatPanel({ chat }: { chat: Chat }) {
   const { enabled, setEnabled, online, log, hearers, blocked, block, unblock, send, report } = chat;
   const [open, setOpen] = useState(false);
@@ -83,9 +83,10 @@ export function ChatPanel({ chat }: { chat: Chat }) {
         <p className="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold">Chat disponible solo en línea</p>
       ) : !enabled ? (
         <div className="space-y-1.5 rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold">
-          <p>Activa el chat para hablar con quien esté cerca.</p>
+          <p>Activa el chat para escribir y ver los globos de los demás.</p>
           <p className="text-white/70">
-            Solo te lee quien esté en tu misma sala, a pocos pasos y con el chat activado. Sin enlaces ni datos personales.
+            Tus mensajes salen como globo sobre tu avatar para todos los que tengan el chat activado; el registro guarda
+            lo que dicen quienes están cerca. Sin enlaces ni datos personales.
           </p>
         </div>
       ) : (
