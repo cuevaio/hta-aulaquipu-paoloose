@@ -24,7 +24,7 @@
 
 ## Tasks
 - [x] T1 — Navigation cleanup.
-- [ ] T2 — Proximity text chat.
+- [x] T2 — Proximity text chat.
 
 ## Acceptance criteria
 - Only one board leads to /home; bar has 4 readable items; /clases content lives in /home.
@@ -33,6 +33,7 @@
 
 ## Progress
 - T1 done: Plaza board is the only /home link; Biblioteca board -> /aprender (now lists "Mis pedidos" via new MyRequests, shared with /home); "Mis clases" is a section (#clases) in /home; /clases redirect()s to /home#clases; bar = 4 items text-xs; vault -> /perfil. Checks: tsc clean, eslint clean, /campus /home /clases /aprender /perfil 200.
+- T2 done: topic campus:chat sent via destinationIdentities to peers in same room within 4 tiles (receiver re-checks, +1 tolerance); opt-in toggle (localStorage per user), 140 chars, link/email/phone denial, word mask, rate limit 1.5s/5 per 15s, per-user block; bubbles via DOM refs in world.tsx; ChatPanel in campus-shell. Checks: tsc clean, eslint clean, routes 200. Not browser-tested.
 
 ## Next step
-- T2.
+- Manual two-browser test, then review/PR.

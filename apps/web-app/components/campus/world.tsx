@@ -18,6 +18,7 @@ import {
   type Room,
   type WorldObject,
 } from "@/lib/campus/map";
+import { BUBBLE_MS } from "@/lib/campus/chat-rules";
 import { cn } from "@/lib/utils";
 import type { CampusPeer, PeerPosition } from "@/lib/campus/use-campus-presence";
 
@@ -125,6 +126,7 @@ export function CampusWorld({
   onRoomChange,
   onNearChange,
   interactRef,
+  bubbleRef,
 }: {
   me: { name: string; avatar: AvatarConfig; equipped: Equipped | null };
   people: CampusPerson[];
@@ -138,6 +140,8 @@ export function CampusWorld({
   onNearChange: (target: Interactable | null) => void;
   /** El HUD llama a esto para interactuar con lo que está cerca (botón en móvil). */
   interactRef: React.RefObject<(() => void) | null>;
+  /** El chat llama a esto para mostrar un globo sobre alguien ("me" = el jugador). */
+  bubbleRef: React.RefObject<((id: string, text: string) => void) | null>;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
   const world = useRef<HTMLDivElement>(null);
@@ -157,6 +161,27 @@ export function CampusWorld({
   // Elementos y posición dibujada de cada persona conectada (se interpola hacia la recibida)
   const peerEls = useRef(new Map<string, HTMLDivElement>());
   const peerDrawn = useRef(new Map<string, { x: number; y: number }>());
+
+  const bubbleTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
+  // Globos de chat: se escriben directo en el DOM (como las posiciones) y se apagan solos
+  useEffect(() => {
+    const timers = bubbleTimers.current;
+    bubbleRef.current = (id, text) => {
+      const holder = id === "me" ? player.current : peerEls.current.get(id);
+      const el = holder?.querySelector<HTMLElement>("[data-bubble]");
+      if (!el) return;
+      el.textContent = text;
+      el.classList.remove("hidden");
+      clearTimeout(timers.get(id));
+      timers.set(id, setTimeout(() => el.classList.add("hidden"), BUBBLE_MS));
+    };
+    return () => {
+      bubbleRef.current = null;
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, [bubbleRef]);
 
   const targets = useMemo<Interactable[]>(
     () => [
@@ -484,6 +509,11 @@ export function CampusWorld({
             style={{ width: T }}
             title={`Ver el perfil de ${peer.name}`}
           >
+            <div
+              data-bubble
+              aria-live="polite"
+              className="hidden absolute bottom-full left-1/2 z-10 mb-1 w-max max-w-[11rem] -translate-x-1/2 rounded-2xl rounded-bl-sm bg-white px-2.5 py-1.5 text-xs leading-snug font-semibold break-words text-navy shadow-lg ring-1 ring-black/10"
+            />
             <div className="player-body">
               <Avatar config={peer.avatar} equipped={peer.equipped} size={T * 0.95} label={peer.name} />
             </div>
@@ -496,6 +526,11 @@ export function CampusWorld({
 
         {/* Jugador */}
         <div ref={player} className="pointer-events-none absolute top-0 left-0 flex flex-col items-center" style={{ width: T }}>
+          <div
+              data-bubble
+              aria-live="polite"
+              className="hidden absolute bottom-full left-1/2 z-10 mb-1 w-max max-w-[11rem] -translate-x-1/2 rounded-2xl rounded-bl-sm bg-white px-2.5 py-1.5 text-xs leading-snug font-semibold break-words text-navy shadow-lg ring-1 ring-black/10"
+            />
           <div ref={body} className="player-body">
             <Avatar config={me.avatar} equipped={me.equipped} size={T * 0.95} label={me.name} />
           </div>

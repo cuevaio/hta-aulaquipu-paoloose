@@ -12,6 +12,8 @@ import { Quipus } from "@/components/bits";
 import { Logo } from "@/components/logo";
 import { MissionCard, WelcomeOverlay, useFlag, writeFlag } from "@/components/campus/welcome";
 import { CampusWorld, type CampusPerson, type Interactable } from "@/components/campus/world";
+import { ChatPanel } from "@/components/campus/chat-panel";
+import { useCampusChat } from "@/lib/campus/use-campus-chat";
 import { useCampusPresence } from "@/lib/campus/use-campus-presence";
 import { cn } from "@/lib/utils";
 
@@ -29,11 +31,14 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const panelOpen = pathname !== "/campus";
   const interactRef = useRef<(() => void) | null>(null);
+  const bubbleRef = useRef<((id: string, text: string) => void) | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [banner, setBanner] = useState<Room | null>(null);
   const [near, setNear] = useState<Interactable | null>(null);
   const [menu, setMenu] = useState(false);
   const presence = useCampusPresence(ready && me ? userId : null);
+  const showBubble = useCallback((id: string, text: string) => bubbleRef.current?.(id, text), []);
+  const chat = useCampusChat(ready && me ? userId : null, presence, showBubble);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [moved, setMoved] = useState(false);
   const startPos = useRef<{ x: number; y: number } | null>(null);
@@ -137,6 +142,9 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Escape mientras se escribe (p. ej. en el chat) solo sale del campo
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
       if (e.key === "Escape" && panelOpen) close();
     };
     window.addEventListener("keydown", onKey);
@@ -163,6 +171,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         onRoomChange={onRoomChange}
         onNearChange={setNear}
         interactRef={interactRef}
+        bubbleRef={bubbleRef}
       />
 
       {/* HUD superior */}
@@ -254,6 +263,8 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       )}
+
+      {!panelOpen && !welcome && <ChatPanel chat={chat} />}
 
       {/* Barra inferior */}
       <nav className="absolute inset-x-0 bottom-3 z-[55] flex justify-center px-3">

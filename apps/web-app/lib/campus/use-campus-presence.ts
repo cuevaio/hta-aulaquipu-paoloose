@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 import type { AvatarConfig, Equipped } from "@/lib/types";
 
 const TOPIC = "campus:pos";
+export const CHAT_TOPIC = "campus:chat";
 const SEND_EVERY_MS = 100; // ~10 por segundo mientras camina
 const HEARTBEAT_MS = 2000; // aunque esté quieto o en otra pestaña, para quien recién llega
 
@@ -59,6 +60,8 @@ export function useCampusPresence(userId: string | null) {
   const room = useRef<Room | null>(null);
   const last = useRef<{ pos: PeerPosition | null; at: number; sent: PeerPosition | null }>({ pos: null, at: 0, sent: null });
   const encoder = useRef(new TextEncoder());
+  // Quien quiera mensajes del chat se suscribe aquí: así comparte esta misma conexión LiveKit
+  const chatListeners = useRef(new Set<(fromId: string, data: Uint8Array) => void>());
 
   const send = useCallback((pos: PeerPosition, reliable = false) => {
     const r = room.current;
@@ -81,6 +84,25 @@ export function useCampusPresence(userId: string | null) {
     },
     [send],
   );
+
+  const getPosition = useCallback(() => last.current.pos, []);
+
+  const subscribeChat = useCallback((fn: (fromId: string, data: Uint8Array) => void) => {
+    chatListeners.current.add(fn);
+    return () => void chatListeners.current.delete(fn);
+  }, []);
+
+  /** Envía un mensaje de chat solo a las identidades indicadas (ids de perfil). Devuelve false si no hay conexión. */
+  const publishChat = useCallback((text: string, toIds: string[]) => {
+    const r = room.current;
+    if (!r || r.state !== "connected") return false;
+    if (toIds.length === 0) return true;
+    const payload = encoder.current.encode(JSON.stringify({ text, ts: Date.now() }));
+    void r.localParticipant
+      .publishData(payload, { reliable: true, topic: CHAT_TOPIC, destinationIdentities: toIds.map((id) => `profile:${id}`) })
+      .catch(() => {});
+    return true;
+  }, []);
 
   useEffect(() => {
     if (!userId) return;
@@ -106,7 +128,13 @@ export function useCampusPresence(userId: string | null) {
       })
       .on(RoomEvent.ParticipantMetadataChanged, syncPeers)
       .on(RoomEvent.DataReceived, (payload: Uint8Array, p?: RemoteParticipant, _k?: unknown, topic?: string) => {
-        if (topic !== TOPIC || !p?.identity.startsWith("profile:")) return;
+        if (!p?.identity.startsWith("profile:")) return;
+        if (topic === CHAT_TOPIC) {
+          const from = p.identity.slice("profile:".length);
+          chatListeners.current.forEach((fn) => fn(from, payload));
+          return;
+        }
+        if (topic !== TOPIC) return;
         try {
           const msg = JSON.parse(decoder.decode(payload));
           if (!isPos(msg)) return;
@@ -154,5 +182,5 @@ export function useCampusPresence(userId: string | null) {
     };
   }, [userId, send]);
 
-  return { peers, positions, online, reportPosition };
+  return { peers, positions, online, reportPosition, getPosition, subscribeChat, publishChat };
 }
