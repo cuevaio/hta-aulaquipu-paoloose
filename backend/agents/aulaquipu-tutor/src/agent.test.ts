@@ -316,14 +316,21 @@ describe('cambio de quién se escucha, con calma', () => {
     t.advance(1000);
     expect(t.switched).toEqual([]);
   });
-  it('no cambia mientras el tutor habla; cambia cuando termina', () => {
+  it('con el tutor hablando, un alumno que sostiene la palabra lo interrumpe', () => {
     const t = setup({ speaking: true });
     t.sw.update([luis]);
+    t.advance(500);
+    expect(t.switched).toEqual([]);
+    t.advance(400);
+    expect(t.switched).toEqual(['Luis']);
+  });
+  it('con el tutor hablando, un "ajá" o un eco corto no lo interrumpe', () => {
+    const t = setup({ speaking: true });
+    t.sw.update([luis]);
+    t.advance(500);
+    t.sw.update([]);
     t.advance(2000);
     expect(t.switched).toEqual([]);
-    t.setSpeaking(false);
-    t.advance(500);
-    expect(t.switched).toEqual(['Luis']);
   });
   it('no cambia dos veces seguidas en menos de 1,5 s', () => {
     const t = setup();

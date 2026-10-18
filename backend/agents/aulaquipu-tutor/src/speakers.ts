@@ -29,13 +29,18 @@ export function speakerNote(name: string): string {
 interface SwitcherOptions {
   /** A quién se escucha ahora (identidad), o null. */
   linked: () => string | null;
-  /** El tutor está hablando: no se cambia (se le cortaría a otro alumno o se interrumpiría). */
+  /** El tutor está hablando: para interrumpirlo, el alumno debe seguir hablando `bargeInMs`. */
   agentSpeaking: () => boolean;
   onSwitch: (s: Speaker) => void;
   /** Cuánto debe seguir hablando el nuevo antes de pasar a escucharlo (evita ruidos y toses). */
   settleMs?: number;
   /** Mínimo entre dos cambios: cambiar seguido hace perder el inicio de cada frase. */
   minGapMs?: number;
+  /**
+   * Cuánto debe hablar alguien seguido para interrumpir al tutor. Más largo que `settleMs` porque
+   * el eco del propio tutor en un micrófono o un "ajá" no deben cortarle la explicación.
+   */
+  bargeInMs?: number;
   now?: () => number;
   schedule?: (fn: () => void, ms: number) => unknown;
   cancel?: (handle: unknown) => void;
@@ -44,7 +49,8 @@ interface SwitcherOptions {
 /**
  * Decide con calma a quién escuchar en una clase compartida: recibe cada cambio de quién habla
  * (ActiveSpeakersChanged) y solo cambia cuando la persona nueva sigue hablando un momento, quien se
- * escuchaba calló, el tutor no está hablando y pasó un rato desde el último cambio.
+ * escuchaba calló y pasó un rato desde el último cambio. Si el tutor está hablando, el alumno puede
+ * interrumpirlo, pero tiene que sostener la palabra más tiempo (`bargeInMs`).
  */
 export class SpeakerSwitcher {
   private latest: Speaker[] = [];
@@ -52,6 +58,8 @@ export class SpeakerSwitcher {
   private timer: unknown = null;
   /** A quién apunta el temporizador pendiente. */
   private pending: string | null = null;
+  /** Desde cuándo habla la persona pendiente. */
+  private since = 0;
   private readonly o: Required<SwitcherOptions>;
 
   constructor(opts: SwitcherOptions) {
@@ -59,6 +67,7 @@ export class SpeakerSwitcher {
       // Cada ms de espera es inicio de frase que el modelo no oye: lo justo para descartar una tos
       settleMs: 300,
       minGapMs: 1500,
+      bargeInMs: 800,
       now: () => Date.now(),
       schedule: (fn, ms) => setTimeout(fn, ms),
       cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
@@ -73,7 +82,9 @@ export class SpeakerSwitcher {
     // el temporizador en curso se respeta (reiniciarlo en cada evento postergaba el cambio sin fin)
     if (pick && pick.identity === this.pending) return;
     this.clear();
-    if (pick) this.arm(pick.identity, this.o.settleMs);
+    if (!pick) return;
+    this.since = this.o.now();
+    this.arm(pick.identity, this.o.settleMs);
   }
 
   private arm(identity: string, ms: number) {
@@ -86,13 +97,16 @@ export class SpeakerSwitcher {
     this.pending = null;
     const pick = nextSpeaker(this.latest, this.o.linked());
     if (!pick || pick.identity !== identity) return;
-    const wait = this.lastSwitch + this.o.minGapMs - this.o.now();
-    if (wait > 0 || this.o.agentSpeaking()) {
+    const now = this.o.now();
+    const gap = this.lastSwitch + this.o.minGapMs - now;
+    const bargeIn = this.o.agentSpeaking() ? this.since + this.o.bargeInMs - now : 0;
+    const wait = Math.max(gap, bargeIn);
+    if (wait > 0) {
       // Se vuelve a mirar en un rato: si para entonces sigue hablando, se le escucha
       this.arm(identity, Math.max(wait, 200));
       return;
     }
-    this.lastSwitch = this.o.now();
+    this.lastSwitch = now;
     this.o.onSwitch(pick);
   }
 
