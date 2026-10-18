@@ -1,0 +1,444 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { AvatarConfig, Equipped } from "@/lib/types";
+import { AiAvatar, Avatar } from "@/components/avatar";
+import {
+  COLS,
+  FLOOR,
+  OBJECTS,
+  ROOMS,
+  ROWS,
+  SPAWN,
+  distToRect,
+  findPath,
+  makeBlocked,
+  roomAt,
+  type Floor,
+  type Room,
+  type WorldObject,
+} from "@/lib/campus/map";
+import { cn } from "@/lib/utils";
+
+export interface CampusPerson {
+  id: string;
+  x: number;
+  y: number;
+  name: string;
+  caption: string;
+  href: string;
+  prompt: string;
+  avatar?: AvatarConfig;
+  equipped?: Equipped | null;
+  ai?: { emoji: string; color: string };
+}
+
+export interface Interactable {
+  id: string;
+  rect: { x: number; y: number; w: number; h: number };
+  href: string;
+  prompt: string;
+}
+
+const SPEED = 5.5; // baldosas por segundo
+const tileFor = (width: number) => (width < 640 ? 40 : width < 1024 ? 48 : 56);
+const RADIUS = 0.3;
+const REACH = 0.95;
+
+const FLOOR_COLORS: Record<Floor, [string, string]> = {
+  "#": ["#2b2550", "#2b2550"],
+  g: ["#a4dd96", "#98d58a"],
+  p: ["#f4ead8", "#efe3cd"],
+  b: ["#ecd2ae", "#e5c8a1"],
+  i: ["#e3ddff", "#d9d2fb"],
+  t: ["#cdf3e5", "#c1ecdc"],
+  a: ["#d9e9ff", "#cfe1fb"],
+  s: ["#ffe2cf", "#fbd7c1"],
+  q: ["#fff0c4", "#fbe7b0"],
+  w: ["#7cc8f2", "#7cc8f2"],
+};
+
+function drawFloor(canvas: HTMLCanvasElement, T: number) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = COLS * T * dpr;
+  canvas.height = ROWS * T * dpr;
+  const ctx = canvas.getContext("2d")!;
+  ctx.scale(dpr, dpr);
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const f = FLOOR[y][x];
+      const [a, b] = FLOOR_COLORS[f];
+      ctx.fillStyle = (x + y) % 2 ? a : b;
+      ctx.fillRect(x * T, y * T, T, T);
+      if (f === "#") {
+        // Cara superior más clara cuando debajo hay piso: da volumen a la pared
+        const below = FLOOR[y + 1]?.[x];
+        if (below && below !== "#") {
+          ctx.fillStyle = "#463f80";
+          ctx.fillRect(x * T, y * T + T * 0.45, T, T * 0.55);
+          ctx.fillStyle = "#5a52a0";
+          ctx.fillRect(x * T, y * T + T * 0.45, T, 3);
+        }
+      } else if (f === "g") {
+        ctx.fillStyle = "#7fc472";
+        ctx.fillRect(x * T + T * 0.25, y * T + T * 0.3, 3, 5);
+        ctx.fillRect(x * T + T * 0.7, y * T + T * 0.65, 3, 5);
+      } else if (f === "w") {
+        ctx.strokeStyle = "#b9e6ff";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x * T + T / 2, y * T + T / 2, T * 0.22, Math.PI * 0.1, Math.PI * 0.9);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = "rgba(43,37,80,0.05)";
+        ctx.strokeRect(x * T + 0.5, y * T + 0.5, T - 1, T - 1);
+      }
+    }
+  }
+}
+
+const OBJECT_STYLE: Partial<Record<WorldObject["kind"], string>> = {
+  shelf: "bg-[#9a6a44] shadow-[inset_0_-6px_0_#7a5233]",
+  kiosk: "bg-primary shadow-[inset_0_-6px_0_oklch(0.4_0.2_282)]",
+  table: "bg-[#d4a676] shadow-[inset_0_-5px_0_#b68756]",
+  board: "bg-white ring-2 ring-[#2b2550]/15 shadow-[inset_0_-5px_0_#e6e1f5]",
+  rug: "bg-primary/10 ring-2 ring-primary/15 rounded-2xl",
+  sofa: "bg-coral shadow-[inset_0_-6px_0_#e06b48]",
+  bench: "bg-[#b9895c] shadow-[inset_0_-5px_0_#946a43]",
+  mirror: "bg-[#c9ecff] ring-4 ring-[#d4a676] shadow-[inset_0_-5px_0_#a8d8f5]",
+  desk: "bg-[#e0bd92] shadow-[inset_0_-5px_0_#c49e70]",
+  counter: "bg-mint shadow-[inset_0_-6px_0_oklch(0.62_0.13_170)]",
+  display: "bg-white ring-2 ring-[#2b2550]/10 shadow-[inset_0_-4px_0_#ece7fa]",
+  vault: "bg-[#6b7088] shadow-[inset_0_-6px_0_#50546a]",
+};
+const BIG_EMOJI = new Set(["plant", "tree", "fountain"]);
+
+export function CampusWorld({
+  me,
+  people,
+  liveClass,
+  onOpen,
+  onRoomChange,
+  onNearChange,
+  interactRef,
+}: {
+  me: { name: string; avatar: AvatarConfig; equipped: Equipped | null };
+  people: CampusPerson[];
+  liveClass: boolean;
+  onOpen: (href: string) => void;
+  onRoomChange: (room: Room | null) => void;
+  onNearChange: (target: Interactable | null) => void;
+  /** El HUD llama a esto para interactuar con lo que está cerca (botón en móvil). */
+  interactRef: React.RefObject<(() => void) | null>;
+}) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const world = useRef<HTMLDivElement>(null);
+  const player = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const [T, setT] = useState(() => (typeof window !== "undefined" ? tileFor(window.innerWidth) : 48));
+  const [nearId, setNearId] = useState<string | null>(null);
+
+  const pos = useRef({ ...SPAWN });
+  const cam = useRef({ x: 0, y: 0 });
+  const keys = useRef(new Set<string>());
+  const path = useRef<{ x: number; y: number }[]>([]);
+  const pending = useRef<Interactable | null>(null);
+  const callbacks = useRef({ onOpen, onRoomChange, onNearChange });
+
+  const targets = useMemo<Interactable[]>(
+    () => [
+      ...OBJECTS.filter((o) => o.href).map((o) => ({
+        id: o.id,
+        rect: { x: o.x, y: o.y, w: o.w, h: o.h },
+        href: o.href!,
+        prompt: o.prompt ?? o.label ?? "",
+      })),
+      ...people.map((p) => ({ id: p.id, rect: { x: p.x, y: p.y, w: 1, h: 1 }, href: p.href, prompt: p.prompt })),
+    ],
+    [people],
+  );
+  const blocked = useMemo(() => makeBlocked(people), [people]);
+
+  useEffect(() => {
+    callbacks.current = { onOpen, onRoomChange, onNearChange };
+  }, [onOpen, onRoomChange, onNearChange]);
+
+  useEffect(() => {
+    const onResize = () => setT(tileFor(window.innerWidth));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    if (canvas.current) drawFloor(canvas.current, T);
+  }, [T]);
+
+  // Bucle de juego: movimiento, cámara y proximidad. Muta el DOM directo para no re-renderizar a 60 fps.
+  useEffect(() => {
+    let raf = 0;
+    let last = performance.now();
+    let lastNear: string | null = null;
+    let lastRoom: string | null | undefined;
+
+    const isBlocked = (x: number, y: number) => {
+      const tx = Math.floor(x);
+      const ty = Math.floor(y);
+      return tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS || blocked[ty][tx];
+    };
+    const free = (x: number, y: number) =>
+      !isBlocked(x - RADIUS, y - RADIUS) &&
+      !isBlocked(x + RADIUS, y - RADIUS) &&
+      !isBlocked(x - RADIUS, y + RADIUS) &&
+      !isBlocked(x + RADIUS, y + RADIUS);
+
+    const nearest = () => {
+      let best: Interactable | null = null;
+      let bestD = REACH;
+      for (const t of targets) {
+        const d = distToRect(pos.current.x, pos.current.y, t.rect);
+        if (d <= bestD) {
+          bestD = d;
+          best = t;
+        }
+      }
+      return best;
+    };
+
+    interactRef.current = () => {
+      const t = nearest();
+      if (t) callbacks.current.onOpen(t.href);
+    };
+
+    const step = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const p = pos.current;
+      let vx = 0;
+      let vy = 0;
+      const k = keys.current;
+      if (k.has("arrowleft") || k.has("a")) vx -= 1;
+      if (k.has("arrowright") || k.has("d")) vx += 1;
+      if (k.has("arrowup") || k.has("w")) vy -= 1;
+      if (k.has("arrowdown") || k.has("s")) vy += 1;
+
+      let moving = false;
+      if (vx || vy) {
+        path.current = [];
+        pending.current = null;
+        const len = Math.hypot(vx, vy);
+        const nx = p.x + (vx / len) * SPEED * dt;
+        const ny = p.y + (vy / len) * SPEED * dt;
+        if (free(nx, p.y)) p.x = nx;
+        if (free(p.x, ny)) p.y = ny;
+        moving = true;
+      } else if (path.current.length) {
+        const wp = path.current[0];
+        const dx = wp.x - p.x;
+        const dy = wp.y - p.y;
+        const d = Math.hypot(dx, dy);
+        const stepLen = SPEED * dt;
+        if (d <= stepLen) {
+          p.x = wp.x;
+          p.y = wp.y;
+          path.current.shift();
+          if (!path.current.length && pending.current) {
+            const t = pending.current;
+            pending.current = null;
+            callbacks.current.onOpen(t.href);
+          }
+        } else {
+          p.x += (dx / d) * stepLen;
+          p.y += (dy / d) * stepLen;
+        }
+        vx = dx;
+        moving = true;
+      }
+
+      // Cámara centrada en el jugador, sin salirse del mapa
+      const vp = viewport.current;
+      if (vp && world.current && player.current) {
+        const W = COLS * T;
+        const H = ROWS * T;
+        const vw = vp.clientWidth;
+        const vh = vp.clientHeight;
+        cam.current.x = W <= vw ? (W - vw) / 2 : Math.min(Math.max(p.x * T - vw / 2, 0), W - vw);
+        cam.current.y = H <= vh ? (H - vh) / 2 : Math.min(Math.max(p.y * T - vh / 2, 0), H - vh);
+        world.current.style.transform = `translate3d(${-cam.current.x}px, ${-cam.current.y}px, 0)`;
+        player.current.style.transform = `translate3d(${p.x * T - T / 2}px, ${p.y * T - T * 0.85}px, 0)`;
+        player.current.style.zIndex = String(Math.floor(p.y * 10) + 5);
+        player.current.classList.toggle("walking", moving);
+        if (body.current && vx) body.current.style.transform = vx < 0 ? "scaleX(-1)" : "scaleX(1)";
+      }
+
+      const near = nearest();
+      if ((near?.id ?? null) !== lastNear) {
+        lastNear = near?.id ?? null;
+        setNearId(lastNear);
+        callbacks.current.onNearChange(near);
+      }
+      const room = roomAt(p.x, p.y);
+      if ((room?.id ?? null) !== lastRoom) {
+        lastRoom = room?.id ?? null;
+        callbacks.current.onRoomChange(room);
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [T, blocked, targets, interactRef]);
+
+  // Teclado: movimiento + X/Enter/Espacio para interactuar (no mientras se escribe)
+  useEffect(() => {
+    const typing = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      return !!el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || !!el.closest("[data-panel]"));
+    };
+    const MOVE = ["arrowleft", "arrowright", "arrowup", "arrowdown", "a", "d", "w", "s"];
+    const down = (e: KeyboardEvent) => {
+      if (typing(e)) return;
+      const k = e.key.toLowerCase();
+      if (MOVE.includes(k)) {
+        keys.current.add(k);
+        e.preventDefault();
+      } else if (k === "x" || k === "enter" || k === " ") {
+        interactRef.current?.();
+        e.preventDefault();
+      }
+    };
+    const up = (e: KeyboardEvent) => keys.current.delete(e.key.toLowerCase());
+    const blur = () => keys.current.clear();
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
+    };
+  }, [interactRef]);
+
+  // Tocar/clic para caminar; si tocas algo interactivo, camina hasta ahí y lo abre
+  const onPointerDown = (e: React.PointerEvent) => {
+    const vp = viewport.current;
+    if (!vp) return;
+    const r = vp.getBoundingClientRect();
+    const wx = (e.clientX - r.left + cam.current.x) / T;
+    const wy = (e.clientY - r.top + cam.current.y) / T;
+    const hit = targets.find((t) => distToRect(wx, wy, t.rect) === 0);
+    if (hit && distToRect(pos.current.x, pos.current.y, hit.rect) <= REACH) {
+      callbacks.current.onOpen(hit.href);
+      return;
+    }
+    const tx = Math.floor(wx);
+    const ty = Math.floor(wy);
+    const found = hit
+      ? findPath(blocked, pos.current, (x, y) => distToRect(x + 0.5, y + 0.5, hit.rect) <= REACH)
+      : findPath(blocked, pos.current, (x, y) => Math.abs(x - tx) + Math.abs(y - ty) <= (blocked[ty]?.[tx] ? 1 : 0));
+    if (found) {
+      path.current = found;
+      pending.current = hit ?? null;
+    }
+  };
+
+  const W = COLS * T;
+  const H = ROWS * T;
+
+  return (
+    <div
+      ref={viewport}
+      onPointerDown={onPointerDown}
+      className="absolute inset-0 touch-none overflow-hidden bg-[#1f1b3d] select-none"
+      role="application"
+      aria-label="Campus de AulaQuipu. Muévete con las flechas o tocando el mapa; presiona X para interactuar."
+    >
+      <div ref={world} className="absolute top-0 left-0 will-change-transform" style={{ width: W, height: H }}>
+        <canvas ref={canvas} className="absolute inset-0" style={{ width: W, height: H }} />
+
+        {/* Nombre de cada sala pintado en el piso */}
+        {ROOMS.filter((r) => r.id !== "plaza").map((r) => (
+          <div
+            key={r.id}
+            className="pointer-events-none absolute flex -translate-x-1/2 flex-col items-center text-center font-heading leading-none font-semibold text-navy/25"
+            style={{ left: (r.x + r.w / 2) * T, top: (r.y + r.h - 1.6) * T, fontSize: T * 0.5 }}
+          >
+            {r.name}
+            {r.subtitle && <span style={{ fontSize: T * 0.28 }}>{r.subtitle}</span>}
+          </div>
+        ))}
+
+        {OBJECTS.map((o) => {
+          const big = BIG_EMOJI.has(o.kind);
+          const near = nearId === o.id;
+          return (
+            <div
+              key={o.id}
+              className={cn(
+                "absolute grid place-items-center rounded-[10px] transition-shadow",
+                OBJECT_STYLE[o.kind],
+                o.href && "cursor-pointer",
+                near && "ring-4 ring-gold",
+              )}
+              style={{
+                left: o.x * T + 2,
+                top: o.y * T + 2,
+                width: o.w * T - 4,
+                height: o.h * T - 4,
+                zIndex: o.kind === "rug" ? 1 : (o.y + o.h) * 10,
+              }}
+            >
+              {o.emoji && (
+                <span style={{ fontSize: big ? T * (o.kind === "fountain" ? 1.5 : 0.95) : T * 0.5 }} className={cn(big && "-translate-y-1 drop-shadow")}>
+                  {o.kind === "shelf" || o.kind === "desk" ? o.emoji.repeat(Math.max(1, o.w - 1)) : o.emoji}
+                </span>
+              )}
+              {o.label && (
+                <span
+                  className={cn(
+                    "absolute -top-3 left-1/2 -translate-x-1/2 -translate-y-full rounded-full px-2 py-0.5 text-[11px] font-extrabold whitespace-nowrap shadow-md",
+                    near ? "bg-gold text-gold-foreground" : "bg-navy text-white",
+                  )}
+                >
+                  {o.label}
+                </span>
+              )}
+              {o.id === "aula-board" && liveClass && (
+                <span className="absolute -right-2 -bottom-2 flex items-center gap-1 rounded-full bg-coral px-2 py-0.5 text-[10px] font-black text-white shadow">
+                  <span className="size-1.5 animate-pulse rounded-full bg-white" /> EN VIVO
+                </span>
+              )}
+            </div>
+          );
+        })}
+
+        {people.map((p) => (
+          <div
+            key={p.id}
+            className="absolute flex cursor-pointer flex-col items-center"
+            style={{ left: p.x * T, top: p.y * T - T * 0.35, width: T, zIndex: (p.y + 1) * 10 + 5 }}
+          >
+            <div className={cn("float rounded-full", nearId === p.id && "ring-4 ring-gold")}>
+              {p.ai ? (
+                <AiAvatar emoji={p.ai.emoji} color={p.ai.color} size={T * 0.95} />
+              ) : (
+                <Avatar config={p.avatar ?? {}} equipped={p.equipped} size={T * 0.95} label={p.name} />
+              )}
+            </div>
+            <span className="mt-0.5 rounded-full bg-navy/85 px-1.5 py-px text-[10px] font-bold whitespace-nowrap text-white">{p.name}</span>
+            {nearId !== p.id && <span className="text-[9px] font-bold whitespace-nowrap text-navy/60">{p.caption}</span>}
+          </div>
+        ))}
+
+        {/* Jugador */}
+        <div ref={player} className="pointer-events-none absolute top-0 left-0 flex flex-col items-center" style={{ width: T }}>
+          <div ref={body} className="player-body">
+            <Avatar config={me.avatar} equipped={me.equipped} size={T * 0.95} label={me.name} />
+          </div>
+          <span className="mt-0.5 rounded-full bg-mint px-1.5 py-px text-[10px] font-black whitespace-nowrap text-navy shadow">
+            {me.name} (tú)
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
