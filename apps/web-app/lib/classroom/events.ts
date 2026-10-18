@@ -26,6 +26,8 @@ export type ClassroomEvent =
   | { type: "graph_remove"; actor: string; id: string }
   | { type: "board_draw"; actor: string; stroke: Stroke }
   | { type: "board_clear"; actor: string; target: "board" | "notebook" }
+  /** Borrador: quita los trazos indicados (mismo destino). */
+  | { type: "board_erase"; actor: string; target: "board" | "notebook"; ids: string[] }
   | { type: "ask_student"; actor: string; question: string }
   | { type: "focus_tool"; actor: string; tool: ClassroomTool }
   | { type: "speech"; actor: string; text: string; partial?: boolean; segment?: string }
@@ -33,6 +35,22 @@ export type ClassroomEvent =
   | { type: "chat"; actor: string; name: string; text: string }
   | { type: "notebook_image"; actor: string; url: string }
   | { type: "session_event"; actor: string; kind: string; payload: Record<string, unknown> };
+
+/** Aplica un evento de pizarra a la lista de trazos (idempotente por id de trazo). */
+export function applyBoardEvent(strokes: Stroke[], e: ClassroomEvent): Stroke[] {
+  switch (e.type) {
+    case "board_draw":
+      return strokes.some((s) => s.id === e.stroke.id) ? strokes : [...strokes, e.stroke];
+    case "board_clear":
+      return strokes.filter((s) => s.target !== e.target);
+    case "board_erase": {
+      const ids = new Set(e.ids);
+      return strokes.filter((s) => s.target !== e.target || !ids.has(s.id));
+    }
+    default:
+      return strokes;
+  }
+}
 
 export function tableToMarkdown(rows: string[][], title?: string): string {
   if (!rows.length) return "";

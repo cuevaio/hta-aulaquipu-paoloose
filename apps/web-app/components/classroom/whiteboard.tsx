@@ -7,10 +7,6 @@ import { cn } from "@/lib/utils";
 
 const COLORS = ["#1E1B3A", "#7C6BF2", "#2FD3A3", "#FF8A65", "#E5484D", "#FFC94D"];
 
-/**
- * Pizarra compartida: los trazos se guardan normalizados a un cuadrado centrado (0..1)
- * para verse igual, sin deformarse, en cualquier pantalla.
- */
 /** Reduce la foto a 1600 px como máximo (JPEG): pesa poco y viaja rápido por la sala. */
 async function compressImage(file: File): Promise<string> {
   const url = URL.createObjectURL(file);
@@ -32,14 +28,41 @@ async function compressImage(file: File): Promise<string> {
   }
 }
 
-function square(width: number, height: number) {
+/**
+ * Pizarra compartida: los trazos se guardan normalizados (0..1) al cuadrado centrado de la pizarra o,
+ * en el cuaderno, al rectángulo de la foto, para verse igual, sin deformarse, en cualquier pantalla.
+ */
+/** Radio del borrador en píxeles CSS: un trazo se borra si el borrador pasa a esta distancia. */
+const ERASE_RADIUS = 14;
+
+/**
+ * Marco al que se normalizan los trazos: la foto (tal como se dibuja, ajustada al lienzo) cuando hay una
+ * y, si no, el cuadrado centrado. Así una marca queda sobre el mismo punto de la foto en cualquier tamaño.
+ */
+function frameOf(width: number, height: number, image: HTMLImageElement | null) {
+  if (image && image.complete && image.naturalWidth) {
+    const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+    const w = image.naturalWidth * scale;
+    const h = image.naturalHeight * scale;
+    return { ox: (width - w) / 2, oy: (height - h) / 2, w, h };
+  }
   const size = Math.min(width, height);
-  return { size, ox: (width - size) / 2, oy: (height - size) / 2 };
+  return { ox: (width - size) / 2, oy: (height - size) / 2, w: size, h: size };
+}
+
+/** Distancia de un punto (px,py) al segmento a-b. */
+function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
 export function Whiteboard({
   strokes,
   onStroke,
+  onErase,
   onClear,
   target,
   background,
@@ -48,6 +71,8 @@ export function Whiteboard({
 }: {
   strokes: Stroke[];
   onStroke: (s: Stroke) => void;
+  /** Ids de los trazos que el borrador acaba de tocar. */
+  onErase: (ids: string[]) => void;
   onClear: () => void;
   target: "board" | "notebook";
   background?: string | null;
@@ -58,8 +83,10 @@ export function Whiteboard({
   const canvas = useRef<HTMLCanvasElement>(null);
   const img = useRef<HTMLImageElement | null>(null);
   const current = useRef<Point[] | null>(null);
+  const erased = useRef<Set<string>>(new Set());
   const [color, setColor] = useState(COLORS[1]);
   const [eraser, setEraser] = useState(false);
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
 
   const draw = useCallback(() => {
     const c = canvas.current;
@@ -67,64 +94,115 @@ export function Whiteboard({
     const ctx = c.getContext("2d")!;
     const { width, height } = c;
     ctx.clearRect(0, 0, width, height);
-    if (img.current && img.current.complete && img.current.naturalWidth) {
-      const scale = Math.min(width / img.current.naturalWidth, height / img.current.naturalHeight);
-      const w = img.current.naturalWidth * scale;
-      const h = img.current.naturalHeight * scale;
-      ctx.drawImage(img.current, (width - w) / 2, (height - h) / 2, w, h);
-    }
-    const all = current.current ? [...strokes, { id: "live", color: eraser ? "#ffffff" : color, width: eraser ? 24 : 4, points: current.current, target }] : strokes;
-    const { size, ox, oy } = square(width, height);
-    for (const s of all) {
-      if (s.points.length < 2) continue;
+    const { ox, oy, w, h } = frameOf(width, height, img.current);
+    if (img.current && img.current.complete && img.current.naturalWidth) ctx.drawImage(img.current, ox, oy, w, h);
+    const dpr = window.devicePixelRatio || 1;
+    const live = current.current && !eraser ? [{ id: "live", color, width: 4, points: current.current, target }] : [];
+    for (const s of [...strokes, ...live]) {
+      if (!s.points.length) continue;
       ctx.strokeStyle = s.color;
-      ctx.lineWidth = s.width * (window.devicePixelRatio || 1);
+      ctx.fillStyle = s.color;
+      ctx.lineWidth = s.width * dpr;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
+      if (s.points.length === 1) {
+        // Un toque suelto deja un punto
+        ctx.beginPath();
+        ctx.arc(ox + s.points[0].x * w, oy + s.points[0].y * h, (s.width * dpr) / 2, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
       ctx.beginPath();
-      s.points.forEach((p, i) => (i ? ctx.lineTo(ox + p.x * size, oy + p.y * size) : ctx.moveTo(ox + p.x * size, oy + p.y * size)));
+      s.points.forEach((p, i) => (i ? ctx.lineTo(ox + p.x * w, oy + p.y * h) : ctx.moveTo(ox + p.x * w, oy + p.y * h)));
       ctx.stroke();
     }
   }, [strokes, color, eraser, target]);
 
+  // El observador se crea una sola vez y llama siempre a la versión más reciente de draw
+  const drawRef = useRef(draw);
   useEffect(() => {
+    drawRef.current = draw;
+    draw();
+  }, [draw]);
+
+  // Solo se redimensiona el lienzo si el tamaño (o la densidad de píxeles) cambió: asignar width/height lo borra
+  const fit = useCallback(() => {
     const c = canvas.current;
     const w = wrap.current;
     if (!c || !w) return;
-    const ro = new ResizeObserver(() => {
-      const dpr = window.devicePixelRatio || 1;
-      c.width = w.clientWidth * dpr;
-      c.height = w.clientHeight * dpr;
-      draw();
-    });
+    const dpr = window.devicePixelRatio || 1;
+    const cw = Math.round(w.clientWidth * dpr);
+    const ch = Math.round(w.clientHeight * dpr);
+    if (c.width !== cw || c.height !== ch) {
+      c.width = cw;
+      c.height = ch;
+    }
+    drawRef.current();
+  }, []);
+
+  useEffect(() => {
+    const w = wrap.current;
+    if (!w) return;
+    const ro = new ResizeObserver(fit);
     ro.observe(w);
+    fit();
     return () => ro.disconnect();
-  }, [draw]);
+  }, [fit]);
 
   useEffect(() => {
     if (!background) {
       img.current = null;
-      draw();
+      drawRef.current();
       return;
     }
     const i = new Image();
     i.onload = () => {
       img.current = i;
-      draw();
+      drawRef.current();
     };
     i.src = background;
-  }, [background, draw]);
+  }, [background]);
 
   useEffect(() => {
-    if (visible) draw();
-  }, [visible, draw]);
+    if (visible) fit();
+  }, [visible, fit]);
 
-  useEffect(draw, [draw]);
-
-  const point = (e: React.PointerEvent): Point => {
+  /** Punto en coordenadas CSS del lienzo y su versión normalizada al marco actual. */
+  const locate = (e: React.PointerEvent) => {
     const r = canvas.current!.getBoundingClientRect();
-    const { size, ox, oy } = square(r.width, r.height);
-    return { x: (e.clientX - r.left - ox) / size, y: (e.clientY - r.top - oy) / size };
+    const px = e.clientX - r.left;
+    const py = e.clientY - r.top;
+    const { ox, oy, w, h } = frameOf(r.width, r.height, img.current);
+    return { px, py, p: { x: (px - ox) / w, y: (py - oy) / h } as Point, rect: r };
+  };
+
+  /** Borra los trazos que el borrador toca en (px,py); devuelve true si quitó alguno. */
+  const eraseAt = (px: number, py: number, rect: DOMRect) => {
+    const { ox, oy, w, h } = frameOf(rect.width, rect.height, img.current);
+    const hit: string[] = [];
+    for (const s of strokes) {
+      if (erased.current.has(s.id) || !s.points.length) continue;
+      const xs = s.points.map((p) => ox + p.x * w);
+      const ys = s.points.map((p) => oy + p.y * h);
+      const reach = ERASE_RADIUS + s.width / 2;
+      const touched =
+        s.points.length === 1
+          ? Math.hypot(px - xs[0], py - ys[0]) <= reach
+          : xs.slice(1).some((_, i) => distToSegment(px, py, xs[i], ys[i], xs[i + 1], ys[i + 1]) <= reach);
+      if (touched) hit.push(s.id);
+    }
+    if (!hit.length) return;
+    hit.forEach((id) => erased.current.add(id));
+    onErase(hit);
+  };
+
+  const finish = (commit: boolean) => {
+    const pts = current.current;
+    current.current = null;
+    erased.current.clear();
+    if (commit && pts && pts.length && !eraser)
+      onStroke({ id: `s-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, color, width: 4, points: pts, target });
+    else drawRef.current();
   };
 
   return (
@@ -178,23 +256,36 @@ export function Whiteboard({
       <div ref={wrap} className="relative flex-1 bg-white">
         <canvas
           ref={canvas}
-          className="absolute inset-0 size-full touch-none cursor-crosshair"
+          className={cn("absolute inset-0 size-full touch-none", eraser ? "cursor-none" : "cursor-crosshair")}
           onPointerDown={(e) => {
             (e.target as HTMLElement).setPointerCapture(e.pointerId);
-            current.current = [point(e)];
+            const { px, py, p, rect } = locate(e);
+            current.current = [p];
+            if (eraser) {
+              setCursor({ x: px, y: py });
+              eraseAt(px, py, rect);
+            } else draw();
           }}
           onPointerMove={(e) => {
+            const { px, py, p, rect } = locate(e);
+            if (eraser) setCursor({ x: px, y: py });
             if (!current.current) return;
-            current.current.push(point(e));
-            draw();
+            if (eraser) eraseAt(px, py, rect);
+            else {
+              current.current.push(p);
+              draw();
+            }
           }}
-          onPointerUp={() => {
-            const pts = current.current;
-            current.current = null;
-            if (pts && pts.length > 1)
-              onStroke({ id: `s-${Date.now()}`, color: eraser ? "#ffffff" : color, width: eraser ? 24 : 4, points: pts, target });
-          }}
+          onPointerUp={() => finish(true)}
+          onPointerCancel={() => finish(false)}
+          onPointerLeave={() => setCursor(null)}
         />
+        {eraser && cursor && (
+          <div
+            className="pointer-events-none absolute rounded-full border-2 border-primary bg-primary/10"
+            style={{ width: ERASE_RADIUS * 2, height: ERASE_RADIUS * 2, left: cursor.x - ERASE_RADIUS, top: cursor.y - ERASE_RADIUS }}
+          />
+        )}
         {onBackground && !background && (
           <p className="pointer-events-none absolute inset-0 grid place-items-center px-6 text-center text-sm font-semibold text-muted-foreground">
             Sube una foto de tu ejercicio y márcala encima.

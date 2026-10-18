@@ -27,6 +27,7 @@ const PEER_EVENTS = new Set<ClassroomEvent["type"]>([
   "graph_remove",
   "board_draw",
   "board_clear",
+  "board_erase",
   "focus_tool",
   "session_event",
 ]);

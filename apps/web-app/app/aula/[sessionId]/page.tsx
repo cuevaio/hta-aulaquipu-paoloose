@@ -28,7 +28,7 @@ import { DesmosGraph, type DesmosHandle } from "@/components/classroom/desmos";
 import { LiveDoc } from "@/components/classroom/live-doc";
 import { Whiteboard } from "@/components/classroom/whiteboard";
 import { ParticipantCard, type Participant } from "@/components/classroom/participant-card";
-import { tableToMarkdown, upsertSection, type ClassroomEvent, type ClassroomTool, type Stroke } from "@/lib/classroom/events";
+import { applyBoardEvent, tableToMarkdown, upsertSection, type ClassroomEvent, type ClassroomTool, type Stroke } from "@/lib/classroom/events";
 import { useClassroomRoom } from "@/lib/classroom/use-classroom-room";
 import { SimulatedAiTutor } from "@/lib/classroom/ai-engine";
 import { scriptFor } from "@/lib/classroom/ai-scripts";
@@ -144,6 +144,15 @@ export default function ClassroomPage() {
     return m;
   }, [data]);
 
+  // Los trazos propios se aplican siempre; si hay transporte además viajan a los demás
+  const sendBoard = useCallback(
+    (e: ClassroomEvent) => {
+      if (transport) transport.send(e);
+      else setStrokes((s) => applyBoardEvent(s, e));
+    },
+    [transport],
+  );
+
   const pushChat = useCallback((line: Omit<ChatLine, "id">) => {
     setChat((c) => {
       const i = line.segment ? c.findIndex((x) => x.segment === line.segment) : -1;
@@ -197,10 +206,9 @@ export default function ClassroomPage() {
           markBusy("graphing");
           break;
         case "board_draw":
-          setStrokes((s) => [...s, e.stroke]);
-          break;
         case "board_clear":
-          setStrokes((s) => s.filter((x) => x.target !== e.target));
+        case "board_erase":
+          setStrokes((s) => applyBoardEvent(s, e));
           break;
         case "focus_tool":
           setTool(e.tool);
@@ -500,8 +508,9 @@ export default function ClassroomPage() {
                 target="board"
                 visible={tool === "board"}
                 strokes={strokes.filter((s) => s.target === "board")}
-                onStroke={(stroke) => transport?.send({ type: "board_draw", actor: myActor, stroke })}
-                onClear={() => transport?.send({ type: "board_clear", actor: myActor, target: "board" })}
+                onStroke={(stroke) => sendBoard({ type: "board_draw", actor: myActor, stroke })}
+                onErase={(ids) => sendBoard({ type: "board_erase", actor: myActor, target: "board", ids })}
+                onClear={() => sendBoard({ type: "board_clear", actor: myActor, target: "board" })}
               />
             </div>
             <div className={cn("absolute inset-0", tool !== "notebook" && "invisible")}>
@@ -511,8 +520,9 @@ export default function ClassroomPage() {
                 background={notebookImg}
                 onBackground={(url) => transport?.send({ type: "notebook_image", actor: myActor, url })}
                 strokes={strokes.filter((s) => s.target === "notebook")}
-                onStroke={(stroke) => transport?.send({ type: "board_draw", actor: myActor, stroke })}
-                onClear={() => transport?.send({ type: "board_clear", actor: myActor, target: "notebook" })}
+                onStroke={(stroke) => sendBoard({ type: "board_draw", actor: myActor, stroke })}
+                onErase={(ids) => sendBoard({ type: "board_erase", actor: myActor, target: "notebook", ids })}
+                onClear={() => sendBoard({ type: "board_clear", actor: myActor, target: "notebook" })}
               />
             </div>
 
