@@ -31,7 +31,7 @@ function parseIndex(hash: string, total: number) {
 const PRINT_CSS = `
 @media print {
   @page { size: ${STAGE_W}px ${STAGE_H}px; margin: 0; }
-  html, body { background: #fff !important; }
+  html, body { background: #15142c !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .deck-root { position: static !important; display: block !important; height: auto !important; }
   .deck-slide { position: relative !important; opacity: 1 !important; visibility: visible !important; width: ${STAGE_W}px !important; height: ${STAGE_H}px !important; break-after: page; page-break-after: always; transform: none !important; }
   .deck-frame { position: static !important; width: auto !important; height: auto !important; transform: none !important; visibility: visible !important; }
@@ -179,7 +179,7 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
   const pct = total > 1 ? (index / (total - 1)) * 100 : 100;
 
   return (
-    <div ref={rootRef} className="deck-root fixed inset-0 flex flex-col bg-navy text-white">
+    <div ref={rootRef} className="deck-root fixed inset-0 flex flex-col bg-ink text-cream">
       <style>{PRINT_CSS}</style>
 
       <div
@@ -190,7 +190,7 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
         aria-valuemax={total}
         aria-valuenow={index + 1}
       >
-        <div className="h-full bg-mint motion-safe:transition-[width] motion-safe:duration-300" style={{ width: `${pct}%` }} />
+        <div className="h-full bg-aurum motion-safe:transition-[width] motion-safe:duration-300" style={{ width: `${pct}%` }} />
       </div>
 
       <div
@@ -217,7 +217,7 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
                 aria-hidden={i !== index}
                 inert={i !== index}
                 className={cn(
-                  "deck-slide absolute inset-0 overflow-hidden bg-background text-foreground motion-safe:transition-opacity motion-safe:duration-300",
+                  "deck-slide absolute inset-0 overflow-hidden bg-ink text-cream motion-safe:transition-opacity motion-safe:duration-300",
                   i === index ? "opacity-100" : "pointer-events-none opacity-0",
                 )}
               >
@@ -229,13 +229,13 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
       </div>
 
       {notes && (
-        <aside aria-label="Notas del orador" className="max-h-[32dvh] shrink-0 overflow-y-auto bg-navy-2 px-5 py-3 text-base leading-relaxed print:hidden">
-          <p className="mb-1 text-xs font-extrabold tracking-wide text-mint uppercase">Notas · {slides[index].title}</p>
+        <aside aria-label="Notas del orador" className="max-h-[32dvh] shrink-0 overflow-y-auto bg-ink-2 px-5 py-3 text-base leading-relaxed print:hidden">
+          <p className="mb-1 text-xs font-extrabold tracking-wide text-aurum uppercase">Notas · {slides[index].title}</p>
           <p className="max-w-4xl text-white/90">{slides[index].notes}</p>
         </aside>
       )}
 
-      <div className={cn("flex shrink-0 items-center gap-2 bg-navy-2 px-3 py-2 print:hidden", !showChrome && "hidden")}>
+      <div className={cn("flex shrink-0 items-center gap-2 bg-ink-2 px-3 py-2 print:hidden", !showChrome && "hidden")}>
         <Link href="/info" className="rounded-xl px-3 py-2 text-sm font-extrabold text-white/70 hover:text-white">
           Salir
         </Link>
@@ -259,7 +259,7 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
       </div>
 
       {immersive && (
-        <button type="button" onClick={() => setImmersive(false)} aria-label="Mostrar controles" className="absolute right-2 bottom-2 rounded-full bg-navy/70 p-2 text-white/80 print:hidden">
+        <button type="button" onClick={() => setImmersive(false)} aria-label="Mostrar controles" className="absolute right-2 bottom-2 rounded-full bg-ink/70 p-2 text-white/80 print:hidden">
           <Minimize className="size-4" />
         </button>
       )}

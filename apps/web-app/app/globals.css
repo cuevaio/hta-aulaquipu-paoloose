@@ -227,3 +227,15 @@
 @media (prefers-reduced-motion: reduce) {
   .smoke-puff-dot { animation-duration: 0.01s; }
 }
+
+/* Paleta de las páginas públicas (/info y /presentacion): navy nocturno con un solo acento dorado.
+   Son tokens nuevos; no tocan los de la app. */
+@theme {
+  --color-ink: #15142c;
+  --color-ink-2: #1d1b3a;
+  --color-ink-3: #2a2750;
+  --color-cream: #f4efe3;
+  --color-cream-dim: #b9b5c9;
+  --color-aurum: #d9b25f;
+  --color-aurum-hi: #e6c47a;
+}

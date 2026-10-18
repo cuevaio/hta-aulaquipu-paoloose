@@ -27,9 +27,14 @@
 - [x] T2 — `/presentacion` deck.
 - [x] T3 — Browser review (orchestrator): /info hero, problem stats with sources, 3 steps, AI tutor cards, campus, safety sections render cleanly at 1393px; /presentacion slides 1 (title), 4 (loop diagram) and 6 (architecture diagram) render without overflow, counter and controls visible. Not checked: mobile widths, print, fullscreen, notes panel.
 
+### Round 2 (user feedback)
+- [x] T4 — Public URL `https://hacktheandes.vercel.app/` in content; palette for /info and /presentacion: replace the turquoise/mint accent with a subtle gold on night navy (scoped to these pages, the app keeps its tokens); landing redesign: simpler, less "AI-generated" (no icon-card grids), one clear CTA, real product screenshot (`public/landing/campus.jpg`) plus a lightweight coded mock of a class (graph + quiz card), few sections that sell; presentation simplified to match (less text per slide, same palette, same visuals).
+
 ## Progress
 - T1 done: `app/info/page.tsx` (static server component, metadata/OG), shared copy in `lib/public-content.ts` (stats worded as in the spec; team names and public URL are marked placeholders), login footer links in `app/page.tsx`. Checks: tsc clean, eslint clean, /info 200 and / 200 without cookie. Browser review pending (T3).
 - T2 done: `app/presentacion/{page,deck,slides}.tsx` (server page + client controller; 10 static slides on a 1920x1080 stage scaled to the viewport; hash is the source of truth via useSyncExternalStore; keys, halves click, swipe, progress, fullscreen with immersive fallback, notes with N, print CSS one slide/page, motion-safe transitions). Checks: tsc clean, eslint clean, /presentacion /info / 200 without cookie. Not browser-tested (T3). Placeholders: public URL, team names, traction metrics.
+
+- T4 done (writer interrupted by rate limit; finished/verified by orchestrator): gold palette tokens scoped in globals.css (`ink`, `cream`, `aurum`), simpler /info (hero + real campus screenshot, problem paragraph, class mock, 3-line how-it-works), deck restyled. Checks: tsc clean, eslint clean, Tailwind CLI compile emits `bg-ink`/`text-aurum`; running dev server served stale CSS (needs restart to show the palette). Public URL set to hacktheandes.vercel.app.
 
 ## Next step
 - T3 browser review; team fills placeholders in `lib/public-content.ts` and slide 8.

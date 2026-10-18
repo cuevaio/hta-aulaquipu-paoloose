@@ -1,26 +1,10 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
-import {
-  ArrowRight,
-  BookOpen,
-  ClipboardCheck,
-  FileText,
-  Image as ImageIcon,
-  LineChart,
-  MessageCircle,
-  Mic,
-  NotebookPen,
-  Presentation,
-  ShieldCheck,
-  Users,
-  Sparkles,
-  Map,
-  DoorOpen,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Logo } from "@/components/logo";
-import { Card, QuipuIcon, btn } from "@/components/bits";
-import { cn } from "@/lib/utils";
-import { IN_PROGRESS, NOT_DONE, PROBLEM_STATS, REPO_URL, TAGLINE, TEAM_PLACEHOLDER } from "@/lib/public-content";
+import { ClassMock } from "@/components/class-mock";
+import { PROBLEM_STATS, PUBLIC_URL_LABEL, REPO_URL, TAGLINE } from "@/lib/public-content";
 
 export const metadata: Metadata = {
   title: "AulaQuipu: el que sabe enseña y gana",
@@ -36,228 +20,134 @@ export const metadata: Metadata = {
   twitter: { card: "summary", title: "AulaQuipu", description: TAGLINE },
 };
 
+const CTA =
+  "inline-flex h-12 items-center justify-center gap-2 rounded-full bg-aurum px-7 font-extrabold text-ink transition-colors hover:bg-aurum-hi focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-aurum-hi";
+const QUIET = "text-cream-dim underline-offset-4 hover:text-cream hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-aurum-hi";
+
+const CLASS_POINTS = [
+  "Hablas con el tutor en voz alta, como en una llamada.",
+  "Grafica y propone actividades cuando las necesitas.",
+  "Al terminar, te resume qué viste y qué practicar.",
+];
+
 const STEPS = [
-  { n: 1, title: "Entras con 100 quipus", text: "Cada cuenta nueva recibe 100 quipus, dinero de juego. Con eso ya puedes aprender." },
-  { n: 2, title: "Aprende pidiendo ayuda", text: "Publicas qué no entiendes, el sistema arma grupos y pagas la clase de un compañero o de un tutor IA." },
-  { n: 3, title: "Enseña y gana", text: "Declaras lo que sabes, te contratan y ganas quipus, reputación y estrellas. Con ellos personalizas tu avatar." },
+  ["Entras con 100 quipus", "Dinero de juego, sin retiros. Con eso ya puedes aprender."],
+  ["Pides ayuda y pagas la clase", "A un compañero o a un tutor de IA, sobre lo que no entiendes."],
+  ["Enseñas y ganas", "Declaras lo que sabes, te contratan y usas lo ganado para personalizar tu avatar."],
 ];
-
-const AI_FEATURES = [
-  { icon: Mic, title: "Voz en vivo", text: "Conversas con el tutor en tiempo real, como en una llamada." },
-  { icon: FileText, title: "Documento", text: "El tutor escribe apuntes y tablas en un documento compartido." },
-  { icon: LineChart, title: "Graficador", text: "Pide “grafica y = x²” y la curva aparece en Desmos." },
-  { icon: NotebookPen, title: "Cuaderno", text: "Dibuja a mano o sube la foto de tu cuaderno y anota encima." },
-  { icon: ClipboardCheck, title: "Actividades y quiz", text: "Preguntas de opción múltiple con corrección y explicación." },
-  { icon: Sparkles, title: "Resumen al terminar", text: "Qué vimos, qué te costó y 3 ejercicios para practicar." },
-  { icon: BookOpen, title: "Guías por tema", text: "Los administradores definen objetivos, pasos y errores comunes por tema." },
-  { icon: ImageIcon, title: "Imágenes", text: "Diagramas educativos de un banco propio o de Wikimedia, con crédito." },
-];
-
-const CAMPUS = [
-  { icon: Map, title: "Campus 2D multijugador", text: "Caminas con tu avatar y ves a otros alumnos conectados en tiempo real." },
-  { icon: MessageCircle, title: "Chat por cercanía", text: "Los globos de texto solo llegan a quienes están cerca, en la misma sala. Empieza apagado." },
-  { icon: DoorOpen, title: "Salas", text: "Biblioteca para pedir ayuda, sala de tutores para enseñar y laboratorio con aulas IA." },
-];
-
-const SAFETY = [
-  "Dinero de juego: sin depósitos, sin retiros y sin precios en soles.",
-  "Sin links externos: el chat los bloquea y los documentos solo muestran imágenes de orígenes permitidos.",
-  "Chat opcional, apagado por defecto, con filtro de palabras, bloqueo por usuario y reportes.",
-  "Moderación desde el panel de administración: suspensiones, bandeja de reportes y auditoría de cada acción.",
-  "Datos en servidor con RLS: el saldo se deriva de un ledger auditable y no es editable.",
-];
-
-const TECH = [
-  { name: "Next.js", note: "App Router, API y campus" },
-  { name: "Supabase / Postgres", note: "Datos, RLS y ledger" },
-  { name: "LiveKit", note: "Salas, voz y canal de datos" },
-  { name: "GPT-Live", note: "Voz del tutor IA" },
-  { name: "Director de clase", note: "Modelo de texto que decide acciones" },
-  { name: "Desmos", note: "Graficador en vivo" },
-  { name: "AtomicMemory", note: "Memoria de clases (en progreso)" },
-];
-
-function Section({ id, title, kicker, children }: { id: string; title: string; kicker?: string; children: React.ReactNode }) {
-  return (
-    <section aria-labelledby={id} className="mx-auto w-full max-w-5xl px-4 py-12 md:px-8 md:py-16">
-      {kicker && <p className="mb-2 text-sm font-extrabold tracking-wide text-primary uppercase">{kicker}</p>}
-      <h2 id={id} className="mb-6 font-heading text-3xl font-semibold md:text-4xl">
-        {title}
-      </h2>
-      {children}
-    </section>
-  );
-}
 
 export default function InfoPage() {
+  const [reading, math, betting] = PROBLEM_STATS;
   return (
-    <main className="flex-1">
-      <header className="hero-sky text-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5 md:px-8">
-          <Logo light />
-          <nav aria-label="Principal" className="flex items-center gap-2 text-sm font-extrabold">
-            <Link href="/presentacion" className="rounded-xl px-3 py-2 text-white/80 hover:text-white">
-              Presentación
-            </Link>
-            <Link href="/" className={cn(btn.mint, "h-10 px-4 text-sm")}>
-              Entrar
-            </Link>
-          </nav>
-        </div>
-        <div className="mx-auto max-w-5xl px-4 pt-10 pb-16 md:px-8 md:pt-16 md:pb-24">
-          <p className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-mint">
-            <QuipuIcon /> Hack the Andes 2026
-          </p>
-          <h1 className="font-heading text-4xl leading-[1.05] font-semibold md:text-6xl">
-            El que sabe <span className="text-mint">enseña y gana.</span>
-            <br />
-            El que aprende <span className="text-gold">paga y mejora.</span>
-          </h1>
-          <p className="mt-5 max-w-2xl text-lg text-white/80">
-            AulaQuipu es un campus donde los alumnos de secundaria se enseñan entre sí y con tutores de IA, y todos aprenden a manejar dinero sin arriesgar dinero real.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/" className={cn(btn.mint, btn.lg)}>
-              Entrar al campus <ArrowRight className="size-5" />
-            </Link>
-            <Link href="/presentacion" className={cn(btn.soft, btn.lg)}>
-              <Presentation className="size-5" /> Ver presentación
-            </Link>
+    <main className="min-h-dvh flex-1 bg-ink text-cream">
+      <div className="mx-auto w-full max-w-6xl px-5 md:px-10">
+        <header className="flex items-center justify-between py-6">
+          <Logo gold />
+          <Link href="/presentacion" className={`${QUIET} text-sm font-bold`}>
+            Presentación
+          </Link>
+        </header>
+
+        <section aria-labelledby="titulo" className="grid items-center gap-12 pt-10 pb-20 lg:grid-cols-[1fr_1.15fr] lg:gap-14 lg:pt-20 lg:pb-28">
+          <div>
+            <h1 id="titulo" className="font-heading text-4xl leading-[1.08] font-semibold sm:text-5xl lg:text-6xl">
+              <span className="text-aurum">El que sabe enseña y gana.</span>
+              <br />
+              El que aprende paga y mejora.
+            </h1>
+            <p className="mt-6 max-w-md text-lg leading-relaxed text-cream-dim">
+              Un campus donde los alumnos de secundaria se enseñan entre sí y con tutores de IA, usando dinero de juego.
+            </p>
+            <div className="mt-9 flex flex-wrap items-center gap-x-7 gap-y-4">
+              <Link href="/" className={CTA}>
+                Entrar al campus <ArrowRight className="size-5" aria-hidden />
+              </Link>
+              <Link href="/presentacion" className={QUIET}>
+                Ver la presentación
+              </Link>
+            </div>
           </div>
-        </div>
-      </header>
+          <Image
+            src="/landing/campus.jpg"
+            alt="El campus 2D de AulaQuipu con avatares de alumnos caminando entre las salas"
+            width={1280}
+            height={699}
+            priority
+            sizes="(min-width: 1024px) 620px, 100vw"
+            className="h-auto w-full rounded-2xl shadow-2xl shadow-black/50 ring-1 ring-cream/10"
+          />
+        </section>
 
-      <Section id="problema" kicker="El problema" title="Un profesor no llega a 30 alumnos">
-        <p className="mb-6 max-w-3xl text-muted-foreground">
-          En un salón peruano la clase es igual para todos: no sirve a quien va atrasado, aburre a quien ya sabe y el tutor privado es caro. Mientras tanto nadie aprende a manejar dinero en la práctica.
-        </p>
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {PROBLEM_STATS.map((s) => (
-            <li key={s.label}>
-              <Card className="h-full">
-                <p className="font-heading text-4xl font-semibold text-primary">{s.value}</p>
-                <p className="mt-2 font-bold">{s.label}</p>
-                <p className="mt-3 text-xs font-bold text-muted-foreground">Fuente: {s.source}</p>
-              </Card>
-            </li>
-          ))}
-        </ul>
-      </Section>
+        <section aria-labelledby="problema" className="border-t border-cream/10 py-20 md:py-28">
+          <div className="max-w-3xl">
+            <h2 id="problema" className="mb-6 text-sm font-extrabold tracking-widest text-aurum uppercase">
+              El problema
+            </h2>
+            <p className="font-heading text-2xl leading-snug sm:text-3xl">
+              Solo <strong className="font-semibold text-aurum">{reading.value}</strong> de los alumnos de 5º de secundaria alcanza nivel satisfactorio en lectura y{" "}
+              <strong className="font-semibold text-aurum">{math.value}</strong> en matemática. Mientras tanto, las apps de apuestas sumaron{" "}
+              <strong className="font-semibold text-aurum">{betting.value}</strong> de accesos en 2025.
+            </p>
+            <p className="mt-6 text-sm text-cream-dim">Fuentes: ENLA 2025 (Minedu); accesos a apps de apuestas, 2025.</p>
+          </div>
+        </section>
 
-      <Section id="como" kicker="Cómo funciona" title="Tres pasos, un bucle">
-        <ol className="grid gap-4 md:grid-cols-3">
-          {STEPS.map((s) => (
-            <li key={s.n}>
-              <Card className="h-full">
-                <span className="mb-3 grid size-10 place-items-center rounded-2xl bg-primary font-heading text-lg font-semibold text-primary-foreground">{s.n}</span>
-                <h3 className="font-heading text-xl font-semibold">{s.title}</h3>
-                <p className="mt-2 text-muted-foreground">{s.text}</p>
-              </Card>
-            </li>
-          ))}
-        </ol>
-        <p className="mt-6 font-bold">Vuelves por una de dos razones: llenar tu billetera enseñando o vaciarla aprendiendo.</p>
-      </Section>
+        <section aria-labelledby="clase" className="border-t border-cream/10 py-20 md:py-28">
+          <h2 id="clase" className="mb-10 font-heading text-3xl font-semibold sm:text-4xl">
+            Así se ve una clase
+          </h2>
+          <div className="grid items-center gap-10 lg:grid-cols-[1.4fr_1fr] lg:gap-14">
+            <ClassMock />
+            <ul className="space-y-5 text-lg leading-snug">
+              {CLASS_POINTS.map((t) => (
+                <li key={t} className="border-l-2 border-aurum pl-4">
+                  {t}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
 
-      <Section id="tutores-ia" kicker="Tutores IA" title="Una clase completa, en vivo">
-        <p className="mb-6 max-w-3xl text-muted-foreground">
-          Un tutor con voz da la clase y un director de clase, basado en un modelo de texto, decide las acciones: graficar, abrir una actividad o escribir en el documento.
-        </p>
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {AI_FEATURES.map(({ icon: Icon, title, text }) => (
-            <li key={title}>
-              <Card className="h-full">
-                <Icon className="mb-3 size-6 text-primary" aria-hidden />
-                <h3 className="font-extrabold">{title}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{text}</p>
-              </Card>
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      <Section id="campus" kicker="Campus" title="Un lugar al que quieres volver">
-        <ul className="grid gap-4 md:grid-cols-3">
-          {CAMPUS.map(({ icon: Icon, title, text }) => (
-            <li key={title}>
-              <Card className="h-full">
-                <Icon className="mb-3 size-6 text-primary" aria-hidden />
-                <h3 className="font-heading text-xl font-semibold">{title}</h3>
-                <p className="mt-2 text-muted-foreground">{text}</p>
-              </Card>
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      <Section id="seguridad" kicker="Seguridad y menores" title="Pensado para menores de edad">
-        <Card className="bg-gold/15 ring-gold/40">
-          <ul className="space-y-3">
-            {SAFETY.map((t) => (
-              <li key={t} className="flex gap-3 font-semibold">
-                <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
-                {t}
+        <section aria-labelledby="como" className="border-t border-cream/10 py-20 md:py-28">
+          <h2 id="como" className="mb-10 font-heading text-3xl font-semibold sm:text-4xl">
+            Cómo funciona
+          </h2>
+          <ol className="max-w-3xl space-y-8">
+            {STEPS.map(([title, text], i) => (
+              <li key={title} className="grid grid-cols-[3rem_1fr] items-baseline gap-2">
+                <span className="font-heading text-4xl text-aurum">{i + 1}</span>
+                <div>
+                  <p className="font-heading text-xl font-semibold">{title}</p>
+                  <p className="mt-1 text-cream-dim">{text}</p>
+                </div>
               </li>
             ))}
-          </ul>
-        </Card>
-      </Section>
+          </ol>
+        </section>
+      </div>
 
-      <Section id="tecnologia" kicker="Tecnología" title="Qué hay debajo">
-        <ul className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {TECH.map((t) => (
-            <li key={t.name} className="rounded-2xl bg-card p-4 ring-1 ring-border">
-              <p className="font-extrabold">{t.name}</p>
-              <p className="text-sm text-muted-foreground">{t.note}</p>
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      <Section id="fuera" kicker="Alcance" title="Qué quedó fuera">
-        <ul className="grid gap-3 md:grid-cols-2">
-          {NOT_DONE.map((n) => (
-            <li key={n.title} className="rounded-2xl bg-card p-4 ring-1 ring-border">
-              <p className="font-extrabold">{n.title}</p>
-              <p className="text-sm text-muted-foreground">{n.text}</p>
-            </li>
-          ))}
-        </ul>
-        <h3 className="mt-8 mb-3 font-heading text-xl font-semibold">En progreso</h3>
-        <ul className="grid gap-3 md:grid-cols-2">
-          {IN_PROGRESS.map((n) => (
-            <li key={n.title} className="rounded-2xl bg-secondary p-4">
-              <p className="font-extrabold">{n.title}</p>
-              <p className="text-sm text-muted-foreground">{n.text}</p>
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      <Section id="equipo" kicker="Equipo" title="Quiénes lo hicieron">
-        {/* PENDIENTE (equipo): reemplazar por los nombres reales en lib/public-content.ts */}
-        <ul className="grid gap-3 md:grid-cols-3">
-          {TEAM_PLACEHOLDER.map((t) => (
-            <li key={t} className="flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
-              <Users className="size-5 text-muted-foreground" aria-hidden />
-              <span className="font-bold text-muted-foreground">{t}</span>
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      <footer className="hero-sky text-white">
-        <div className="mx-auto flex max-w-5xl flex-col items-start gap-6 px-4 py-10 md:flex-row md:items-center md:justify-between md:px-8">
-          <div>
-            <Logo light />
-            <p className="mt-2 text-sm text-white/70">Hack the Andes 2026, Lima.</p>
-          </div>
-          <nav aria-label="Enlaces" className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-extrabold">
-            <Link href="/" className="hover:underline">Entrar al campus</Link>
-            <Link href="/presentacion" className="hover:underline">Presentación</Link>
-            <a href={REPO_URL} className="hover:underline" rel="noopener noreferrer">Código en GitHub</a>
-          </nav>
+      <section aria-labelledby="cierre" className="bg-ink-2 py-20 text-center md:py-24">
+        <div className="mx-auto max-w-2xl px-5">
+          <h2 id="cierre" className="font-heading text-3xl font-semibold sm:text-4xl">
+            Tu primera clase te espera.
+          </h2>
+          <p className="mt-3 text-cream-dim">Empiezas con 100 quipus.</p>
+          <Link href="/" className={`${CTA} mt-8`}>
+            Entrar al campus <ArrowRight className="size-5" aria-hidden />
+          </Link>
         </div>
+      </section>
+
+      <footer className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-5 py-8 text-sm text-cream-dim md:flex-row md:items-center md:justify-between md:px-10">
+        <p>Hack the Andes 2026 · {PUBLIC_URL_LABEL}</p>
+        <nav aria-label="Enlaces" className="flex gap-6">
+          <a href={REPO_URL} rel="noopener noreferrer" className={QUIET}>
+            Código en GitHub
+          </a>
+          <Link href="/presentacion" className={QUIET}>
+            Presentación
+          </Link>
+        </nav>
       </footer>
     </main>
   );
