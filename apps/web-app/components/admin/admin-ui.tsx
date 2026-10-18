@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+import { useQuery } from "@/components/providers";
 import { Card } from "@/components/bits";
 import { cn } from "@/lib/utils";
 
@@ -96,3 +99,13 @@ export function ComingSoon({ title, subtitle }: { title: string; subtitle: strin
 
 export const fmt = (n: number) => new Intl.NumberFormat("es-PE").format(n);
 
+/** Métricas del panel con recarga automática cada `everyMs` (por defecto 30 s). */
+export function useAdminMetrics(everyMs = 30_000) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), everyMs);
+    return () => clearInterval(id);
+  }, [everyMs]);
+  const q = useQuery((u) => api.admin.metrics(u), [tick]);
+  return { ...q, refresh: () => setTick((t) => t + 1) };
+}

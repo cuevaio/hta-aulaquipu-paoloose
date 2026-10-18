@@ -38,7 +38,7 @@
 
 ## Tasks
 - [x] T1 — Foundation: migration 003 (admins, audit, ledger kinds, guides, promotions, announcements, suspension, chat reports), server admin guard, `/admin` shell + nav, mock support, demo admin.
-- [ ] T2 — Metrics: traction, demand gaps, economy, quality (4–7).
+- [x] T2 — Metrics: traction, demand gaps, economy, quality (4–7).
 - [ ] T3 — Credits and AI pricing/promotions (1–2), applied in booking.
 - [ ] T4 — AI teaching guides (3): CRUD + agent metadata + agent instructions.
 - [ ] T5 — Management: topics, AI tutors, shop (8–10).
@@ -52,7 +52,8 @@
 - Every admin action appears in the audit log.
 
 ## Progress
-- T1 done (`feat(admin): add admin schema, server guard and admin shell`). `backend/migrations/003_admin.sql` (mirrored in `database.sql` §9, demo admin `valentina5` also in `demo_seed.sql`) **must be applied in Supabase**; until then admins/suspension checks degrade to "nobody is admin / nobody suspended" and `admin/*` DB calls answer 503. Server: `lib/server/admin.ts` (`isAdmin`, `requireAdmin`, `requireNotSuspended`, `audit`, 15 s caches, optional `ADMIN_PROFILE_IDS`), route flag `a()` in `app/api/[...path]/route.ts`, `GET admin/me` (session only). UI: `/admin` shell (`components/admin/admin-shell.tsx`, tabs/sidebar), Auditoría page, "Admin" entry in the avatar menu (`Me.is_admin`), mock admin (`lib/api/mock-admin.ts`, admin = `usr-valeria`). Observed: `tsc --noEmit` clean, eslint clean, `/admin` `/admin/auditoria` `/` `/campus` `/tutores-ia` 200, `/api/admin/audit` no cookie 401, logged in as valentina5 (not admin on the unmigrated DB) `admin/me` {isAdmin:false}, `admin/audit` 403 "Solo administradores.", `ledger/mine` still 200.
+- T1 done (01f6f12 `feat(admin): add admin schema, server guard and admin shell`). `backend/migrations/003_admin.sql` (mirrored in `database.sql` §9, demo admin `valentina5` also in `demo_seed.sql`) **must be applied in Supabase**; until then admins/suspension checks degrade to "nobody is admin / nobody suspended" and `admin/*` DB calls answer 503. Server: `lib/server/admin.ts` (`isAdmin`, `requireAdmin`, `requireNotSuspended`, `audit`, 15 s caches, optional `ADMIN_PROFILE_IDS`), route flag `a()` in `app/api/[...path]/route.ts`, `GET admin/me` (session only). UI: `/admin` shell (`components/admin/admin-shell.tsx`, tabs/sidebar), Auditoría page, "Admin" entry in the avatar menu (`Me.is_admin`), mock admin (`lib/api/mock-admin.ts`, admin = `usr-valeria`). Observed: `tsc --noEmit` clean, eslint clean, `/admin` `/admin/auditoria` `/` `/campus` `/tutores-ia` 200, `/api/admin/audit` no cookie 401, logged in as valentina5 (not admin on the unmigrated DB) `admin/me` {isAdmin:false}, `admin/audit` 403 "Solo administradores.", `ledger/mine` still 200.
+- T2 done (`feat(admin): add traction, economy, demand and quality dashboards`). SQL `admin_metrics()` (003) returns all aggregates as jsonb in one call; `GET admin/metrics`; UI Resumen (tracción en vivo, auto-refresh 30 s, demanda sin oferta, ranking, clases cortas, reseñas bajas con feedback privado) and Economía (entra vs sale, top earners, saldo cero); mock computes the same shape. Observed: `tsc --noEmit` clean, eslint clean, `/admin` `/admin/economia` `/` `/campus` `/tutores-ia` 200, `/api/admin/metrics` no cookie 401, as non-admin 403. SQL verified in PGlite (database.sql + demo_seed.sql + 003 run twice; `admin_metrics()` returned expected totals on the demo data).
 
 ## Next step
-- T2.
+- T3.

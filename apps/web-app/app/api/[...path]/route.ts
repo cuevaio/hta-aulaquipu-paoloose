@@ -71,6 +71,7 @@ const ROUTES: Route[] = [
 
   // Panel de administración. admin/me solo pide sesión: dice si eres admin sin dar 403.
   r("GET", "admin/me", async ({ user }) => ({ isAdmin: await isAdmin(user) })),
+  a("GET", "admin/metrics", () => ad.metrics()),
   a("GET", "admin/audit", () => ad.auditLog()),
 ];
 

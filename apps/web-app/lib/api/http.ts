@@ -33,6 +33,7 @@ const q = encodeURIComponent;
 
 const admin: AdminApi = {
   me: (u) => call(u, "GET", "/admin/me"),
+  metrics: (u) => call(u, "GET", "/admin/metrics"),
   audit: (u) => call(u, "GET", "/admin/audit"),
 };
 

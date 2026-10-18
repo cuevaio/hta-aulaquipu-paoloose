@@ -4,6 +4,7 @@
 // Se elige con NEXT_PUBLIC_API_MODE=mock|http.
 
 import type {
+  AdminMetrics,
   AuditRow,
 } from "@/lib/admin-types";
 import type {
@@ -75,6 +76,7 @@ export interface RoomToken {
 /** Panel de administración. El servidor exige sesión + admin en cada llamada (excepto me). */
 export interface AdminApi {
   me(userId: UUID): Promise<{ isAdmin: boolean }>;
+  metrics(userId: UUID): Promise<AdminMetrics>;
   audit(userId: UUID): Promise<AuditRow[]>;
 }
 
