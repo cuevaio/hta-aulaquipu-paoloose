@@ -83,8 +83,8 @@ describe('gráficos desde la capa de voz', () => {
 
   it('las instrucciones del modelo de respaldo ya no piden graficar (lo hace el tutor)', () => {
     const text = backendInstructions(ctx, '');
-    expect(text).not.toMatch(/llama graphSet/);
-    expect(text).toMatch(/gráficos .*tutor directamente/);
+    expect(text).not.toMatch(/llama (graphSet|quizAsk|emote)/);
+    expect(text).toMatch(/gráficos, .*quizAsk.*emote.*tutor directamente/);
   });
 });
 

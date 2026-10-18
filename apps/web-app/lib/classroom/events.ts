@@ -2,7 +2,13 @@
 // los mensajes de presencia. Viajan por un ClassroomTransport: hoy un bus local,
 // mañana el data channel de LiveKit (mismo JSON, mismo consumidor).
 
-export type ClassroomTool = "doc" | "graph" | "board" | "notebook";
+export type ClassroomTool = "doc" | "graph" | "notebook" | "activity";
+
+/** Eventos antiguos o de otros clientes pueden pedir la pestaña "board" (Pizarra): hoy es el Cuaderno. */
+export function normalizeTool(tool: string): ClassroomTool | null {
+  if (tool === "board") return "notebook";
+  return tool === "doc" || tool === "graph" || tool === "notebook" || tool === "activity" ? tool : null;
+}
 
 /** Reacciones del avatar del tutor IA (herramienta emote del agente). */
 export type TutorEmote = "celebrate" | "think" | "surprised" | "encourage";
@@ -32,7 +38,7 @@ export type ClassroomEvent =
   /** Borrador: quita los trazos indicados (mismo destino). */
   | { type: "board_erase"; actor: string; target: "board" | "notebook"; ids: string[] }
   | { type: "ask_student"; actor: string; question: string }
-  | { type: "focus_tool"; actor: string; tool: ClassroomTool }
+  | { type: "focus_tool"; actor: string; tool: ClassroomTool | "board" }
   | { type: "speech"; actor: string; text: string; partial?: boolean; segment?: string }
   | { type: "speaking"; actor: string; on: boolean }
   | { type: "chat"; actor: string; name: string; text: string }

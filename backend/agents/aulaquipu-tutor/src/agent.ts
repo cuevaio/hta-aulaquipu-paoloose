@@ -356,14 +356,10 @@ export function backendInstructions(c: ClassContext, memoryBrief: string): strin
       - Memoria de clases: llama memoryRecall cuando necesites saber qué trabajó o le costó al alumno
         antes, y memorySave con hechos duraderos de su progreso (qué domina, qué le cuesta, acuerdos)
         durante la clase y al cerrarla.
-      - Preguntas de opción múltiple: llama quizAsk (2 a 4 opciones, correctIndex = posición de la correcta
-        empezando en 0, explicación breve). El alumno la verá como tarjeta; no repitas la respuesta en el documento.
       - Imágenes: llama showImage con una consulta corta del concepto visual (por ejemplo "célula animal",
         "triángulo rectángulo", "mapa del Perú", "partes de una planta") y, si quieres, un título breve.
         Usa el banco del tema o Wikimedia por ti. Máximo ${MAX_IMAGES_PER_CLASS} por clase; no la repitas ni la describas en el documento.
-      - Reacciones del avatar: llama emote (celebrate, think, surprised o encourage) con moderación, cuando el tutor
-        lo pida o el momento lo merezca.
-      - Los gráficos (graphSet, graphRemove) los hace el tutor directamente, sin pasar por ti: no los repitas.
+      - Los gráficos, las preguntas de opción múltiple (quizAsk) y las reacciones del avatar (emote) los hace el tutor directamente, sin pasar por ti: no los repitas.
       - Puedes llamar varias herramientas seguidas.
       - Si te piden escribir, tabular, preguntar o guardar algo, DEBES llamar la herramienta: nunca respondas solo con texto.
       - Cada herramienta devuelve "OK" o "ERROR". Tu respuesta final se basa SOLO en esos resultados:
@@ -402,15 +398,15 @@ export function createAgent(
       - Para graficar llama TÚ graphSet con LaTeX de Desmos: "y=2x+1", "y=\\frac{1}{2}x", "(1,3)". Usa ids cortos ("f1", "f2") y reutiliza el id para cambiar una curva; el color es opcional (hexadecimal, p. ej. "#7C6BF2") para distinguir varias curvas. Para quitar una curva, graphRemove con su id.
       - Anuncia en futuro ("voy a graficarlo") y llama la herramienta de inmediato; cuando devuelva OK, confírmalo y explica lo que se ve. Si devuelve ERROR, dilo ("no pude graficarlo") y reintenta una vez.
       - La pantalla cambia sola al graficador cuando graficas.
+      - Para una pregunta de opción múltiple llama TÚ quizAsk (2 a 4 opciones, correctIndex = posición de la correcta empezando en 0, explicación breve). El alumno la ve como tarjeta en la pestaña Actividad, que se abre sola. Léela en voz alta de forma breve y espera su respuesta: no le digas cuál es la correcta, el sistema te avisará qué eligió y si acertó.
+      - Para reaccionar llama TÚ emote (celebrate, think, surprised o encourage) cuando el alumno acierte, dude o te sorprenda; con moderación. Si se equivoca, anímalo.
 
       # Qué delegar
       - Delega SIEMPRE que expliques un procedimiento, des un ejemplo resuelto, propongas un ejercicio o cierres con un resumen: pide que se escriba en el documento de la clase.
       - Delega cuando haya una tabla útil (comparaciones, valores). Lo que se entienda mejor graficado (funciones, rectas, puntos) NO se delega: lo grafica el tutor con graphSet.
       - Al cerrar la clase, o cuando el alumno domine algo nuevo, delega memorySave con un registro breve de su progreso.
       - Si el alumno menciona clases anteriores o retoman algo ya trabajado, delega memoryRecall antes de responder.
-      - Para una pregunta de opción múltiple, delega que se plantee el quiz (tema, dificultad y la respuesta correcta); el alumno la verá como tarjeta en pantalla. Léela en voz alta de forma breve y espera su respuesta: no le digas cuál es la correcta, el sistema te avisará qué eligió y si acertó.
       - Para conceptos visuales (células, triángulos, mapas, partes de una planta, el sistema solar…) delega que se muestre una imagen del tema; sirve como apoyo, no más de unas 3 veces por clase.
-      - Cuando el alumno acierte, celébralo; si se equivoca, anímalo (puedes delegar una reacción del avatar). Sin exagerar: solo en momentos que lo merezcan.
       - Saludos, preguntas de diagnóstico, ánimo y respuestas cortas: respóndelos tú, sin delegar.
 
       # Honestidad con lo que hace la pantalla
@@ -547,7 +543,7 @@ export function createAgent(
             return `ERROR: no se pudo mostrar la pregunta (${String(err)}). NO está en pantalla; dilo al tutor y no la des por planteada.`;
           }
           await hooks.logEvent('tool_call', { tool: 'quizAsk', id, question });
-          return 'OK: pregunta mostrada en pantalla. Pide al tutor que la lea en voz alta y espere la respuesta del alumno sin revelar la correcta.';
+          return 'OK: pregunta mostrada en pantalla. Léela en voz alta y espera la respuesta del alumno sin revelar la correcta.';
         },
       }),
       tool({

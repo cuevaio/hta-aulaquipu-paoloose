@@ -54,7 +54,7 @@ function fracciones(student: string): ScriptStep[] {
     },
     {
       say: "Imagina una pizza partida en cuatro partes iguales. Si te comes tres, te comiste tres cuartos. El de abajo dice en cuántas partes cortamos; el de arriba, cuántas tomamos.",
-      focus: "board",
+      focus: "notebook",
       clearBoard: true,
       draw: [
         { color: "#7C6BF2", points: circle(0.5, 0.5, 0.3) },
@@ -97,7 +97,7 @@ function fracciones(student: string): ScriptStep[] {
       wrong: [
         {
           say: "Casi. Probemos por otro camino: un medio es lo mismo que dos cuartos, ¿lo ves en el dibujo? Entonces un cuarto más dos cuartos son tres cuartos.",
-          focus: "board",
+          focus: "notebook",
           clearBoard: true,
           draw: [
             { color: "#FF8A65", points: circle(0.5, 0.5, 0.3) },
