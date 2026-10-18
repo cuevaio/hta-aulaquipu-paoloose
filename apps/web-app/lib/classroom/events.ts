@@ -54,6 +54,8 @@ export type ClassroomEvent =
   | { type: "emote"; actor: string; kind: TutorEmote }
   /** El alumno terminó la clase: el agente debe escribir el resumen antes de que se cierre la sala. */
   | { type: "wrap_up"; actor: string; doc: string }
+  /** La web ejecutó una acción del director: se avisa al tutor de voz para que la confirme (solo sale hacia el agente). */
+  | { type: "director_done"; actor: string; summary: string }
   /** El agente terminó (ok) o no pudo escribir el resumen. */
   | { type: "wrap_up_done"; actor: string; ok: boolean }
   /** Confirmación de una herramienta del agente que sí se ejecutó (chip del chat). */

@@ -6,6 +6,7 @@ import {
   type ClassContext,
   createAgent,
   createQuizBook,
+  handleDirectorDone,
   handleQuizAnswer,
   wrapUpClass,
   watchDelegations,
@@ -155,7 +156,7 @@ export default defineAgent({
     // Mensajes del alumno al agente: respuestas a las tarjetas de quiz y cierre de clase
     ctx.room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
       if (!participant || participant.kind === ParticipantKind.AGENT) return;
-      let msg: { type?: unknown; id?: unknown; index?: unknown; doc?: unknown };
+      let msg: { type?: unknown; id?: unknown; index?: unknown; doc?: unknown; summary?: unknown };
       try {
         msg = JSON.parse(decoder.decode(payload));
       } catch {
@@ -167,6 +168,10 @@ export default defineAgent({
           // El tutor de voz reacciona: felicita o anima y explica
           if (prompt) session.generateReply({ instructions: prompt });
         });
+      } else if (topic === 'aulaquipu:control' && msg.type === 'director_done') {
+        // La web ya graficó / preguntó / mostró algo: el tutor lo confirma sin inventar nada
+        const prompt = handleDirectorDone(msg as { type?: unknown; summary?: unknown });
+        if (prompt) session.generateReply({ instructions: prompt });
       } else if (topic === 'aulaquipu:control' && msg.type === 'wrap_up' && !wrappingUp) {
         wrappingUp = true;
         void wrapUpClass(hooks, generateSummary, {

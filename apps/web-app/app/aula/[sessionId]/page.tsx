@@ -259,6 +259,8 @@ export default function ClassroomPage() {
     const actor = aiKey ?? myActor;
     const d = dir.current;
     const chip = (tool: string, label: string) => transport.send({ type: "tool_action", actor, tool, label });
+    // Lo que realmente se ejecutó, para que el tutor de voz lo confirme (solo este cliente avisa)
+    const done: string[] = [];
     for (const a of actions) {
       if (a.type === "graph_set") {
         const norm = a.latex.replace(/\s+/g, "");
@@ -268,18 +270,25 @@ export default function ClassroomPage() {
         transport.send({ type: "graph_set", actor, id: a.id, latex: a.latex, color: a.color });
         transport.send({ type: "focus_tool", actor, tool: "graph" });
         chip("graph", `Graficado ${a.latex}`);
+        done.push(`Graficado ${a.latex}${a.color ? ` (color ${a.color})` : ""}`);
       } else if (a.type === "graph_clear") {
         for (const id of a.ids) transport.send({ type: "graph_remove", actor, id });
         d.graphs.clear();
-        if (a.ids.length) chip("graph", "Gráfico borrado");
+        if (a.ids.length) {
+          chip("graph", "Gráfico borrado");
+          done.push("Gráfico borrado");
+        }
       } else if (a.type === "quiz") {
         transport.send({ type: "quiz_ask", actor, id: a.id, question: a.question, options: a.options });
+        done.push(`Pregunta enviada a la pestaña Actividad: ${a.question}`);
       } else if (a.type === "image") {
         transport.send({ type: "doc_write", actor, markdown: imageMarkdown(a), mode: "append" });
         transport.send({ type: "focus_tool", actor, tool: "doc" });
         chip("image", "Imagen");
+        done.push(`Imagen en el documento: ${a.caption}`);
       }
     }
+    if (done.length) transport.publish({ type: "director_done", actor: myActor, summary: done.join(". ") });
   };
   useEffect(() => {
     applyActionsRef.current = applyDirectorActions;

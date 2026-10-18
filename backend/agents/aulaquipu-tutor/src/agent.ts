@@ -154,6 +154,21 @@ export async function handleQuizAnswer(
     : `El alumno respondió la pregunta de opción múltiple con ${chosen} y es INCORRECTA; la correcta era ${letter(g.correctIndex)}) ${g.options[g.correctIndex]}. Anímalo sin regañar, explica el porqué en dos frases cortas (${g.explanation}) y ofrécele otro ejemplo o un nuevo intento.`;
 }
 
+// --- Lo que hizo el director de la web ---
+
+/**
+ * La web (director de clase) ejecutó una acción (gráfico, pregunta, imagen) y avisa con
+ * `director_done`. Devuelve la indicación para que el tutor de voz lo confirme en una frase,
+ * o null si el aviso no es válido.
+ */
+export function handleDirectorDone(msg: { type?: unknown; summary?: unknown }): string | null {
+  if (msg.type !== 'director_done' || typeof msg.summary !== 'string') return null;
+  // Texto de una línea y sin caracteres de control: es un dato, no una instrucción
+  const summary = msg.summary.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+  if (!summary) return null;
+  return `La plataforma acaba de ejecutar esto en la pantalla del alumno: "${summary}". Confírmalo en UNA frase corta y natural ("Listo, ya está en el graficador") y sigue con la clase. No afirmes nada que no esté en este aviso.`;
+}
+
 // --- Resumen de fin de clase ---
 
 export const SUMMARY_SECTION = 'Resumen de la clase';
@@ -443,6 +458,7 @@ export function createAgent(
       5. Cierra con un resumen hablado breve.
 
       # Herramientas que llamas TÚ directamente (no las delegues)
+      - La plataforma también ejecuta por ti lo que ANUNCIES con claridad: si dices con la expresión completa "voy a graficar y igual a x al cuadrado", "te propongo una pregunta de opción múltiple sobre…" o "te muestro una imagen de la célula animal", el gráfico, la tarjeta o la imagen aparecen solos. Anuncia siempre de forma explícita (con la expresión dicha en palabras) y luego ESPERA el aviso del sistema ("la plataforma acaba de ejecutar…"): confírmalo en una frase solo entonces. Si el aviso no llega en unos segundos, di que no pudiste y llama la herramienta tú mismo como respaldo (si el gráfico ya estaba, no se duplica).
       - Para graficar llama TÚ graphSet con LaTeX de Desmos: "y=2x+1", "y=\\frac{1}{2}x", "(1,3)". Usa ids cortos ("f1", "f2") y reutiliza el id para cambiar una curva; el color es opcional (hexadecimal, p. ej. "#7C6BF2") para distinguir varias curvas. Para quitar una curva, graphRemove con su id.
       - Anuncia en futuro ("voy a graficarlo") y llama la herramienta de inmediato; cuando devuelva OK, confírmalo y explica lo que se ve. Si devuelve ERROR, dilo ("no pude graficarlo") y reintenta una vez.
       - La pantalla cambia sola al graficador cuando graficas.

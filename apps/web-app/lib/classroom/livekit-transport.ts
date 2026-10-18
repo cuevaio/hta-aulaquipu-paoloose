@@ -132,6 +132,13 @@ export class LiveKitTransport implements ClassroomTransport {
         .catch(() => {});
       return;
     }
+    if (event.type === "director_done") {
+      const body = JSON.stringify({ type: "director_done", summary: event.summary.slice(0, 200) });
+      void this.room.localParticipant
+        .publishData(new TextEncoder().encode(body), { reliable: true, topic: "aulaquipu:control" })
+        .catch(() => {});
+      return;
+    }
     if (event.type === "quiz_answer") {
       const body = JSON.stringify({ type: "quiz_answer", id: event.id, index: event.index });
       void this.room.localParticipant
