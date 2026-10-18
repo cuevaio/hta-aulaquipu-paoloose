@@ -19,6 +19,7 @@ import {
   wrapUpClass,
   watchDelegations,
   type TutorHooks,
+  freeVariables,
 } from './agent.ts';
 
 function makeHooks(overrides: Partial<TutorHooks> = {}) {
@@ -82,6 +83,21 @@ describe('gráficos desde la capa de voz', () => {
     expect(published[0]).toMatchObject({ topic: 'aulaquipu:graph', msg: { type: 'graph_op', op: 'set', id: 'f2', color: '#7C6BF2' } });
     expect(await run(tools.graphRemove, { id: 'f2' })).toMatch(/^OK/);
     expect(published[2]).toMatchObject({ topic: 'aulaquipu:graph', msg: { op: 'remove', id: 'f2' } });
+  });
+
+  it('graphSet rechaza fórmulas con letras sin definir (v=d/t) y no publica nada', async () => {
+    const { hooks, published, events } = makeHooks();
+    const out = await run(toolsOf(hooks).graphSet, { id: 'f1', latex: 'v=\\frac{d}{t}' });
+    expect(out).toMatch(/^ERROR/);
+    expect(out).toMatch(/documento/);
+    expect(published).toHaveLength(0);
+    expect(events[0]).toMatchObject({ kind: 'error', payload: { tool: 'graphSet' } });
+  });
+
+  it('freeVariables deja pasar funciones de x e y', () => {
+    expect(freeVariables('y=\\sin(x)+e^{x}')).toEqual([]);
+    expect(freeVariables('x^2+y^2=9')).toEqual([]);
+    expect(freeVariables('F=ma')).toEqual(['F', 'm', 'a']);
   });
 
   it('las instrucciones del modelo de respaldo ya no piden graficar (lo hace el tutor)', () => {
