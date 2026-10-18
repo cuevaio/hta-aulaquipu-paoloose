@@ -31,7 +31,7 @@
 
 ## Tasks
 - [x] T1 — Naming/navigation: consistent terms, remove "(demo)", "Tutores IA" in bar, Aulas IA hotspot (6).
-- [ ] T2 — Campus welcome overlay + mission hint + mobile movement hint (1, 2).
+- [x] T2 — Campus welcome overlay + mission hint + mobile movement hint (1, 2).
 - [ ] T3 — Teach panel: checklist order + progress, actionable empty state with demand + add-topic, earnings copy, price chips, schedule blocks (3, 4, 5, 8, 9).
 - [ ] T4 — Tutor profile "Pedirle una clase" CTA with prefilled request (7).
 - [ ] T5 — Self-registration: migration + RPC, API route, mock, sign-up UI with onboarding questions; keep test panel (10).
@@ -45,6 +45,7 @@
 
 ## Progress
 - T1 done: tsc clean, eslint clean, /campus /ensenar /aprender /tutores-ia /home 200. Bar now 7 items (compact on mobile), Aulas IA board -> /tutores-ia, 'Tablero' = /home, '(demo)' removed.
+- T2 done: tsc clean, eslint clean (components/campus), /campus /ensenar /aprender /home 200. Welcome overlay + '?' button, mission card (myRequests+tutorPanel+myUpcoming all empty), mobile movement hint; flags in localStorage per user via useSyncExternalStore. UI not browser-verified.
 
 ## Next step
-- T2.
+- T3.

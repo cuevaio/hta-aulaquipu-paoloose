@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, GraduationCap, LayoutDashboard, LogOut, School, ShoppingBag, Sparkles, User, Wallet, X } from "lucide-react";
+import { BookOpen, GraduationCap, LayoutDashboard, HelpCircle, LogOut, School, ShoppingBag, Sparkles, User, Wallet, X } from "lucide-react";
 import { api, API_MODE } from "@/lib/api";
 import { AI_SPOTS, STUDENT_SPOTS, TUTOR_SPOTS, type Room } from "@/lib/campus/map";
 import { useQuery, useSession } from "@/components/providers";
 import { Avatar } from "@/components/avatar";
 import { Quipus } from "@/components/bits";
 import { Logo } from "@/components/logo";
+import { MissionCard, WelcomeOverlay, useFlag, writeFlag } from "@/components/campus/welcome";
 import { CampusWorld, type CampusPerson, type Interactable } from "@/components/campus/world";
 import { useCampusPresence } from "@/lib/campus/use-campus-presence";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,29 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   const [near, setNear] = useState<Interactable | null>(null);
   const [menu, setMenu] = useState(false);
   const presence = useCampusPresence(ready && me ? userId : null);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [moved, setMoved] = useState(false);
+  const startPos = useRef<{ x: number; y: number } | null>(null);
+  const welcomeKey = `aq:welcome:${userId}`;
+  const missionKey = `aq:mission:${userId}`;
+  const welcomeSeen = useFlag(welcomeKey);
+  const missionSeen = useFlag(missionKey);
+  // Primera visita: bienvenida automática; el botón "?" la reabre cuando quiera
+  const welcome = welcomeOpen || welcomeSeen === false;
+  const missionHidden = missionSeen !== false;
+
+  const closeWelcome = useCallback(() => {
+    writeFlag(welcomeKey);
+    setWelcomeOpen(false);
+  }, [welcomeKey]);
+  const hideMission = useCallback(() => writeFlag(missionKey), [missionKey]);
+
+  // Sin pedidos, clases ni temas declarados: aún no hizo nada en la plataforma
+  const fresh = useQuery(async (u) => {
+    const [reqs, panel, upcoming] = await Promise.all([api.myRequests(u), api.tutorPanel(u), api.myUpcoming(u)]);
+    return reqs.length === 0 && panel.topics.length === 0 && upcoming.length === 0;
+  });
+  const showMission = !!fresh.data && !missionHidden && !welcome;
 
   useEffect(() => {
     if (ready && !userId) router.replace("/");
@@ -90,6 +114,16 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
     return [...students.filter((s) => !live.has(s.id)), ...ais];
   }, [crowd.data, presence.peers]);
 
+  const reportPosition = presence.reportPosition;
+  const onMove = useCallback(
+    (pos: Parameters<typeof reportPosition>[0]) => {
+      reportPosition(pos);
+      if (!startPos.current) startPos.current = { x: pos.x, y: pos.y };
+      else if (Math.hypot(pos.x - startPos.current.x, pos.y - startPos.current.y) > 1) setMoved(true);
+    },
+    [reportPosition],
+  );
+
   const open = useCallback((href: string) => router.push(href), [router]);
   const close = useCallback(() => router.push("/campus"), [router]);
 
@@ -126,7 +160,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         people={people}
         peers={presence.peers}
         peerPositions={presence.positions}
-        onMove={presence.reportPosition}
+        onMove={onMove}
         liveClass={!!crowd.data?.live}
         onOpen={open}
         onRoomChange={onRoomChange}
@@ -159,6 +193,9 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
           <Link href="/quipus" className="text-gold" aria-label={`${me.balance} quipus, ver historial`}>
             <Quipus amount={me.balance} className="text-base" />
           </Link>
+          <button onClick={() => setWelcomeOpen(true)} aria-label="Ver la guía de bienvenida" title="¿Cómo funciona?" className="rounded-full p-1 text-white/80 hover:text-white">
+            <HelpCircle className="size-6" />
+          </button>
           <button onClick={() => setMenu((m) => !m)} aria-label="Mi cuenta" aria-expanded={menu} className="rounded-full">
             <Avatar config={me.profile.avatar_config} equipped={me.equipped} size={34} label={me.profile.display_name} />
           </button>
@@ -191,13 +228,20 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
 
       {/* Cartel al entrar a una sala */}
       {banner && !panelOpen && (
-        <div key={banner.id} className="pointer-events-none absolute inset-x-0 top-20 z-[55] flex justify-center px-4">
+        <div key={banner.id} className={cn("pointer-events-none absolute inset-x-0 z-[55] flex justify-center px-4", showMission ? "top-44 sm:top-20" : "top-20")}>
           <div className="rounded-2xl bg-white/95 px-5 py-2.5 text-center shadow-xl animate-in fade-in slide-in-from-top-2">
             <p className="font-heading text-lg font-semibold text-navy">
               {banner.emoji} {banner.name}
             </p>
             {banner.subtitle && <p className="text-xs font-bold text-muted-foreground">{banner.subtitle}</p>}
           </div>
+        </div>
+      )}
+
+      {/* Misión inicial */}
+      {showMission && !panelOpen && (
+        <div className="pointer-events-none absolute inset-x-0 top-[4.5rem] z-[54] flex px-3 sm:justify-start">
+          <MissionCard onDismiss={hideMission} className="w-full sm:max-w-xs" />
         </div>
       )}
 
@@ -232,6 +276,14 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
           ))}
         </div>
       </nav>
+
+      {!panelOpen && !moved && !near && !welcome && (
+        <p className="pointer-events-none absolute inset-x-0 bottom-24 z-[50] mx-auto w-fit max-w-[90%] rounded-xl bg-navy/80 px-3 py-2 text-center text-xs font-semibold text-white lg:hidden">
+          Toca el mapa para caminar · acércate a un objeto y toca el botón
+        </p>
+      )}
+
+      {welcome && <WelcomeOverlay balance={me.balance} onClose={closeWelcome} />}
 
       {!panelOpen && (
         <p className="pointer-events-none absolute bottom-24 left-4 z-[50] hidden rounded-xl bg-navy/70 px-3 py-2 text-[11px] font-semibold text-white/80 lg:block">
