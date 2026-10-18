@@ -74,7 +74,7 @@ export const OBJECTS: WorldObject[] = [
   // Biblioteca
   o("lib-shelf-1", "shelf", 1, 1, 4, 1, { emoji: "📚" }),
   o("lib-shelf-2", "shelf", 9, 1, 4, 1, { emoji: "📚" }),
-  o("lib-board", "board", 5, 1, 4, 1, { emoji: "📌", label: "Mis pedidos", href: "/home", prompt: "Ver mis pedidos en el tablero" }),
+  o("lib-board", "board", 5, 1, 4, 1, { emoji: "📌", label: "Mis pedidos", href: "/aprender", prompt: "Ver mis pedidos" }),
   o("lib-kiosk", "kiosk", 6, 4, 2, 1, { emoji: "📝", label: "Publicar pedido", href: "/aprender", prompt: "Pedir una tutoría" }),
   o("lib-table-1", "table", 2, 6, 2, 1, { emoji: "📖" }),
   o("lib-table-2", "table", 10, 6, 2, 1, { emoji: "✏️" }),
@@ -111,7 +111,7 @@ export const OBJECTS: WorldObject[] = [
   o("plaza-board", "board", 34, 12, 2, 1, { emoji: "🗒️", label: "Tablero", href: "/home", prompt: "Abrir mi tablero" }),
 
   // Aulas
-  o("aula-board", "board", 8, 17, 4, 1, { emoji: "🏫", label: "Mis clases", href: "/clases", prompt: "Ver mis clases y entrar al aula" }),
+  o("aula-board", "board", 8, 17, 4, 1, { emoji: "🏫", label: "Mis clases", href: "/home#clases", prompt: "Ver mis clases y entrar al aula" }),
   ...[2, 5, 8].flatMap((x) => [
     o(`aula-desk-${x}-a`, "desk", x, 20, 2, 1, { emoji: "📓" }),
     o(`aula-desk-${x}-b`, "desk", x, 22, 2, 1, { emoji: "📐" }),
@@ -128,7 +128,7 @@ export const OBJECTS: WorldObject[] = [
   // Banco
   o("bank-art", "board", 28, 17, 3, 1, { emoji: "🪢" }),
   o("bank-counter", "counter", 31, 19, 4, 1, { emoji: "🏦", label: "Ventanilla", href: "/quipus", prompt: "Ver mis quipus" }),
-  o("bank-vault", "vault", 36, 17, 2, 2, { emoji: "🔐" }),
+  o("bank-vault", "vault", 36, 17, 2, 2, { emoji: "🔐", label: "Insignias", href: "/perfil", prompt: "Ver mis insignias" }),
   o("bank-plant", "plant", 27, 24, 1, 1, { emoji: "🪴" }),
 ];
 

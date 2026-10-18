@@ -6,6 +6,7 @@ import { Clock, User, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import type { RequestMode } from "@/lib/types";
 import { useMutation } from "@/components/providers";
+import { MyRequests } from "@/components/my-requests";
 import { Card, btn } from "@/components/bits";
 import { cn } from "@/lib/utils";
 
@@ -50,7 +51,8 @@ export default function NewRequestPage() {
   };
 
   return (
-    <form onSubmit={submit} className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-2xl space-y-10">
+    <form onSubmit={submit} className="space-y-6">
       <div>
         <p className="text-sm font-bold text-primary">Quiero aprender</p>
         <h1 className="font-heading text-3xl font-semibold">¿Qué se te está complicando?</h1>
@@ -143,5 +145,7 @@ export default function NewRequestPage() {
         {pending ? "Buscando match…" : "Buscar quién me enseñe"}
       </button>
     </form>
+    <MyRequests title="Mis pedidos" />
+    </div>
   );
 }

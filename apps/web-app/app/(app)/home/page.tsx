@@ -5,16 +5,14 @@ import { ArrowRight, BookOpen, GraduationCap } from "lucide-react";
 import { api } from "@/lib/api";
 import { useQuery, useSession } from "@/components/providers";
 import { UpcomingClasses } from "@/components/upcoming-classes";
+import { MyRequests } from "@/components/my-requests";
 import { Avatar } from "@/components/avatar";
 import { AiTutorCard } from "@/components/ai-tutor-card";
-import { Card, Pill, Quipus, SectionTitle, Skeleton, btn, timeAgo } from "@/components/bits";
+import { Card, Quipus, SectionTitle, Skeleton, btn, timeAgo } from "@/components/bits";
 import { cn } from "@/lib/utils";
-
-const STATUS_LABEL = { open: "Buscando match", matched: "Con match", fulfilled: "Completado", cancelled: "Cancelado" };
 
 export default function HomePage() {
   const { me } = useSession();
-  const requests = useQuery((u) => api.myRequests(u));
   const feed = useQuery((u) => api.openRequestsFeed(u));
   const ai = useQuery(() => api.listAiTutors());
 
@@ -78,38 +76,14 @@ export default function HomePage() {
         </div>
       </section>
 
-      <UpcomingClasses hideWhenEmpty />
+      <div id="clases" className="scroll-mt-4">
+        <UpcomingClasses />
+      </div>
 
       <div className="grid grid-cols-1 gap-8 @5xl:grid-cols-[1.3fr_1fr]">
         <div className="space-y-8">
           {/* Mis pedidos */}
-          <section>
-            <SectionTitle action={<Link href="/aprender" className="text-sm font-bold text-primary">+ Nuevo</Link>}>
-              Lo que quiero aprender
-            </SectionTitle>
-            {requests.loading && !requests.data && <Skeleton className="h-20" />}
-            {requests.data?.length === 0 && (
-              <Card className="text-center text-sm text-muted-foreground">
-                Aún no pides nada. <Link href="/aprender" className="font-bold text-primary">Publica tu primer pedido</Link>.
-              </Card>
-            )}
-            <div className="space-y-2">
-              {requests.data?.slice(0, 4).map((r) => (
-                <Link
-                  key={r.id}
-                  href={r.status === "open" ? `/match/${r.id}` : "/home"}
-                  className="flex items-center gap-3 rounded-2xl bg-card p-4 ring-1 ring-border transition-colors hover:ring-primary"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-extrabold">{r.topic.name}</p>
-                    <p className="truncate text-sm text-muted-foreground">“{r.detail}”</p>
-                  </div>
-                  <Pill className={cn(r.status === "open" && "bg-gold/30 text-gold-foreground")}>{STATUS_LABEL[r.status]}</Pill>
-                  {r.status === "open" && <ArrowRight className="size-4 text-muted-foreground" />}
-                </Link>
-              ))}
-            </div>
-          </section>
+          <MyRequests title="Lo que quiero aprender" action={<Link href="/aprender" className="text-sm font-bold text-primary">+ Nuevo</Link>} />
 
           {/* Pedidos abiertos de otros: el lado "ganar" del bucle */}
           <section>
