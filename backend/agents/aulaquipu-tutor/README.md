@@ -92,7 +92,7 @@ ATOMICMEMORY_API_URL=https://api.atomicstrata.ai
 ATOMICMEMORY_API_KEY=your_amc_key
 ```
 
-At class start the agent recalls what the student worked on before (`memoryRecall`), and during class it saves durable progress notes (`memorySave`). Memories are scoped per student. Without the key the agent runs normally, just without memory.
+At class start the agent recalls what the student worked on before (`memoryRecall`), and during class it saves durable progress notes (`memorySave`). Memories are scoped per student (`user` = student id) and tagged with the class session. Without the credentials, or if the API errors or takes longer than ~4 s, the agent runs normally without memory and logs a single warning (never memory content or keys). Implementation: `src/memory.ts`.
 
 The [`am` CLI](https://docs.atomicstrata.ai/cli#install) reaches the same memory from a terminal:
 
