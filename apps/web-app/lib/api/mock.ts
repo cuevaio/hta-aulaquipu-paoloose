@@ -16,6 +16,7 @@ import { buildMockAdmin, check, isMockAdmin } from "@/lib/api/mock-admin";
 import { parseReportText } from "@/lib/admin-validate";
 import { sanitizeAvatar } from "@/lib/avatar-catalog";
 import { aiPrice, priceWithPromos } from "@/lib/pricing";
+import { isSpriteSkin, spriteSlot } from "@/lib/skins";
 import { buildSeed, SEED_VERSION, TOPIC_KEYWORDS, type DbState } from "@/lib/api/seed";
 import type {
   AiTutor,
@@ -785,7 +786,13 @@ export const mockApi: ApiClient = {
       if (!skin || !owned) throw new ApiError("Solo puedes equipar lo que es tuyo.");
       if (equip) {
         s.profile_skins
-          .filter((p) => p.profile_id === userId && s.skins.find((k) => k.id === p.skin_id)?.kind === skin.kind)
+          .filter((p) => {
+            const k = s.skins.find((x) => x.id === p.skin_id);
+            if (p.profile_id !== userId || k?.kind !== skin.kind) return false;
+            // Igual que el servidor: las partes sprite solo compiten con su mismo slot
+            if (isSpriteSkin(k.meta) !== isSpriteSkin(skin.meta)) return false;
+            return !isSpriteSkin(skin.meta) || spriteSlot(k.meta) === spriteSlot(skin.meta);
+          })
           .forEach((p) => (p.equipped = false));
       }
       owned.equipped = equip;

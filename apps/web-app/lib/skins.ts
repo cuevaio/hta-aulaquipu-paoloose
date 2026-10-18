@@ -29,6 +29,36 @@ export function isSpriteSkin(meta: SkinMeta | undefined): boolean {
   return meta?.sprite === true;
 }
 
+// Tipo de figura Habbo según el nombre de la carpeta. El `slot` guardado en los skins de la
+// tienda no es confiable (hay "top", "hair", "acc", lentes como "fa"…), la carpeta sí.
+const SLOT_BY_FOLDER: [RegExp, string][] = [
+  [/^hh_human_body$/, "hh"],
+  [/^(hh_human_face$|face_)/i, "fc"],
+  [/^(hh_human_hair|hair_)/i, "hr"],
+  [/^(hh_human_shirt|shirt_)/i, "ch"],
+  [/^jacket_/i, "cc"],
+  [/^(hh_human_leg|trousers_)/i, "lg"],
+  [/^(hh_human_shoe|shoes_)/i, "sh"],
+  [/^(hh_human_)?hats?_/i, "ha"],
+  [/^(hh_human_)?acc_eye/i, "ea"],
+  [/^(hh_human_)?acc_face/i, "fa"],
+  [/^(hh_human_)?acc_head/i, "he"],
+  [/^(hh_human_)?acc_chest/i, "ca"],
+  [/^(hh_human_)?acc_waist/i, "wa"],
+  [/^acc_print/i, "cp"],
+];
+
+/** Slot de una pieza sprite ("hat_U_camocap" → "ha"); null si la carpeta no sigue el patrón. */
+export function figureSlot(item: string): string | null {
+  const folder = item.split("#")[0];
+  return SLOT_BY_FOLDER.find(([re]) => re.test(folder))?.[1] ?? null;
+}
+
+/** Slot con el que compite un skin sprite equipado: el de la carpeta, o el guardado si no se sabe. */
+export function spriteSlot(meta: SkinMeta | undefined): string {
+  return (meta?.item && figureSlot(meta.item)) || meta?.slot || meta?.item || "acc";
+}
+
 export function avatarColor(config: AvatarConfig): string {
   return config.color ?? (config.palette ? PALETTES[config.palette]?.color : undefined) ?? "#7C6BF2";
 }

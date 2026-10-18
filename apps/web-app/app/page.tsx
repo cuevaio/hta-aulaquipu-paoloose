@@ -8,6 +8,7 @@ import { useSession, useToast } from "@/components/providers";
 import { Avatar, AiAvatar } from "@/components/avatar";
 import { Logo } from "@/components/logo";
 import { QuipuIcon, btn } from "@/components/bits";
+import { resetWelcome } from "@/components/campus/welcome";
 import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
@@ -34,6 +35,7 @@ export default function LoginPage() {
     try {
       const { userId } = await api.login(dni, password);
       selectUser(userId);
+      resetWelcome(userId);
       // Next conserva esta página oculta al navegar: se deja el formulario listo para el próximo login
       setPending(false);
       setPassword("");

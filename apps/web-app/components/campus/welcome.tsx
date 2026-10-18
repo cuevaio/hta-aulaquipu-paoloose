@@ -31,6 +31,18 @@ export function writeFlag(key: string) {
   window.dispatchEvent(new Event(FLAG_EVENT));
 }
 
+/** Al iniciar sesión la bienvenida (y con ella el creador de avatar) vuelve a aparecer. */
+export function resetWelcome(userId: string) {
+  const key = `aq:welcome:${userId}`;
+  memory.delete(key);
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* sin almacenamiento: la marca solo vivía en memoria */
+  }
+  window.dispatchEvent(new Event(FLAG_EVENT));
+}
+
 /** Marca guardada por usuario. En el servidor (y antes de hidratar) devuelve `null` = aún no se sabe. */
 export function useFlag(key: string): boolean | null {
   return useSyncExternalStore(
@@ -82,8 +94,8 @@ export function AvatarDialog({
 }
 
 /**
- * Bienvenida: si aún no armó su avatar, primero el creador; luego 3 pasos que terminan en
- * dos acciones grandes: aprender o enseñar.
+ * Bienvenida: siempre empieza con el creador de avatar (aunque ya tenga uno); luego 3 pasos
+ * que terminan en dos acciones grandes: aprender o enseñar.
  */
 export function WelcomeOverlay({
   balance,
@@ -94,16 +106,17 @@ export function WelcomeOverlay({
   avatar: AvatarConfig | undefined;
   onClose: () => void;
 }) {
-  const [building, setBuilding] = useState(!avatar?.slots?.hh);
+  const [building, setBuilding] = useState(true);
   const [step, setStep] = useState(0);
   if (building) {
     return (
       <AvatarDialog
         avatar={avatar}
-        title="¡Hola! Crea tu avatar"
+        title={avatar?.slots?.hh ? "Elige tu avatar" : "¡Hola! Crea tu avatar"}
         subtitle="Así te verán en el campus y en tus clases. Puedes cambiarlo cuando quieras."
-        closeLabel="Saltar por ahora"
+        closeLabel="Seguir con mi avatar"
         onClose={() => setBuilding(false)}
+        onDone={() => setBuilding(false)}
       />
     );
   }

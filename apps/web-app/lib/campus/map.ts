@@ -1,6 +1,8 @@
 // Mapa del campus 2D (estilo gather), armado como un colegio. Todo en unidades de baldosa; la posición de una
 // persona es el centro de su cuerpo (p. ej. 20.5, 14.5 = centro de la baldosa 20,14).
 
+import type { FurniId } from "@/lib/campus/furni";
+
 export const COLS = 40;
 export const ROWS = 30;
 
@@ -79,6 +81,10 @@ export interface WorldObject {
   w: number;
   h: number;
   emoji?: string;
+  /** Muebles pixel art que reemplazan al emoji, repartidos a lo ancho del objeto. */
+  sprites?: FurniId[];
+  /** Tamaño de los sprites (1 = escala de Habbo). */
+  scale?: number;
   blocks: boolean;
   label?: string;
   /** Si existe, el objeto es interactivo y abre este panel. */
@@ -98,113 +104,79 @@ const o = (
 
 export const OBJECTS: WorldObject[] = [
   // Biblioteca: el mostrador es el único lugar para pedir ayuda
-  o("lib-shelf-1", "shelf", 1, 1, 4, 1, { emoji: "📚" }),
-  o("lib-shelf-2", "shelf", 9, 1, 4, 1, { emoji: "📚" }),
-  o("lib-shelf-3", "shelf", 5, 1, 4, 1, { emoji: "📖" }),
-  o("lib-kiosk", "kiosk", 6, 4, 2, 1, { emoji: "🙋", label: "Mostrador de ayuda", href: "/aprender", prompt: "Pedir ayuda con un tema" }),
-  o("lib-table-1", "table", 2, 6, 2, 1, { emoji: "📖" }),
-  o("lib-table-2", "table", 10, 6, 2, 1, { emoji: "✏️" }),
-  o("lib-plant-1", "plant", 1, 8, 1, 1, { emoji: "🪴" }),
-  o("lib-plant-2", "plant", 12, 8, 1, 1, { emoji: "🪴" }),
+  o("lib-shelf-1", "shelf", 1, 1, 4, 1, { sprites: ["classic9_bookshelf", "uni_bookshelf", "classic9_bookshelf"], scale: 0.62 }),
+  o("lib-shelf-2", "shelf", 9, 1, 4, 1, { sprites: ["uni_bookshelf", "classic9_bookshelf", "uni_bookshelf"], scale: 0.62 }),
+  o("lib-shelf-3", "shelf", 5, 1, 4, 1, { sprites: ["nft_uni_libraryshelf", "uni_bookshelf", "nft_uni_libraryshelf"], scale: 0.62 }),
+  o("lib-kiosk", "kiosk", 6, 4, 2, 1, { sprites: ["xmas_c23_counter"], label: "Mostrador de ayuda", href: "/aprender", prompt: "Pedir ayuda con un tema" }),
+  o("lib-table-1", "table", 2, 6, 2, 1, { sprites: ["school_c22_table"], scale: 0.8 }),
+  o("lib-table-2", "table", 10, 6, 2, 1, { sprites: ["school_c22_table"], scale: 0.8 }),
+  o("lib-plant-1", "plant", 1, 8, 1, 1, { sprites: ["recycler_basketplant"], scale: 0.85 }),
+  o("lib-plant-2", "plant", 12, 8, 1, 1, { sprites: ["ducket_c25_plantpot"], scale: 0.85 }),
 
   // Laboratorio IA
-  o("ia-board-1", "board", 15, 1, 3, 1, { emoji: "🧮", label: "Tutores IA", href: "/tutores-ia", prompt: "Ver los tutores IA" }),
-  o("ia-board-2", "board", 22, 1, 3, 1, { emoji: "📈" }),
+  o("ia-board-1", "board", 15, 1, 3, 1, { sprites: ["school_chalkboard2"], scale: 0.9, label: "Tutores IA", href: "/tutores-ia", prompt: "Ver los tutores IA" }),
+  o("ia-board-2", "board", 22, 1, 3, 1, { sprites: ["school_c22_chalkboard"], scale: 0.8 }),
   o("ia-rug-1", "rug", 15, 3, 3, 3),
   o("ia-rug-2", "rug", 18, 3, 3, 3),
   o("ia-rug-3", "rug", 21, 3, 3, 3),
-  o("ia-plant", "plant", 25, 8, 1, 1, { emoji: "🪴" }),
+  o("ia-plant", "plant", 25, 8, 1, 1, { sprites: ["xmas_c25_tree1a"], scale: 1.3 }),
 
   // Sala de profesores
-  o("tut-board", "board", 31, 1, 4, 1, { emoji: "📋", label: "Tablón de pedidos", href: "/ensenar", prompt: "Ver pedidos y enseñar" }),
-  o("tut-sofa-1", "sofa", 28, 6, 3, 1, { emoji: "🛋️" }),
-  o("tut-sofa-2", "sofa", 35, 6, 3, 1, { emoji: "🛋️" }),
-  o("tut-plant-1", "plant", 27, 1, 1, 1, { emoji: "🪴" }),
-  o("tut-plant-2", "plant", 38, 1, 1, 1, { emoji: "🪴" }),
-  o("tut-table", "table", 32, 5, 2, 1, { emoji: "☕" }),
+  o("tut-board", "board", 31, 1, 4, 1, { sprites: ["school_chalkboard"], scale: 0.95, label: "Tablón de pedidos", href: "/ensenar", prompt: "Ver pedidos y enseñar" }),
+  o("tut-sofa-1", "sofa", 28, 6, 3, 1, { sprites: ["hygge_c25_sofa"] }),
+  o("tut-sofa-2", "sofa", 35, 6, 3, 1, { sprites: ["xmas_c24_doublesofa"] }),
+  o("tut-plant-1", "plant", 27, 1, 1, 1, { sprites: ["mexico_c24_pricklyplant"], scale: 0.7 }),
+  o("tut-plant-2", "plant", 38, 1, 1, 1, { sprites: ["nft_sc25_sunflowers"], scale: 0.8 }),
+  o("tut-table", "table", 32, 5, 2, 1, { sprites: ["school_c22_teachertable"] }),
 
   // Patio: para encontrarse (sin paneles)
-  o("plaza-fountain", "fountain", 18, 12, 4, 2, { emoji: "⛲" }),
-  o("plaza-tree-1", "tree", 1, 10, 1, 1, { emoji: "🌳" }),
-  o("plaza-tree-2", "tree", 1, 15, 1, 1, { emoji: "🌳" }),
-  o("plaza-tree-3", "tree", 38, 10, 1, 1, { emoji: "🌳" }),
-  o("plaza-tree-4", "tree", 38, 15, 1, 1, { emoji: "🌳" }),
-  o("plaza-tree-5", "tree", 12, 12, 1, 1, { emoji: "🌲" }),
-  o("plaza-tree-6", "tree", 27, 12, 1, 1, { emoji: "🌲" }),
-  o("plaza-bench-1", "bench", 14, 14, 2, 1, { emoji: "🪑" }),
-  o("plaza-bench-2", "bench", 24, 14, 2, 1, { emoji: "🪑" }),
-  o("plaza-bench-3", "bench", 5, 12, 2, 1, { emoji: "🪑" }),
-  o("plaza-bench-4", "bench", 33, 12, 2, 1, { emoji: "🪑" }),
+  o("plaza-fountain", "fountain", 18, 12, 4, 2, { sprites: ["nft_sc24_goldfishfountain"], scale: 1.5 }),
+  o("plaza-tree-1", "tree", 1, 10, 1, 1, { sprites: ["ducket_c26_appletree"], scale: 0.45 }),
+  o("plaza-tree-2", "tree", 1, 15, 1, 1, { sprites: ["lt_c26_banyantree"], scale: 0.28 }),
+  o("plaza-tree-3", "tree", 38, 10, 1, 1, { sprites: ["lt_c26_banyantree"], scale: 0.28 }),
+  o("plaza-tree-4", "tree", 38, 15, 1, 1, { sprites: ["ducket_c26_appletree"], scale: 0.45 }),
+  o("plaza-tree-5", "tree", 12, 12, 1, 1, { sprites: ["xmas_c15_alpinetree"], scale: 0.5 }),
+  o("plaza-tree-6", "tree", 27, 12, 1, 1, { sprites: ["xmas_c15_alpinetree"], scale: 0.5 }),
+  o("plaza-bench-1", "bench", 14, 14, 2, 1, { sprites: ["school_c22_bench"], scale: 0.85 }),
+  o("plaza-bench-2", "bench", 24, 14, 2, 1, { sprites: ["school_c22_bench"], scale: 0.85 }),
+  o("plaza-bench-3", "bench", 5, 12, 2, 1, { sprites: ["autumn_c20_bench"], scale: 0.8 }),
+  o("plaza-bench-4", "bench", 33, 12, 2, 1, { sprites: ["xmas_c17_bench"], scale: 0.8 }),
 
   // Pasillo de aulas (las puertas van en CLASS_DOORS)
-  o("hall-plant-1", "plant", 1, 22, 1, 1, { emoji: "🪴" }),
-  o("hall-plant-2", "plant", 25, 22, 1, 1, { emoji: "🪴" }),
-  o("hall-water", "display", 25, 17, 1, 1, { emoji: "🚰" }),
+  o("hall-plant-1", "plant", 1, 22, 1, 1, { sprites: ["nft_h26_jungleplant1"], scale: 0.6 }),
+  o("hall-plant-2", "plant", 25, 22, 1, 1, { sprites: ["nft_h26_jungleplant1"], scale: 0.6 }),
+  o("hall-water", "display", 25, 17, 1, 1, { sprites: ["nft_rare_fountain"] }),
 
   // Tesorería
   o("bank-atm", "counter", 28, 17, 2, 1, { emoji: "🏧", label: "Cajero", href: "/quipus", prompt: "Ver tu tarjeta y tus ahorros" }),
-  o("bank-counter", "counter", 31, 19, 4, 1, { emoji: "🏦", label: "Ventanilla", href: "/quipus", prompt: "Ver tus movimientos" }),
-  o("bank-vault", "vault", 36, 17, 2, 2, { emoji: "🔐" }),
-  o("bank-plant", "plant", 38, 22, 1, 1, { emoji: "🪴" }),
+  o("bank-counter", "counter", 31, 19, 4, 1, { sprites: ["xmas_c23_counter", "xmas_c23_counter"], scale: 0.95, label: "Ventanilla", href: "/quipus", prompt: "Ver tus movimientos" }),
+  o("bank-vault", "vault", 36, 17, 2, 2, { sprites: ["mafia_c26_wallsafe"] }),
+  o("bank-plant", "plant", 38, 22, 1, 1, { sprites: ["nft_plant_cruddy"] }),
 
   // Kiosko
-  o("shop-counter", "counter", 4, 26, 4, 1, { emoji: "🛒", label: "Kiosko", href: "/tienda", prompt: "Ver skins y accesorios" }),
+  o("shop-counter", "counter", 4, 26, 4, 1, { sprites: ["school_c22_cafe", "school_c22_cafe"], scale: 0.9, label: "Kiosko", href: "/tienda", prompt: "Ver skins y accesorios" }),
   o("shop-d1", "display", 2, 28, 1, 1, { emoji: "👑" }),
   o("shop-d2", "display", 4, 28, 1, 1, { emoji: "🕶️" }),
   o("shop-d3", "display", 9, 28, 1, 1, { emoji: "🎧" }),
   o("shop-d4", "display", 11, 28, 1, 1, { emoji: "🎓" }),
 
   // Portería: la entrada al colegio
-  o("gate", "gate", 19, 28, 2, 1, { emoji: "🚪" }),
-  o("mural", "board", 15, 24, 3, 1, { emoji: "📣", label: "Mural de anuncios", href: "/home", prompt: "Ver tu tablero del día" }),
-  o("gate-plant-1", "plant", 14, 28, 1, 1, { emoji: "🪴" }),
-  o("gate-plant-2", "plant", 25, 28, 1, 1, { emoji: "🪴" }),
+  o("gate", "gate", 19, 28, 2, 1, { sprites: ["nft_school_gate"], scale: 0.55 }),
+  o("mural", "board", 15, 24, 3, 1, { sprites: ["school_charts"], scale: 0.95, label: "Mural de anuncios", href: "/home", prompt: "Ver tu tablero del día" }),
+  o("gate-plant-1", "plant", 14, 28, 1, 1, { sprites: ["ducket_c25_plantpot"], scale: 0.85 }),
+  o("gate-plant-2", "plant", 25, 28, 1, 1, { sprites: ["recycler_basketplant"], scale: 0.85 }),
 
   // Casilleros
-  o("lockers-1", "locker", 27, 24, 5, 1, { emoji: "🗄️" }),
-  o("my-locker", "locker", 32, 24, 2, 1, { emoji: "🎒", label: "Tu casillero", href: "/perfil", prompt: "Ver tu perfil e insignias" }),
-  o("lockers-2", "locker", 34, 24, 5, 1, { emoji: "🗄️" }),
-  o("lockers-bench", "bench", 31, 27, 4, 1, { emoji: "🪑" }),
+  o("lockers-1", "locker", 27, 24, 5, 1, { sprites: ["school_locker_r_notele", "school_locker_b_notele", "school_locker_g_notele", "school_c22_locker_notele", "school_locker_b_notele"], scale: 0.62 }),
+  o("my-locker", "locker", 32, 24, 2, 1, { sprites: ["uni_c23_locker4", "uni_c23_locker4"], scale: 0.62, label: "Tu casillero", href: "/perfil", prompt: "Ver tu perfil e insignias" }),
+  o("lockers-2", "locker", 34, 24, 5, 1, { sprites: ["school_locker_g_notele", "school_locker_r_notele", "uni_c23_locker2", "school_locker_b_notele", "school_locker_r_notele"], scale: 0.62 }),
+  o("lockers-bench", "bench", 31, 27, 4, 1, { sprites: ["school_c22_bench", "school_c22_bench"], scale: 0.85 }),
 ];
 
 export const AI_SPOTS = [
   { x: 16, y: 4 },
   { x: 19, y: 4 },
   { x: 22, y: 4 },
-];
-
-/** Solo dos guías (no son alumnos): al hablarles dan un consejo, uno distinto cada vez. */
-export const GUIDES = [
-  {
-    id: "guia-portero",
-    x: 17,
-    y: 26,
-    name: "Don Lucho",
-    role: "Portero",
-    emoji: "🧓",
-    color: "#FFB547",
-    tips: [
-      "¡Bienvenido al cole! 👋 Camina con las flechas o tocando el piso.",
-      "¿Te cuesta un tema? Ve a la 📚 Biblioteca, arriba a la izquierda, y pide ayuda.",
-      "Tus clases aparecen como puertas en el 🚪 Pasillo, aquí al norte.",
-      "Acércate a lo que brilla y presiona X (o el botón) para usarlo.",
-    ],
-  },
-  {
-    id: "guia-patio",
-    x: 9,
-    y: 13,
-    name: "Profe Rosa",
-    role: "Coordinadora",
-    emoji: "👩‍🏫",
-    color: "#2FD3A3",
-    tips: [
-      "¿Algo se te da bien? En la 🎓 Sala de profesores enseñas y ganas quipus.",
-      "Los ✨ tutores IA del Laboratorio te atienden al toque, a cualquier hora.",
-      "Mira tus quipus en la 🏦 Tesorería y gástalos en el 🛍️ Kiosko.",
-      "Toca a un compañero conectado para ver su perfil.",
-    ],
-  },
 ];
 
 /** Se entra al colegio por la portería, frente a la puerta principal. */

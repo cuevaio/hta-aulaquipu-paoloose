@@ -199,9 +199,23 @@ export interface FigurePiece {
   flip: boolean;
 }
 
+/** Todas las piezas de la carpeta, en orden de id (= índice de la parte dentro del set). */
+function allParts(sheet: SpritesheetManifest): [string, string][] {
+  const seen = new Map<string, [string, string]>();
+  for (const name of Object.keys(sheet.manifest.assets)) {
+    const a = parseAssetName(name);
+    if (a && a.action === "std" && a.type !== "sd") seen.set(`${a.type}_${a.id}`, [a.type, a.id]);
+  }
+  return [...seen.values()].sort((x, y) => Number(x[1]) - Number(y[1]));
+}
+
 function selectedParts(sheet: SpritesheetManifest, item: FigureItem | undefined): [string, string][] {
   if (item?.parts) return item.parts;
-  const id = item?.id ?? pickPartId(sheet);
+  if (item?.id) return partTypes(sheet, item.id).map((type) => [type, item.id!]);
+  // Las librerías base (hh_human_*) traen muchos sets: se elige uno. Un accesorio es un solo
+  // set, a veces de varias partes del mismo tipo (lentes = montura + vidrio): van todas.
+  if (!item?.folder.startsWith("hh_")) return allParts(sheet);
+  const id = pickPartId(sheet);
   return id ? partTypes(sheet, id).map((type) => [type, id]) : [];
 }
 
@@ -226,12 +240,15 @@ export function resolveFigure(
     for (const [type, id] of selectedParts(sheet, item)) {
       if (type === "sd" || hidden.has(type)) continue;
       const assetType = flip ? FLIPPED_TYPE[type] ?? type : type;
+      const still = `h_std_${assetType}_${id}_${source}_0`;
       const candidates = [
         `h_${opts.action ?? "std"}_${assetType}_${id}_${source}_${opts.frame ?? 0}`,
-        `h_std_${assetType}_${id}_${source}_0`,
+        still,
+        // Al extractor se le escapan algunas imágenes de pie; la de "hablar" suele ser la misma
+        `h_spk_${assetType}_${id}_${source}_0`,
       ];
       for (const name of candidates) {
-        const meta = sheet.manifest.assets[name];
+        const meta = sheet.manifest.assets[name] ?? sheet.manifest.assets[still];
         const sprite = meta && lookupFrame(sheet, name);
         if (!sprite) continue;
         const offset = parseOffset(meta.offset);

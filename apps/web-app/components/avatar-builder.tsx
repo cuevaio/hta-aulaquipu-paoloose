@@ -1,14 +1,16 @@
 "use client";
 
 // Creador de avatar: piezas base y accesorios de regalo del catálogo gratis (lib/avatar-catalog).
-// Lo que se compra en la tienda se equipa allá; aquí solo se arma la figura de partida.
+// Lo que se compra en la tienda se equipa allá; aquí solo se arma la figura de partida. La vista
+// previa incluye lo equipado de la tienda; elegir una pieza en un slot ocupado por una compra la
+// desequipa al guardar (manda la última elección).
 
 import Link from "next/link";
 import { useState } from "react";
 import { Check, ShoppingBag } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { btn } from "@/components/bits";
-import { useMutation } from "@/components/providers";
+import { useMutation, useSession } from "@/components/providers";
 import { api } from "@/lib/api";
 import {
   BASE_CATEGORIES,
@@ -18,7 +20,8 @@ import {
   SKIN_TONES,
   STARTER_ACCESSORIES,
 } from "@/lib/avatar-catalog";
-import type { AvatarConfig } from "@/lib/types";
+import { isSpriteSkin, spriteSlot } from "@/lib/skins";
+import type { AvatarConfig, Equipped } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Tab = "piel" | "hr" | "ch" | "lg" | "sh" | "acc";
@@ -70,16 +73,31 @@ export function AvatarBuilder({
   const [config, setConfig] = useState<AvatarConfig>(() => initialAvatar(initial));
   const [tab, setTab] = useState<Tab>("hr");
   const { run, pending } = useMutation();
+  const { me } = useSession();
+  // Slots que el alumno tocó aquí: ahí lo de la tienda deja de mostrarse (y se desequipa al guardar)
+  const [touched, setTouched] = useState<Set<string>>(() => new Set());
+
+  const storeParts = (me?.equipped.parts ?? []).filter((p) => isSpriteSkin(p.meta));
+  const equippedWithout = (cleared: Set<string>): Partial<Equipped> => ({
+    ...me?.equipped,
+    parts: storeParts.filter((p) => !cleared.has(spriteSlot(p.meta))),
+  });
 
   const slots = config.slots ?? {};
-  const setSlot = (slot: string, item: string | undefined) =>
+  const setSlot = (slot: string, item: string | undefined) => {
+    setTouched((t) => new Set(t).add(slot));
     setConfig((c) => {
       const next = { ...c.slots };
       if (item) next[slot as keyof typeof next] = item;
       else delete next[slot as keyof typeof next];
       return { ...c, slots: next };
     });
+  };
   const withSlot = (slot: string, item: string): AvatarConfig => ({ ...config, slots: { ...slots, [slot]: item } });
+  // Al elegir pelo se quita también el gorro de la miniatura, que si no lo taparía
+  const tileEquipped = (slot: string) => equippedWithout(new Set(touched).add(slot).add(slot === "hr" ? "ha" : slot));
+  // Mientras una compra ocupe el slot, la pieza del creador no se ve: no se marca como puesta
+  const shadowed = (slot: string) => !touched.has(slot) && storeParts.some((p) => spriteSlot(p.meta) === slot);
 
   const category = BASE_CATEGORIES.find((c) => c.slot === tab);
 
@@ -87,6 +105,8 @@ export function AvatarBuilder({
     // run devuelve undefined si falló (y ya mostró el aviso de error)
     const ok = await run(async (u) => {
       await api.saveAvatar(u, config);
+      const replaced = storeParts.filter((p) => touched.has(spriteSlot(p.meta)));
+      await Promise.all(replaced.map((p) => api.equipSkin(u, p.id, false)));
       return true;
     }, "¡Avatar guardado!");
     if (ok) onDone();
@@ -97,7 +117,7 @@ export function AvatarBuilder({
       <div className="grid shrink-0 place-items-center rounded-3xl bg-gradient-to-b from-secondary to-muted p-3 sm:w-44">
         {/* Figura entera más alta que su caja (modo campus): el relleno le deja espacio arriba */}
         <div style={{ paddingTop: 110 }}>
-          <Avatar config={config} size={110} bare label="Vista previa de tu avatar" />
+          <Avatar config={config} equipped={equippedWithout(touched)} size={110} bare label="Vista previa de tu avatar" />
         </div>
       </div>
 
@@ -134,7 +154,7 @@ export function AvatarBuilder({
               )}
               <div role="radiogroup" aria-label={category.label} className="grid grid-cols-4 gap-2">
                 {category.options.map((o) => {
-                  const on = slots[category.slot] === o.item;
+                  const on = slots[category.slot] === o.item && !shadowed(category.slot);
                   return (
                     <button
                       key={o.item}
@@ -145,6 +165,7 @@ export function AvatarBuilder({
                     >
                       <Avatar
                         config={withSlot(category.slot, o.item)}
+                        equipped={tileEquipped(category.slot)}
                         size={56}
                         view={category.slot === "lg" || category.slot === "sh" ? "full" : "bust"}
                       />
@@ -161,7 +182,7 @@ export function AvatarBuilder({
               <p className="text-sm text-muted-foreground">De regalo para empezar. Toca para ponerte o quitarte cada uno.</p>
               <div className="grid grid-cols-4 gap-2">
                 {STARTER_ACCESSORIES.map((a) => {
-                  const on = slots[a.slot] === a.item;
+                  const on = slots[a.slot] === a.item && !shadowed(a.slot);
                   return (
                     <button
                       key={a.item}
@@ -169,7 +190,7 @@ export function AvatarBuilder({
                       onClick={() => setSlot(a.slot, on ? undefined : a.item)}
                       className={cn("relative flex flex-col items-center gap-1 rounded-2xl p-1.5 ring-2 transition", on ? "bg-secondary ring-primary" : "ring-transparent hover:bg-muted")}
                     >
-                      <Avatar config={withSlot(a.slot, a.item)} size={56} view={a.slot === "ca" ? "full" : "bust"} />
+                      <Avatar config={withSlot(a.slot, a.item)} equipped={tileEquipped(a.slot)} size={56} view={a.slot === "ca" ? "full" : "bust"} />
                       <span className="text-[11px] leading-tight font-bold">{a.label}</span>
                       {on && <Check className="absolute top-1 right-1 size-4 rounded-full bg-primary p-0.5 text-primary-foreground" />}
                     </button>
