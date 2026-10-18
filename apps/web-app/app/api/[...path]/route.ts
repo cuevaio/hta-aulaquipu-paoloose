@@ -12,6 +12,7 @@ import {
 } from "@/lib/server/core";
 import * as h from "@/lib/server/handlers";
 import * as ad from "@/lib/server/admin-handlers";
+import * as dir from "@/lib/server/director";
 import { isAdmin, requireAdmin, requireNotSuspended } from "@/lib/server/admin";
 
 type Ctx = { user: string; body: Record<string, unknown>; params: string[]; query: URLSearchParams };
@@ -53,6 +54,8 @@ const ROUTES: Route[] = [
   r("GET", "sessions/:id", ({ user, params }) => h.session(user, params[0])),
   r("POST", "sessions/:id/token", ({ user, params }) => h.roomToken(user, params[0])),
   r("PUT", "sessions/:id/doc", ({ user, params, body }) => h.saveSessionDoc(user, params[0], body)),
+  r("POST", "sessions/:id/director", ({ user, params, body }) => dir.direct(user, params[0], body)),
+  r("POST", "sessions/:id/quiz/:quizId/answer", ({ user, params, body }) => dir.answerQuiz(user, params[0], params[1], body)),
   r("POST", "sessions/:id/end", ({ user, params }) => h.endSession(user, params[0])),
   r("POST", "sessions/:id/review", ({ user, params, body }) => h.review(user, params[0], body)),
   r("GET", "groups/mine", ({ user }) => h.myUpcoming(user)),

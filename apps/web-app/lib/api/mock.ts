@@ -13,6 +13,7 @@ import type {
 } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
 import { buildMockAdmin, check, isMockAdmin } from "@/lib/api/mock-admin";
+import { mockDirect, type DirectorAction, type QuizVerdict } from "@/lib/director";
 import { parseReportText } from "@/lib/admin-validate";
 import { sanitizeAvatar } from "@/lib/avatar-catalog";
 import { aiPrice, priceWithPromos } from "@/lib/pricing";
@@ -45,6 +46,11 @@ const STORAGE_KEY = "aulaquipu-db";
 const LATENCY_MS = 120;
 
 let db: DbState | null = null;
+
+// Director de mentira: claves de los quizzes y contador de gráficas (solo en memoria)
+let mockGraphs = 0;
+let mockQuizCount = 0;
+const mockQuizzes = new Map<string, { correctIndex: number; explanation: string }>();
 
 function load(): DbState {
   if (db) return db;
@@ -549,6 +555,28 @@ export const mockApi: ApiClient = {
       const session = s.sessions.find((x) => x.id === sessionId);
       if (session) session.doc_markdown = markdown;
     }),
+
+  director: async (_userId, _sessionId, input) => {
+    await delay();
+    const actions: DirectorAction[] = [];
+    for (const a of mockDirect(input)) {
+      if (a.type === "graph_set") actions.push({ type: "graph_set", id: `d${++mockGraphs}`, latex: a.latex, ...(a.color ? { color: a.color } : {}) });
+      else if (a.type === "graph_clear") actions.push({ type: "graph_clear", ids: Array.from({ length: mockGraphs }, (_, i) => `d${i + 1}`) });
+      else if (a.type === "quiz") {
+        const id = `dq-mock-${++mockQuizCount}`;
+        mockQuizzes.set(id, { correctIndex: a.correctIndex, explanation: a.explanation });
+        actions.push({ type: "quiz", id, question: a.question, options: a.options });
+      }
+    }
+    return { actions };
+  },
+
+  answerQuiz: async (_userId, _sessionId, quizId, index): Promise<QuizVerdict> => {
+    await delay();
+    const key = mockQuizzes.get(quizId);
+    if (!key) throw new ApiError("Esa pregunta ya no está disponible.", "not_found");
+    return { correct: index === key.correctIndex, correctIndex: key.correctIndex, explanation: key.explanation };
+  },
 
   endSession: (userId, sessionId) =>
     write((s): EndResult => {

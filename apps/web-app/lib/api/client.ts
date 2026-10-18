@@ -3,6 +3,7 @@
 // - http: llama a NEXT_PUBLIC_API_URL con el usuario elegido en la cabecera
 // Se elige con NEXT_PUBLIC_API_MODE=mock|http.
 
+import type { DirectorInput, DirectorResult, QuizVerdict } from "@/lib/director";
 import type {
   AdminAiTutor,
   AdminGuide,
@@ -171,6 +172,10 @@ export interface ApiClient {
   session(userId: UUID, sessionId: UUID): Promise<SessionDetail>;
   roomToken(userId: UUID, sessionId: UUID): Promise<RoomToken>;
   saveSessionDoc(userId: UUID, sessionId: UUID, markdown: string): Promise<void>;
+  /** Director de clase: decide graficar / quiz / imagen a partir de lo dicho. Falla (503/429) sin romper el aula. */
+  director(userId: UUID, sessionId: UUID, input: DirectorInput): Promise<DirectorResult>;
+  /** Califica una pregunta enviada por el director (la clave vive en el servidor). */
+  answerQuiz(userId: UUID, sessionId: UUID, quizId: string, index: number): Promise<QuizVerdict>;
   endSession(userId: UUID, sessionId: UUID): Promise<EndResult>;
   review(userId: UUID, sessionId: UUID, stars: number, feedback: string): Promise<void>;
   mySessions(userId: UUID): Promise<SessionDetail[]>;
