@@ -66,6 +66,7 @@ const ROUTES: Route[] = [
   r("GET", "skins", ({ user }) => h.skins(user)),
   r("POST", "skins/:id/buy", ({ user, params }) => h.buySkin(user, params[0])),
   r("POST", "skins/:id/equip", ({ user, params, body }) => h.equipSkin(user, params[0], body)),
+  r("PUT", "me/avatar", ({ user, body }) => h.saveAvatar(user, body)),
   r("GET", "ledger/mine", ({ user }) => h.ledger(user)),
   r("POST", "campus/token", ({ user }) => h.campusToken(user)),
   r("GET", "announcements/active", () => h.activeAnnouncements()),

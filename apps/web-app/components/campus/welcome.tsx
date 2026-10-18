@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import { ArrowRight, Compass, X } from "lucide-react";
+import { AvatarBuilder } from "@/components/avatar-builder";
 import { btn } from "@/components/bits";
+import type { AvatarConfig } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** Preferencias del campus por usuario en localStorage. Siempre con try/catch: puede estar bloqueado. */
@@ -47,9 +49,64 @@ const STEPS = [
   { emoji: "🎓", title: "Enseña para ganar más", body: () => "Si dominas un tema, enséñalo a otros alumnos y recupera quipus para seguir aprendiendo." },
 ];
 
-/** Bienvenida de 3 pasos que termina en dos acciones grandes: aprender o enseñar. */
-export function WelcomeOverlay({ balance, onClose }: { balance: number; onClose: () => void }) {
+/** Ventana del creador de avatar (primer paso de la bienvenida o desde "Mi cuenta"). */
+export function AvatarDialog({
+  avatar,
+  onClose,
+  onDone,
+  title = "Edita tu avatar",
+  subtitle,
+  closeLabel = "Cerrar",
+}: {
+  avatar: AvatarConfig | undefined;
+  onClose: () => void;
+  onDone?: () => void;
+  title?: string;
+  subtitle?: string;
+  closeLabel?: string;
+}) {
+  return (
+    <div className="absolute inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-navy/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="relative my-auto w-full max-w-2xl min-w-0 rounded-[1.75rem] bg-card p-5 text-center shadow-2xl animate-in fade-in zoom-in-95 sm:p-6">
+        <button onClick={onClose} className="absolute top-3 right-3 rounded-full p-2 text-muted-foreground hover:bg-muted" aria-label={closeLabel}>
+          <X className="size-4" />
+        </button>
+        <h2 className="font-heading text-2xl font-semibold">{title}</h2>
+        {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
+        <div className="mt-4">
+          <AvatarBuilder initial={avatar} onDone={onDone ?? onClose} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Bienvenida: si aún no armó su avatar, primero el creador; luego 3 pasos que terminan en
+ * dos acciones grandes: aprender o enseñar.
+ */
+export function WelcomeOverlay({
+  balance,
+  avatar,
+  onClose,
+}: {
+  balance: number;
+  avatar: AvatarConfig | undefined;
+  onClose: () => void;
+}) {
+  const [building, setBuilding] = useState(!avatar?.slots?.hh);
   const [step, setStep] = useState(0);
+  if (building) {
+    return (
+      <AvatarDialog
+        avatar={avatar}
+        title="¡Hola! Crea tu avatar"
+        subtitle="Así te verán en el campus y en tus clases. Puedes cambiarlo cuando quieras."
+        closeLabel="Saltar por ahora"
+        onClose={() => setBuilding(false)}
+      />
+    );
+  }
   const last = step === STEPS.length - 1;
   const s = STEPS[step];
   return (

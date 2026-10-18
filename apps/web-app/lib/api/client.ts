@@ -32,6 +32,7 @@ import type {
 import type {
   ActiveAnnouncement,
   AiTutor,
+  AvatarConfig,
   Group,
   IncomingRequest,
   LearningRequest,
@@ -181,6 +182,8 @@ export interface ApiClient {
   skins(userId: UUID): Promise<(Skin & { owned: boolean; equipped: boolean })[]>;
   buySkin(userId: UUID, skinId: UUID): Promise<void>;
   equipSkin(userId: UUID, skinId: UUID, equip: boolean): Promise<void>;
+  /** Guarda el avatar del creador (solo piezas y colores del catálogo gratis). */
+  saveAvatar(userId: UUID, avatar: AvatarConfig): Promise<void>;
 
   ledger(userId: UUID): Promise<LedgerLine[]>;
 

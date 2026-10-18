@@ -607,7 +607,8 @@ export function CampusWorld({
             <div
               data-bubble
               aria-live="polite"
-              className="hidden absolute bottom-full left-1/2 z-10 mb-1 w-max max-w-[11rem] -translate-x-1/2 rounded-2xl rounded-bl-sm bg-white px-2.5 py-1.5 text-xs leading-snug font-semibold break-words text-navy shadow-lg ring-1 ring-black/10"
+              style={{ marginBottom: T }}
+              className="hidden absolute bottom-full left-1/2 z-10 w-max max-w-[11rem] -translate-x-1/2 rounded-2xl rounded-bl-sm bg-white px-2.5 py-1.5 text-xs leading-snug font-semibold break-words text-navy shadow-lg ring-1 ring-black/10"
             />
             <div className="player-body">
               <Avatar config={peer.avatar} equipped={peer.equipped} size={T * 0.95} label={peer.name} bare />
@@ -624,7 +625,8 @@ export function CampusWorld({
           <div
               data-bubble
               aria-live="polite"
-              className="hidden absolute bottom-full left-1/2 z-10 mb-1 w-max max-w-[11rem] -translate-x-1/2 rounded-2xl rounded-bl-sm bg-white px-2.5 py-1.5 text-xs leading-snug font-semibold break-words text-navy shadow-lg ring-1 ring-black/10"
+              style={{ marginBottom: T }}
+              className="hidden absolute bottom-full left-1/2 z-10 w-max max-w-[11rem] -translate-x-1/2 rounded-2xl rounded-bl-sm bg-white px-2.5 py-1.5 text-xs leading-snug font-semibold break-words text-navy shadow-lg ring-1 ring-black/10"
             />
           <div ref={body} className="player-body">
             <Avatar config={me.avatar} equipped={me.equipped} size={T * 0.95} label={me.name} bare />

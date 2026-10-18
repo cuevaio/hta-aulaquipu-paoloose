@@ -26,6 +26,7 @@ import {
 import { applyPromos } from "@/lib/server/promos";
 import { agentGuideFor, isAdmin, requireNotSuspended } from "@/lib/server/admin";
 import { normalizeTopic } from "@/lib/server/topics";
+import { sanitizeAvatar } from "@/lib/avatar-catalog";
 import { isSpriteSkin } from "@/lib/skins";
 import { closeRoom, createCampusToken, createRoomToken } from "@/lib/server/livekit";
 import type {
@@ -580,6 +581,12 @@ export const skins = skinsFor;
 
 export async function buySkin(userId: string, id: string) {
   await rpc("buy_skin", { p_profile_id: userId, p_skin_id: uuidParam(id, "artículo") });
+}
+
+export async function saveAvatar(userId: string, body: Body) {
+  const result = sanitizeAvatar(body.avatar);
+  if (!result.ok) throw new HttpError(400, result.error);
+  await must(db().from("profiles").update({ avatar_config: result.config }).eq("id", userId));
 }
 
 export async function equipSkin(userId: string, id: string, body: Body) {

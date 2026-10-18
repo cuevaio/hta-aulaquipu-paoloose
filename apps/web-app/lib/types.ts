@@ -22,6 +22,9 @@ export interface AvatarConfig {
   palette?: string;
   /** Paperdoll: partes equipadas por slot (figura canónica). */
   slots?: Partial<Record<FigureSlot, string>>;
+  /** Paperdoll: tono de piel y color de pelo (hex). La ropa usa `color`. */
+  skin?: string;
+  hair?: string;
   /** Figure string compacto derivado (para URLs/compartir), p.ej. "aq.body=blob.hat=chullo". */
   figure?: string;
 }

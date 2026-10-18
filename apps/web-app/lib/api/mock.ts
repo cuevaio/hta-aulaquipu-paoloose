@@ -14,6 +14,7 @@ import type {
 import { ApiError } from "@/lib/api/client";
 import { buildMockAdmin, check, isMockAdmin } from "@/lib/api/mock-admin";
 import { parseReportText } from "@/lib/admin-validate";
+import { sanitizeAvatar } from "@/lib/avatar-catalog";
 import { aiPrice, priceWithPromos } from "@/lib/pricing";
 import { buildSeed, SEED_VERSION, TOPIC_KEYWORDS, type DbState } from "@/lib/api/seed";
 import type {
@@ -766,6 +767,15 @@ export const mockApi: ApiClient = {
       requireBalance(s, userId, skin.price_quipus);
       addLedger(s, { kind: "skin_purchase", amount: skin.price_quipus, from: userId, to: null });
       s.profile_skins.push({ profile_id: userId, skin_id: skinId, equipped: false });
+    }),
+
+  saveAvatar: (userId, avatar) =>
+    write((s) => {
+      const result = sanitizeAvatar(avatar);
+      if (!result.ok) throw new ApiError(result.error);
+      const p = s.profiles.find((x) => x.id === userId);
+      if (!p) throw new ApiError("Tu sesión expiró. Vuelve a entrar.", "unauthorized");
+      p.avatar_config = result.config;
     }),
 
   equipSkin: (userId, skinId, equip) =>

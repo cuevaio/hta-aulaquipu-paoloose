@@ -2,6 +2,7 @@ import type { AvatarConfig, Equipped, Skin, SkinMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { FRAME_STYLES, avatarColor, avatarLook, frameOf } from "@/lib/skins";
 import { SpriteAvatar, type SpriteSpec } from "@/components/sprite-avatar";
+import type { FigureView } from "@/components/sprite-figure";
 
 const loggedFallbacks = new Set<string>();
 
@@ -139,16 +140,17 @@ function logFallbackOnce(payload: Record<string, unknown>) {
 
 /** Capas sprite equipadas: slot = tipo de figura (hh, hd, hr, ch, lg, sh, ha, fa…). */
 function spriteLayersOf(config: AvatarConfig, meta: SkinMeta | undefined, parts: Skin[] = []): SpriteSpec[] {
+  // Una pieza por slot: lo comprado en la tienda reemplaza a lo del creador en ese slot
   const out = new Map<string, string>();
   for (const [slot, item] of Object.entries(config.slots ?? {})) {
-    if (item) out.set(item, slot);
+    if (item) out.set(slot, item);
   }
   const add = (m?: SkinMeta) => {
-    if (m?.item) out.set(m.item, m.slot ?? "hh");
+    if (m?.item) out.set(m.slot ?? m.item, m.item);
   };
   add(meta);
   for (const p of parts) add(p.meta);
-  return [...out.entries()].map(([item, slot]) => ({ item, slot }));
+  return [...out.entries()].map(([slot, item]) => ({ slot, item }));
 }
 
 export function Avatar({
@@ -159,6 +161,8 @@ export function Avatar({
   speaking,
   label,
   bare = false,
+  view,
+  walking,
 }: {
   config: AvatarConfig;
   equipped?: Partial<Equipped> | null;
@@ -167,6 +171,8 @@ export function Avatar({
   speaking?: boolean;
   label?: string;
   bare?: boolean;
+  view?: FigureView;
+  walking?: boolean;
 }) {
   const look = avatarLook(equipped?.avatar?.meta);
   const color = look.color ?? avatarColor(config);
@@ -180,6 +186,9 @@ export function Avatar({
     return (
       <SpriteAvatar
         specs={spriteLayers}
+        colors={{ accent: color, skin: config.skin, hair: config.hair }}
+        view={view}
+        walking={walking}
         frame={frame}
         size={size}
         className={className}

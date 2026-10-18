@@ -102,6 +102,7 @@ export const httpApi: ApiClient = {
   skins: (u) => call(u, "GET", "/skins"),
   buySkin: (u, id) => call(u, "POST", `/skins/${q(id)}/buy`),
   equipSkin: (u, id, equip) => call(u, "POST", `/skins/${q(id)}/equip`, { equip }),
+  saveAvatar: (u, avatar) => call(u, "PUT", "/me/avatar", { avatar }),
   ledger: (u) => call(u, "GET", "/ledger/mine"),
   activeAnnouncements: (u) => call(u, "GET", "/announcements/active"),
   reportChat: (u, reportedId, text) => call(u, "POST", "/chat/report", { reportedId, text }),

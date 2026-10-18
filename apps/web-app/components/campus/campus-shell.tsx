@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, GraduationCap, LayoutDashboard, HelpCircle, LogOut, ShieldCheck, User, X } from "lucide-react";
+import { BookOpen, GraduationCap, LayoutDashboard, HelpCircle, LogOut, ShieldCheck, Shirt, User, X } from "lucide-react";
 import { api, API_MODE } from "@/lib/api";
 import { AI_SPOTS, CLASS_DOORS, GUIDES, type Room } from "@/lib/campus/map";
 import { useQuery, useSession, useToast } from "@/components/providers";
@@ -11,7 +11,7 @@ import { Avatar } from "@/components/avatar";
 import { Quipus, friendlyWhen } from "@/components/bits";
 import { aiPrice } from "@/lib/pricing";
 import { Logo } from "@/components/logo";
-import { MissionCard, WelcomeOverlay, useFlag, writeFlag } from "@/components/campus/welcome";
+import { AvatarDialog, MissionCard, WelcomeOverlay, useFlag, writeFlag } from "@/components/campus/welcome";
 import { CampusWorld, type CampusPerson, type ClassDoor, type Interactable } from "@/components/campus/world";
 import { AnnouncementBanner } from "@/components/campus/announcement-banner";
 import { ChatPanel } from "@/components/campus/chat-panel";
@@ -46,6 +46,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   );
   const chat = useCampusChat(ready && me ? userId : null, presence, showBubble);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
   const [moved, setMoved] = useState(false);
   const startPos = useRef<{ x: number; y: number } | null>(null);
   const welcomeKey = `aq:welcome:${userId}`;
@@ -351,6 +352,15 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
               >
                 <User className="size-4" /> Mi perfil
               </Link>
+              <button
+                onClick={() => {
+                  setMenu(false);
+                  setAvatarOpen(true);
+                }}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-bold hover:bg-muted"
+              >
+                <Shirt className="size-4" /> Editar avatar
+              </button>
               {me.is_admin && (
                 <Link href="/admin" onClick={() => setMenu(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold hover:bg-muted">
                   <ShieldCheck className="size-4" /> Admin
@@ -447,7 +457,10 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
       )}
 
       {welcome && (
-        <WelcomeOverlay balance={me.balance} onClose={closeWelcome} />
+        <WelcomeOverlay balance={me.balance} avatar={me.profile.avatar_config} onClose={closeWelcome} />
+      )}
+      {avatarOpen && !welcome && (
+        <AvatarDialog avatar={me.profile.avatar_config} onClose={() => setAvatarOpen(false)} />
       )}
 
       {!panelOpen && (
