@@ -530,6 +530,23 @@ export const mockApi: ApiClient = {
       if (!isMember && group.tutor_id !== userId) throw new ApiError("No eres parte de esta clase.", "invalid");
       if (group.status === "completed" || group.status === "cancelled")
         throw new ApiError("Esta clase ya terminó.", "conflict");
+      // Igual que el servidor: si el tutor ya da este tema en vivo en otro grupo, el alumno entra ahí
+      const live = group.tutor_id !== userId && group.status !== "live" && isMember
+        ? s.sessions.find(
+            (x) => x.tutor_kind === "human" && x.status === "live" && x.tutor_id === group.tutor_id &&
+              x.topic_id === group.topic_id && x.group_id !== group.id,
+          )
+        : undefined;
+      if (live?.group_id) {
+        const mine = activeMembers(s, groupId).find((m) => m.student_id === userId)!;
+        const existing = s.group_members.find((m) => m.group_id === live.group_id && m.student_id === userId);
+        if (existing) Object.assign(existing, { status: "joined", share_quipus: mine.share_quipus });
+        else s.group_members.push({ group_id: live.group_id, student_id: userId, share_quipus: mine.share_quipus, status: "joined" });
+        mine.status = "left";
+        if (!activeMembers(s, groupId).length) group.status = "cancelled";
+        if (!live.student_ids.includes(userId)) live.student_ids.push(userId);
+        return { sessionId: live.id };
+      }
       return { sessionId: ensureLiveGroupSession(s, group).id };
     }),
 

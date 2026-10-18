@@ -2,6 +2,8 @@
 // los mensajes de presencia. Viajan por un ClassroomTransport: hoy un bus local,
 // mañana el data channel de LiveKit (mismo JSON, mismo consumidor).
 
+import { stripLeadingTitle } from "@/lib/markdown-clean";
+
 export type ClassroomTool = "doc" | "graph" | "notebook" | "activity";
 
 /** Eventos antiguos o de otros clientes pueden pedir la pestaña "board" (Pizarra): hoy es el Cuaderno. */
@@ -92,7 +94,8 @@ export function tableToMarkdown(rows: string[][], title?: string): string {
 /** Escribe o reemplaza la sección "## {section}" del documento (contrato de docWrite del agente). */
 export function upsertSection(doc: string, section: string, markdown: string): string {
   const title = section.trim().replace(/^#+\s*/, "");
-  const block = `## ${title}\n\n${markdown.trim()}\n`;
+  // El texto del agente a veces trae su propio "## {título}": se quita para no duplicarlo
+  const block = `## ${title}\n\n${stripLeadingTitle(markdown, title).trim()}\n`;
   const lines = doc.split("\n");
   const norm = (t: string) => t.trim().toLowerCase();
   const start = lines.findIndex((l) => /^##\s+/.test(l) && norm(l.replace(/^##\s+/, "")) === norm(title));

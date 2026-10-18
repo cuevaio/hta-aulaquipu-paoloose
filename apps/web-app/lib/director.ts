@@ -42,12 +42,22 @@ const LATEX_COMMANDS = new Set([
 // Solo caracteres de una expresión de Desmos; sin "$", comillas, saltos ni símbolos raros
 const LATEX_CHARS = /^[A-Za-z0-9\s+\-*/^_=<>(){}[\],.|\\]+$/;
 
+// Desmos solo grafica en x e y: "v=d/t" o "F=ma" dejan letras sin definir (no dibujan nada útil)
+const FUNCTION_WORDS = /\b(sin|cos|tan|ln|log|sqrt|abs)\b/g;
+
+/** Letras que quedan sueltas en la expresión (fuera de comandos y funciones), sin x, y ni e. */
+export function freeVariables(latex: string): string[] {
+  const letters = latex.replace(/\\[A-Za-z]+/g, " ").replace(FUNCTION_WORDS, " ").match(/[A-Za-z]/g) ?? [];
+  return [...new Set(letters.filter((c) => !"xye".includes(c)))];
+}
+
 export function sanitizeLatex(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const latex = value.trim().replace(/\\\\/g, "\\");
   if (!latex || latex.length > 120 || !LATEX_CHARS.test(latex)) return null;
   for (const m of latex.matchAll(/\\([A-Za-z]*)/g)) if (!LATEX_COMMANDS.has(m[1])) return null;
   if (/\\(?![A-Za-z])/.test(latex)) return null;
+  if (freeVariables(latex).length) return null;
   return latex;
 }
 

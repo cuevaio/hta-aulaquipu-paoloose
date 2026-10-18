@@ -4,6 +4,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { ClassImage } from "@/components/class-image";
+import { dropRepeatedHeadings } from "@/lib/markdown-clean";
 
 // Códigos de color de terminal (ESC[1m … ESC[0m) que a veces escribe el modelo, como carácter real
 // o como el texto "\u001b"; también quedan sueltos como "[1m" si se perdió el ESC.
@@ -39,7 +40,7 @@ export function ClassMarkdown({ children }: { children: string }) {
       rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
       components={{ img: ClassImage }}
     >
-      {normalizeMath(children)}
+      {normalizeMath(dropRepeatedHeadings(children))}
     </ReactMarkdown>
   );
 }

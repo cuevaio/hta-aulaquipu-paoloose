@@ -323,8 +323,55 @@ export async function book(userId: string, body: Body): Promise<BookingResult> {
 }
 
 export async function startGroupSession(userId: string, groupId: string) {
-  const sessionId = await rpc<string>("start_group_session", { p_profile_id: userId, p_group_id: uuidParam(groupId, "grupo") });
+  const gid = uuidParam(groupId, "grupo");
+  const joined = await joinTutorLiveClass(userId, gid);
+  if (joined) return { sessionId: joined };
+  const sessionId = await rpc<string>("start_group_session", { p_profile_id: userId, p_group_id: gid });
   return { sessionId };
+}
+
+/**
+ * Cada reserva con un tutor crea su propio grupo. Si ese tutor ya está dando en vivo el mismo
+ * tema en otro grupo, abrir una sala nueva dejaría al alumno solo (el tutor está en la otra).
+ * En ese caso el alumno pasa al grupo en vivo con la parte que ya acordó, y su grupo queda
+ * cancelado si se vacía. Devuelve la sesión en vivo, o null si no aplica.
+ */
+async function joinTutorLiveClass(userId: string, groupId: string): Promise<string | null> {
+  type GroupRow = { id: string; tutor_id: string | null; topic_id: string; status: string };
+  const [group] = await must<GroupRow[]>(db().from("groups").select("id, tutor_id, topic_id, status").eq("id", groupId).limit(1));
+  if (!group?.tutor_id || group.tutor_id === userId || ["live", "completed", "cancelled"].includes(group.status)) return null;
+  const [mine] = await must<{ share_quipus: number }[]>(
+    db().from("group_members").select("share_quipus").eq("group_id", groupId).eq("student_id", userId).eq("status", "joined").limit(1),
+  );
+  if (!mine) return null;
+
+  const live = await must<{ id: string; group_id: string | null }[]>(
+    db()
+      .from("sessions")
+      .select("id, group_id")
+      .eq("tutor_id", group.tutor_id)
+      .eq("topic_id", group.topic_id)
+      .eq("tutor_kind", "human")
+      .eq("status", "live")
+      .neq("group_id", groupId)
+      .order("started_at", { ascending: false })
+      .limit(1),
+  );
+  const target = live[0];
+  if (!target?.group_id) return null;
+
+  await must(
+    db()
+      .from("group_members")
+      .upsert({ group_id: target.group_id, student_id: userId, share_quipus: mine.share_quipus, status: "joined" }),
+  );
+  await must(db().from("group_members").update({ status: "left" }).eq("group_id", groupId).eq("student_id", userId));
+  const rest = await must<{ student_id: string }[]>(
+    db().from("group_members").select("student_id").eq("group_id", groupId).eq("status", "joined"),
+  );
+  if (!rest.length) await must(db().from("groups").update({ status: "cancelled" }).eq("id", groupId));
+  await logEvent(target.id, `profile:${userId}`, "merged_from_group", { groupId });
+  return target.id;
 }
 
 export async function session(userId: string, id: string) {

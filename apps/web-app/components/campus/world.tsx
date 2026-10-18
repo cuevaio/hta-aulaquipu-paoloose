@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AvatarConfig, Equipped } from "@/lib/types";
 import { DEFAULT_DIRECTION, directionFor, setDirection, setWalking, useDirection, useWalking } from "@/lib/campus/walk-store";
-import { AiAvatar, Avatar } from "@/components/avatar";
+import { Avatar } from "@/components/avatar";
 import {
   CLASS_DOORS,
   COLS,
@@ -22,6 +22,7 @@ import {
   type WorldObject,
 } from "@/lib/campus/map";
 import { BUBBLE_MS } from "@/lib/campus/chat-rules";
+import { teacherAvatar } from "@/lib/campus/teacher-avatars";
 import { cn } from "@/lib/utils";
 import { FURNI_SIZE, furniScale, furniSrc } from "@/lib/campus/furni";
 import type { CampusPeer, PeerPosition } from "@/lib/campus/use-campus-presence";
@@ -656,7 +657,16 @@ export function CampusWorld({
           >
             <div className={cn("float", nearId === p.id && "rounded-xl ring-4 ring-gold")}>
               {p.ai ? (
-                <AiAvatar emoji={p.ai.emoji} color={p.ai.color} size={T * 0.95} />
+                // Tutor IA de pie como un profe más; la etiqueta con su emoji recuerda que es IA
+                <div className="relative">
+                  <Avatar config={teacherAvatar(p.id, p.ai.color)} size={T * 0.95} label={p.name} bare />
+                  <span
+                    className="absolute -right-3 bottom-0 flex items-center gap-0.5 rounded-full bg-navy px-1 py-px text-[9px] font-black text-mint ring-2 ring-white"
+                    aria-hidden
+                  >
+                    <span className="text-[11px] leading-none">{p.ai.emoji}</span> IA
+                  </span>
+                </div>
               ) : (
                 <Avatar config={p.avatar ?? {}} equipped={p.equipped} size={T * 0.95} label={p.name} bare />
               )}
