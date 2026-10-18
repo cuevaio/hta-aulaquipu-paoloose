@@ -166,7 +166,7 @@ export class LiveKitTransport implements ClassroomTransport {
     if (topic === "aulaquipu:graph" && msg.type === "graph_op" && typeof msg.id === "string") {
       if (msg.op === "set" && typeof msg.latex === "string") {
         this.emit({ type: "focus_tool", actor, tool: "graph" });
-        this.emit({ type: "graph_set", actor, id: msg.id, latex: msg.latex });
+        this.emit({ type: "graph_set", actor, id: msg.id, latex: msg.latex, color: typeof msg.color === "string" ? msg.color : undefined });
       } else if (msg.op === "remove") {
         this.emit({ type: "graph_remove", actor, id: msg.id });
       }

@@ -198,7 +198,7 @@ export default function ClassroomPage() {
           if (e.actor !== myActor) setTool("notebook");
           break;
         case "graph_set":
-          desmos.current?.setExpression(e.id, e.latex, e.color);
+          desmos.current?.setExpression(e.id, e.latex, e.color, fromAi);
           markBusy("graphing");
           break;
         case "graph_remove":

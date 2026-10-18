@@ -10,6 +10,7 @@ interface DesmosCalculator {
   setExpression(e: { id: string; latex: string; color?: string }): void;
   removeExpressions(e: { id: string }[]): void;
   setMathBounds(b: { left: number; right: number; bottom: number; top: number }): void;
+  graphpaperBounds: { mathCoordinates: { left: number; right: number; bottom: number; top: number } };
   resize(): void;
   destroy(): void;
 }
@@ -40,8 +41,40 @@ function loadDesmos(): Promise<void> {
   return loading;
 }
 
+/** Corrige el doble escape que a veces escribe el modelo: dos barras invertidas seguidas pasan a una. */
+function cleanLatex(latex: string) {
+  return latex.replace(/\\\\/g, "\\");
+}
+
+/** Puntos "(a,b)" de una expresión; las curvas no aportan puntos. */
+function pointsOf(latex: string): [number, number][] {
+  const m = latex.trim().match(/^\(\s*(-?\d*\.?\d+)\s*,\s*(-?\d*\.?\d+)\s*\)$/);
+  return m ? [[Number(m[1]), Number(m[2])]] : [];
+}
+
+/** Amplía la vista solo si algún punto queda fuera; nunca la reduce (no pelea con el zoom del alumno). */
+function fitPoints(c: DesmosCalculator, pts: [number, number][]) {
+  if (!pts.length) return;
+  const b = c.graphpaperBounds.mathCoordinates;
+  let { left, right, bottom, top } = b;
+  const padX = (right - left) * 0.15;
+  const padY = (top - bottom) * 0.15;
+  for (const [x, y] of pts) {
+    if (x < left || x > right) {
+      left = Math.min(left, x - padX);
+      right = Math.max(right, x + padX);
+    }
+    if (y < bottom || y > top) {
+      bottom = Math.min(bottom, y - padY);
+      top = Math.max(top, y + padY);
+    }
+  }
+  if (left !== b.left || right !== b.right || bottom !== b.bottom || top !== b.top) c.setMathBounds({ left, right, bottom, top });
+}
+
 export interface DesmosHandle {
-  setExpression(id: string, latex: string, color?: string): void;
+  /** `fit`: ajusta la vista para que se vean los puntos (solo para lo que pone el tutor). */
+  setExpression(id: string, latex: string, color?: string, fit?: boolean): void;
   removeExpression(id: string): void;
 }
 
@@ -51,6 +84,7 @@ export function DesmosGraph({ visible, ref }: { visible: boolean; ref?: React.Re
   const calc = useRef<DesmosCalculator | null>(null);
   const queue = useRef<((c: DesmosCalculator) => void)[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -75,7 +109,7 @@ export function DesmosGraph({ visible, ref }: { visible: boolean; ref?: React.Re
       calc.current?.destroy();
       calc.current = null;
     };
-  }, []);
+  }, [attempt]);
 
   useEffect(() => {
     if (visible) calc.current?.resize();
@@ -84,7 +118,12 @@ export function DesmosGraph({ visible, ref }: { visible: boolean; ref?: React.Re
   useImperativeHandle(ref, () => {
     const run = (fn: (c: DesmosCalculator) => void) => (calc.current ? fn(calc.current) : queue.current.push(fn));
     return {
-      setExpression: (id, latex, color) => run((c) => c.setExpression({ id, latex, color })),
+      setExpression: (id, latex, color, fit) =>
+        run((c) => {
+          const clean = cleanLatex(latex);
+          c.setExpression({ id, latex: clean, color });
+          if (fit) fitPoints(c, pointsOf(clean));
+        }),
       removeExpression: (id) => run((c) => c.removeExpressions([{ id }])),
     };
   }, []);
@@ -94,7 +133,22 @@ export function DesmosGraph({ visible, ref }: { visible: boolean; ref?: React.Re
       <div ref={el} className="size-full" />
       {status !== "ready" && (
         <div className="absolute inset-0 grid place-items-center bg-card text-sm font-semibold text-muted-foreground">
-          {status === "loading" ? "Cargando graficador…" : "No se pudo cargar el graficador. Revisa tu conexión."}
+          {status === "loading" ? (
+            "Cargando graficador…"
+          ) : (
+            <div className="flex flex-col items-center gap-3 px-6 text-center">
+              <p>No se pudo cargar el graficador. Revisa tu conexión.</p>
+              <button
+                onClick={() => {
+                  setStatus("loading");
+                  setAttempt((n) => n + 1);
+                }}
+                className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white hover:brightness-95"
+              >
+                Reintentar
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

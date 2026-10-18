@@ -27,7 +27,7 @@
 
 ## Tasks
 - [x] T1 — Whiteboard fixes.
-- [ ] T2 — Graph fixes.
+- [x] T2 — Graph fixes.
 - [ ] T3 — Browser validation.
 
 ## Acceptance criteria
@@ -38,6 +38,7 @@
 
 ## Progress
 - T1 done: `board_erase` event + `applyBoardEvent` (idempotent by stroke id), proximity eraser with cursor, notebook strokes normalized to image rect, single ResizeObserver with size-change-only resize, local apply without transport, pointercancel, tap dot. Checks: `tsc --noEmit` clean, eslint clean, /aula/x 200. Browser check pending (T3).
+- T2 done: `color` in agent graphSet (hex, optional, in prompt) and passed through transport; web-side LaTeX double-backslash cleanup (agent prompt renders single backslash: verified via dedent); Desmos "Reintentar" (re-runs load, flushes queue); tutor points `(a,b)` expand view bounds (never shrink; only for AI ops). Checks: web `tsc` + eslint clean, /aula/x 200, agent `tsc --noEmit` clean (`pnpm typecheck` fails in this env with MODULE_NOT_FOUND, used local tsc). Agent worker needs restart.
 
 ## Next step
-- T2.
+- T3 browser validation.
