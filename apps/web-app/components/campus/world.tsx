@@ -23,7 +23,7 @@ import {
 } from "@/lib/campus/map";
 import { BUBBLE_MS } from "@/lib/campus/chat-rules";
 import { cn } from "@/lib/utils";
-import { FURNI_SIZE, furniScale, furniSrc, type FurniId } from "@/lib/campus/furni";
+import { FURNI_SIZE, furniScale, furniSrc } from "@/lib/campus/furni";
 import type { CampusPeer, PeerPosition } from "@/lib/campus/use-campus-presence";
 
 export interface CampusPerson {
@@ -37,8 +37,6 @@ export interface CampusPerson {
   avatar?: AvatarConfig;
   equipped?: Equipped | null;
   ai?: { emoji: string; color: string };
-  /** Mascota guía: se dibuja con su sprite y abre una conversación en vez de una pantalla. */
-  guide?: { sprite: FurniId; scale: number };
 }
 
 /** Una clase del alumno puesta en una puerta del pasillo. */
@@ -199,7 +197,6 @@ export function CampusWorld({
   const facing = useRef(DEFAULT_DIRECTION);
   // Elementos y posición dibujada de cada persona conectada (se interpola hacia la recibida)
   const peerEls = useRef(new Map<string, HTMLDivElement>());
-  const personEls = useRef(new Map<string, HTMLDivElement>());
   const peerDrawn = useRef(new Map<string, { x: number; y: number }>());
 
   const bubbleTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -208,7 +205,7 @@ export function CampusWorld({
   useEffect(() => {
     const timers = bubbleTimers.current;
     bubbleRef.current = (id, text) => {
-      const holder = id === "me" ? player.current : (peerEls.current.get(id) ?? personEls.current.get(id));
+      const holder = id === "me" ? player.current : peerEls.current.get(id);
       const el = holder?.querySelector<HTMLElement>("[data-bubble]");
       if (!el) return;
       el.textContent = text;
@@ -654,35 +651,11 @@ export function CampusWorld({
         {people.map((p) => (
           <div
             key={p.id}
-            ref={(el) => {
-              if (el) personEls.current.set(p.id, el);
-              else personEls.current.delete(p.id);
-            }}
             className="absolute flex cursor-pointer flex-col items-center"
             style={{ left: p.x * T, top: p.y * T - T * 0.35, width: T, zIndex: (p.y + 1) * 10 + 5 }}
           >
-            {p.guide && (
-              <div
-                data-bubble
-                aria-live="polite"
-                className="hidden absolute bottom-full left-1/2 z-10 mb-1 w-max max-w-[13rem] -translate-x-1/2 rounded-2xl rounded-bl-sm bg-white px-2.5 py-1.5 text-xs leading-snug font-semibold break-words text-navy shadow-lg ring-1 ring-black/10"
-              />
-            )}
             <div className={cn("float", nearId === p.id && "rounded-xl ring-4 ring-gold")}>
-              {p.guide ? (
-                <div role="img" aria-label={p.name} className="relative flex items-end justify-center" style={{ width: T * 0.95, height: T * 0.95 }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element -- sprite diminuto, sin optimizar */}
-                  <img
-                    src={furniSrc(p.guide.sprite)}
-                    alt=""
-                    draggable={false}
-                    width={Math.round(FURNI_SIZE[p.guide.sprite][0] * furniScale(T, p.guide.scale))}
-                    height={Math.round(FURNI_SIZE[p.guide.sprite][1] * furniScale(T, p.guide.scale))}
-                    className="max-w-none [image-rendering:pixelated]"
-                  />
-                  <span className="absolute -top-2 -right-2 grid size-5 place-items-center rounded-full bg-gold text-[11px] shadow ring-2 ring-white">💬</span>
-                </div>
-              ) : p.ai ? (
+              {p.ai ? (
                 <AiAvatar emoji={p.ai.emoji} color={p.ai.color} size={T * 0.95} />
               ) : (
                 <Avatar config={p.avatar ?? {}} equipped={p.equipped} size={T * 0.95} label={p.name} bare />

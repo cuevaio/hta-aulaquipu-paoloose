@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, GraduationCap, LayoutDashboard, HelpCircle, LogOut, ShieldCheck, Shirt, User, X } from "lucide-react";
 import { api, API_MODE } from "@/lib/api";
 import { AI_SPOTS, CLASS_DOORS, type Room } from "@/lib/campus/map";
-import { GUIDES, guideById, type Guide, type GuideTopic } from "@/lib/campus/guides";
+import { KILLA, type GuideTopic } from "@/lib/campus/guides";
 import { GuideDialog, GuideSprite } from "@/components/campus/guide-dialog";
 import { useQuery, useSession, useToast } from "@/components/providers";
 import { Avatar } from "@/components/avatar";
@@ -43,19 +43,15 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   const [room, setRoom] = useState<Room | null>(null);
   const [banner, setBanner] = useState<Room | null>(null);
   const [near, setNear] = useState<Interactable | null>(null);
-  const [guideId, setGuideId] = useState<string | null>(null);
-  const guide = guideId ? guideById(guideId) : undefined;
-  // Mascota llevándote a un lugar (se muestra arriba mientras sigues las huellas)
-  const [guiding, setGuiding] = useState<{ guide: Guide; topic: GuideTopic } | null>(null);
+  // Killa, la mascota guía: su conversación y el lugar al que te está llevando
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guiding, setGuiding] = useState<GuideTopic | null>(null);
   const onTrailEnd = useCallback(() => setGuiding(null), []);
-  // Las mascotas saludan la primera vez que pasas cerca
-  const greeted = useRef(new Set<string>());
-  const onNearChange = useCallback((t: Interactable | null) => {
-    setNear(t);
-    if (t && guideById(t.id) && !greeted.current.has(t.id)) {
-      greeted.current.add(t.id);
-      bubbleRef.current?.(t.id, "¡Hola! 👋 Háblame si necesitas ayuda");
-    }
+  // Al entrar asoma un "¿Te ayudo?" unos segundos, una vez por visita
+  const [killaHint, setKillaHint] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setKillaHint(false), 7000);
+    return () => clearTimeout(t);
   }, []);
   const [menu, setMenu] = useState(false);
   const presence = useCampusPresence(ready && me ? userId : null);
@@ -145,24 +141,9 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
     return out;
   }, [crowd.data]);
 
-  // En el mapa solo hay quien está conectado de verdad (camina en vivo), los tutores IA, que siempre
-  // atienden, y dos guías que dan consejos
-  const guides = useMemo<CampusPerson[]>(
-    () =>
-      GUIDES.map((g) => ({
-        id: g.id,
-        x: g.x,
-        y: g.y,
-        name: g.name,
-        caption: `${g.species} · habla conmigo`,
-        href: `guide:${g.id}`,
-        prompt: `Hablar con ${g.name}`,
-        guide: { sprite: g.sprite, scale: g.scale },
-      })),
-    [],
-  );
+  // En el mapa solo hay quien está conectado de verdad (camina en vivo) y los tutores IA, que siempre atienden
   const people = useMemo<CampusPerson[]>(() => {
-    if (!crowd.data) return guides;
+    if (!crowd.data) return [];
     const ais = crowd.data.ais.slice(0, AI_SPOTS.length).map((a, i) => ({
       id: a.id,
       ...AI_SPOTS[i],
@@ -172,8 +153,8 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
       prompt: `Tomar clase con ${a.name}`,
       ai: { emoji: a.persona.emoji, color: a.persona.color },
     }));
-    return [...guides, ...ais];
-  }, [crowd.data, guides]);
+    return ais;
+  }, [crowd.data]);
 
   const reportPosition = presence.reportPosition;
   const onMove = useCallback(
@@ -191,11 +172,6 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   const toastMsg = useToast();
   const open = useCallback(
     async (href: string) => {
-      // Mascota guía: abre la conversación
-      if (href.startsWith("guide:")) {
-        setGuideId(href.slice("guide:".length));
-        return;
-      }
       // Puerta de una clase agendada: se abre el aula (la sesión se crea si aún no existe)
       if (href.startsWith("class:") && userId) {
         try {
@@ -272,7 +248,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         doors={doors}
         onOpen={open}
         onRoomChange={onRoomChange}
-        onNearChange={onNearChange}
+        onNearChange={setNear}
         onTrailEnd={onTrailEnd}
         interactRef={interactRef}
         goToRef={goToRef}
@@ -430,7 +406,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Acción disponible cerca */}
-      {near && !panelOpen && !guide && (
+      {near && !panelOpen && !guideOpen && (
         <div className="absolute inset-x-0 bottom-24 z-[55] flex justify-center px-4">
           <button
             onClick={() => interactRef.current?.()}
@@ -474,15 +450,36 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         </p>
       )}
 
-      {guide && !welcome && (
+      {/* Killa flotante: siempre a mano en la esquina, sin tapar el mapa */}
+      {!panelOpen && !welcome && !guideOpen && !guiding && (
+        <div className="absolute bottom-40 left-3 z-[54] flex items-end gap-2 lg:bottom-36 lg:left-4">
+          <button
+            onClick={() => {
+              setKillaHint(false);
+              setGuideOpen(true);
+            }}
+            aria-label={`Hablar con ${KILLA.name}, la guía del cole`}
+            title={`${KILLA.name} te ayuda`}
+            className="grid size-14 place-items-end justify-center rounded-2xl bg-card/80 pb-1 shadow-lg ring-1 ring-black/5 backdrop-blur transition hover:scale-105 hover:bg-card"
+          >
+            <GuideSprite guide={KILLA} box={44} className="float" />
+          </button>
+          {killaHint && (
+            <span className="mb-2 rounded-2xl rounded-bl-sm bg-card px-2.5 py-1.5 text-xs font-bold shadow-md animate-in fade-in slide-in-from-left-1">
+              ¿Te ayudo? 👋
+            </span>
+          )}
+        </div>
+      )}
+      {guideOpen && !welcome && (
         <GuideDialog
-          guide={guide}
-          onClose={() => setGuideId(null)}
+          guide={KILLA}
+          onClose={() => setGuideOpen(false)}
           onPick={(topic) => {
-            setGuideId(null);
+            setGuideOpen(false);
             if (!topic.go) return;
             goToRef.current?.(topic.go.target, { trail: true });
-            setGuiding({ guide, topic });
+            setGuiding(topic);
           }}
         />
       )}
@@ -490,13 +487,13 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         <div className="pointer-events-none absolute inset-x-0 top-[4.5rem] z-[56] flex justify-center px-3">
           <div className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl bg-card/95 p-2 pr-3 shadow-xl ring-2 ring-gold backdrop-blur animate-in fade-in slide-in-from-top-2">
             <div className="grid size-12 shrink-0 place-items-end justify-center rounded-xl bg-secondary pb-0.5">
-              <GuideSprite guide={guiding.guide} box={42} />
+              <GuideSprite guide={KILLA} box={42} />
             </div>
             <div className="min-w-0 flex-1 text-sm leading-snug">
               <p className="font-extrabold">
-                👣 Sigue las huellas hasta {guiding.topic.go?.place}
+                👣 Sigue las huellas hasta {guiding.go?.place}
               </p>
-              <p className="text-xs text-muted-foreground">{guiding.topic.say}</p>
+              <p className="text-xs text-muted-foreground">{guiding.say}</p>
             </div>
             <button
               onClick={() => {

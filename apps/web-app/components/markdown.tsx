@@ -14,7 +14,13 @@ const ANSI_ANY = new RegExp(ANSI, "g");
 /** El resaltado de terminal pasa a negrita, o a fórmula si lo resaltado es LaTeX. */
 function stripAnsi(md: string): string {
   return md
-    .replace(ANSI_SPAN, (_, m: string) => (m.trim() ? (/\\[a-z]+/i.test(m) ? `$${m.trim()}$` : `**${m.trim()}**`) : ""))
+    .replace(ANSI_SPAN, (_, m: string) =>
+      m.trim()
+        ? /\\[a-z]+/i.test(m)
+          ? `$${m.trim()}$`
+          : `**${m.trim()}**`
+        : "",
+    )
     .replace(ANSI_ANY, "");
 }
 

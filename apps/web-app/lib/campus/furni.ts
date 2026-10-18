@@ -3,7 +3,6 @@
 
 export const FURNI_SIZE = {
   autumn_c20_bench: [97, 101],
-  br_c25_parrot4: [53, 38],
   classic9_bookshelf: [98, 215],
   ducket_c25_plantpot: [58, 95],
   ducket_c26_appletree: [217, 252],
