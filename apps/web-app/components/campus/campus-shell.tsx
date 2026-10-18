@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, GraduationCap, LayoutDashboard, LogOut, School, ShoppingBag, User, Wallet, X } from "lucide-react";
+import { BookOpen, GraduationCap, LayoutDashboard, LogOut, School, ShoppingBag, Sparkles, User, Wallet, X } from "lucide-react";
 import { api, API_MODE } from "@/lib/api";
 import { AI_SPOTS, STUDENT_SPOTS, TUTOR_SPOTS, type Room } from "@/lib/campus/map";
 import { useQuery, useSession } from "@/components/providers";
@@ -19,6 +19,7 @@ const BAR = [
   { href: "/aprender", label: "Aprender", icon: BookOpen },
   { href: "/ensenar", label: "Enseñar", icon: GraduationCap },
   { href: "/clases", label: "Clases", icon: School },
+  { href: "/tutores-ia", label: "Tutores IA", icon: Sparkles },
   { href: "/tienda", label: "Tienda", icon: ShoppingBag },
   { href: "/quipus", label: "Quipus", icon: Wallet },
 ];
@@ -215,17 +216,17 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
 
       {/* Barra inferior */}
       <nav className="absolute inset-x-0 bottom-3 z-[55] flex justify-center px-3">
-        <div className="flex max-w-full gap-1 overflow-x-auto rounded-2xl bg-navy/90 p-1.5 shadow-xl backdrop-blur">
+        <div className="flex w-full max-w-full justify-center gap-0.5 overflow-x-auto sm:w-auto sm:gap-1 rounded-2xl bg-navy/90 p-1.5 shadow-xl backdrop-blur">
           {BAR.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
               className={cn(
-                "flex min-w-14 flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5 text-[10px] font-bold transition-colors",
+                "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-[9px] leading-tight font-bold whitespace-nowrap transition-colors sm:min-w-14 sm:flex-none sm:px-2.5 sm:text-[10px]",
                 pathname === href ? "bg-mint text-navy" : "text-white/75 hover:bg-navy-3 hover:text-white",
               )}
             >
-              <Icon className="size-5" />
+              <Icon className="size-5 shrink-0" />
               {label}
             </Link>
           ))}

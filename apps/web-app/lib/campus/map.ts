@@ -74,7 +74,7 @@ export const OBJECTS: WorldObject[] = [
   // Biblioteca
   o("lib-shelf-1", "shelf", 1, 1, 4, 1, { emoji: "📚" }),
   o("lib-shelf-2", "shelf", 9, 1, 4, 1, { emoji: "📚" }),
-  o("lib-board", "board", 5, 1, 4, 1, { emoji: "📌", label: "Mis pedidos", href: "/home", prompt: "Ver mi tablero" }),
+  o("lib-board", "board", 5, 1, 4, 1, { emoji: "📌", label: "Mis pedidos", href: "/home", prompt: "Ver mis pedidos en el tablero" }),
   o("lib-kiosk", "kiosk", 6, 4, 2, 1, { emoji: "📝", label: "Publicar pedido", href: "/aprender", prompt: "Pedir una tutoría" }),
   o("lib-table-1", "table", 2, 6, 2, 1, { emoji: "📖" }),
   o("lib-table-2", "table", 10, 6, 2, 1, { emoji: "✏️" }),
@@ -82,7 +82,7 @@ export const OBJECTS: WorldObject[] = [
   o("lib-plant-2", "plant", 12, 8, 1, 1, { emoji: "🪴" }),
 
   // Aulas IA
-  o("ia-board-1", "board", 15, 1, 3, 1, { emoji: "🧮" }),
+  o("ia-board-1", "board", 15, 1, 3, 1, { emoji: "🧮", label: "Tutores IA", href: "/tutores-ia", prompt: "Ver los tutores IA" }),
   o("ia-board-2", "board", 22, 1, 3, 1, { emoji: "📈" }),
   o("ia-rug-1", "rug", 15, 3, 3, 3),
   o("ia-rug-2", "rug", 18, 3, 3, 3),
@@ -90,7 +90,7 @@ export const OBJECTS: WorldObject[] = [
   o("ia-plant", "plant", 25, 8, 1, 1, { emoji: "🪴" }),
 
   // Sala de tutores
-  o("tut-board", "board", 31, 1, 4, 1, { emoji: "📋", label: "Tablón de pedidos", href: "/ensenar", prompt: "Ver pedidos y enseñar" }),
+  o("tut-board", "board", 31, 1, 4, 1, { emoji: "📋", label: "Pedidos para ti", href: "/ensenar", prompt: "Ver pedidos y enseñar" }),
   o("tut-sofa-1", "sofa", 28, 6, 3, 1, { emoji: "🛋️" }),
   o("tut-sofa-2", "sofa", 35, 6, 3, 1, { emoji: "🛋️" }),
   o("tut-plant-1", "plant", 27, 1, 1, 1, { emoji: "🪴" }),
@@ -108,7 +108,7 @@ export const OBJECTS: WorldObject[] = [
   o("plaza-bench-1", "bench", 14, 14, 2, 1, { emoji: "🪑" }),
   o("plaza-bench-2", "bench", 24, 14, 2, 1, { emoji: "🪑" }),
   o("plaza-mirror", "mirror", 4, 12, 1, 2, { emoji: "🪞", label: "Espejo", href: "/perfil", prompt: "Ver mi perfil" }),
-  o("plaza-board", "board", 34, 12, 2, 1, { emoji: "🗒️", label: "Mi tablero", href: "/home", prompt: "Ver mi resumen" }),
+  o("plaza-board", "board", 34, 12, 2, 1, { emoji: "🗒️", label: "Tablero", href: "/home", prompt: "Abrir mi tablero" }),
 
   // Aulas
   o("aula-board", "board", 8, 17, 4, 1, { emoji: "🏫", label: "Mis clases", href: "/clases", prompt: "Ver mis clases y entrar al aula" }),

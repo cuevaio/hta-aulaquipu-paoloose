@@ -63,7 +63,7 @@ export default function MatchPage() {
         </p>
         <div className="mt-6 flex flex-col gap-2">
           <button onClick={enterNow} disabled={pending} className={cn(btn.primary, btn.lg)}>
-            Entrar al aula ahora (demo)
+            Entrar al aula ahora
           </button>
           <Link href="/campus" className={cn(btn.soft, btn.md)}>
             Volver al campus
