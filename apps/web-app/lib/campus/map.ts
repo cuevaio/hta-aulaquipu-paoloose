@@ -167,28 +167,44 @@ export const OBJECTS: WorldObject[] = [
   o("lockers-bench", "bench", 31, 27, 4, 1, { emoji: "🪑" }),
 ];
 
-/** Lugares para los demás alumnos, en orden: primero la sala de tutores (para quienes enseñan). */
-export const TUTOR_SPOTS = [
-  { x: 29, y: 3 },
-  { x: 36, y: 3 },
-  { x: 33, y: 3 },
-];
-export const STUDENT_SPOTS = [
-  { x: 3, y: 3 },
-  { x: 10, y: 3 },
-  { x: 8, y: 13 },
-  { x: 20, y: 21 },
-  { x: 4, y: 7 },
-  { x: 31, y: 13 },
-  { x: 30, y: 21 },
-  { x: 6, y: 19 },
-  { x: 16, y: 10 },
-  { x: 24, y: 10 },
-];
 export const AI_SPOTS = [
   { x: 16, y: 4 },
   { x: 19, y: 4 },
   { x: 22, y: 4 },
+];
+
+/** Solo dos guías (no son alumnos): al hablarles dan un consejo, uno distinto cada vez. */
+export const GUIDES = [
+  {
+    id: "guia-portero",
+    x: 17,
+    y: 26,
+    name: "Don Lucho",
+    role: "Portero",
+    emoji: "🧓",
+    color: "#FFB547",
+    tips: [
+      "¡Bienvenido al cole! 👋 Camina con las flechas o tocando el piso.",
+      "¿Te cuesta un tema? Ve a la 📚 Biblioteca, arriba a la izquierda, y pide ayuda.",
+      "Tus clases aparecen como puertas en el 🚪 Pasillo, aquí al norte.",
+      "Acércate a lo que brilla y presiona X (o el botón) para usarlo.",
+    ],
+  },
+  {
+    id: "guia-patio",
+    x: 9,
+    y: 13,
+    name: "Profe Rosa",
+    role: "Coordinadora",
+    emoji: "👩‍🏫",
+    color: "#2FD3A3",
+    tips: [
+      "¿Algo se te da bien? En la 🎓 Sala de profesores enseñas y ganas quipus.",
+      "Los ✨ tutores IA del Laboratorio te atienden al toque, a cualquier hora.",
+      "Mira tus quipus en la 🏦 Tesorería y gástalos en el 🛍️ Kiosko.",
+      "Toca a un compañero conectado para ver su perfil.",
+    ],
+  },
 ];
 
 /** Se entra al colegio por la portería, frente a la puerta principal. */
