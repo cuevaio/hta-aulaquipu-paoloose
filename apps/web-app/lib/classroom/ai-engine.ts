@@ -119,6 +119,7 @@ export class SimulatedAiTutor {
     const correct = index === correctIndex;
     this.emit({ type: "quiz_result", actor: this.actor, id, correct, correctIndex, explanation });
     this.emit({ type: "session_event", actor: this.actor, kind: "tool_call", payload: { tool: "quiz", id, correct } });
+    this.emit({ type: "emote", actor: this.actor, kind: correct ? "celebrate" : "encourage" });
     await this.say(correct ? step.right : step.wrong);
   }
 
@@ -143,6 +144,7 @@ export class SimulatedAiTutor {
       return;
     }
     const ok = step.check ? step.check(answer) : true;
+    if (ok && step.check) this.emit({ type: "emote", actor: this.actor, kind: "celebrate" });
     if (ok) await this.say(step.right);
     else if (step.wrong.length) await this.runSteps(step.wrong);
     else await this.say(step.right);

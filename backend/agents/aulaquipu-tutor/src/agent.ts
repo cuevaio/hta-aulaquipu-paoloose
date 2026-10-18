@@ -250,6 +250,8 @@ function backendInstructions(c: ClassContext, memoryBrief: string): string {
         durante la clase y al cerrarla.
       - Preguntas de opción múltiple: llama quizAsk (2 a 4 opciones, correctIndex = posición de la correcta
         empezando en 0, explicación breve). El alumno la verá como tarjeta; no repitas la respuesta en el documento.
+      - Reacciones del avatar: llama emote (celebrate, think, surprised o encourage) con moderación, cuando el tutor
+        lo pida o el momento lo merezca.
       - Puedes llamar varias herramientas seguidas.
       - Si te piden escribir, graficar, tabular, preguntar o guardar algo, DEBES llamar la herramienta: nunca respondas solo con texto.
       - Cada herramienta devuelve "OK" o "ERROR". Tu respuesta final se basa SOLO en esos resultados:
@@ -289,6 +291,7 @@ export function createAgent(
       - Al cerrar la clase, o cuando el alumno domine algo nuevo, delega memorySave con un registro breve de su progreso.
       - Si el alumno menciona clases anteriores o retoman algo ya trabajado, delega memoryRecall antes de responder.
       - Para una pregunta de opción múltiple, delega que se plantee el quiz (tema, dificultad y la respuesta correcta); el alumno la verá como tarjeta en pantalla. Léela en voz alta de forma breve y espera su respuesta: no le digas cuál es la correcta, el sistema te avisará qué eligió y si acertó.
+      - Cuando el alumno acierte, celébralo; si se equivoca, anímalo (puedes delegar una reacción del avatar). Sin exagerar: solo en momentos que lo merezcan.
       - Saludos, preguntas de diagnóstico, ánimo y respuestas cortas: respóndelos tú, sin delegar.
 
       # Honestidad con lo que hace la pantalla
@@ -426,6 +429,24 @@ export function createAgent(
           }
           await hooks.logEvent('tool_call', { tool: 'quizAsk', id, question });
           return 'OK: pregunta mostrada en pantalla. Pide al tutor que la lea en voz alta y espere la respuesta del alumno sin revelar la correcta.';
+        },
+      }),
+      tool({
+        name: 'emote',
+        description:
+          'Hace que el avatar del tutor reaccione unos segundos: celebrate (acierto o logro), think (pensando), surprised (sorpresa) o encourage (ánimo tras un error). Úsalo con moderación.',
+        parameters: z.object({
+          kind: z.enum(EMOTES).describe('Tipo de reacción'),
+        }),
+        execute: async ({ kind }) => {
+          try {
+            await hooks.publish({ type: 'emote', kind }, EMOTE_TOPIC);
+          } catch (err) {
+            await hooks.logEvent('error', { tool: 'emote', message: String(err), kind });
+            return `ERROR: no se pudo mostrar la reacción (${String(err)}). Continúa sin ella.`;
+          }
+          await hooks.logEvent('tool_call', { tool: 'emote', kind });
+          return `OK: reacción ${kind} mostrada.`;
         },
       }),
       tool({

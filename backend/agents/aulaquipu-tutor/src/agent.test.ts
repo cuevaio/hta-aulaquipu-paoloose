@@ -159,3 +159,12 @@ describe('quiz de opción múltiple', () => {
     expect(await handleQuizAnswer(hooks, book, { id: 'nope', index: 0 })).toBeNull();
   });
 });
+
+describe('emote', () => {
+  it('publica la reacción del avatar', async () => {
+    const { hooks, published } = makeHooks();
+    const out = await run(toolsOf(hooks).emote, { kind: 'celebrate' });
+    expect(out).toMatch(/^OK/);
+    expect(published).toEqual([{ msg: { type: 'emote', kind: 'celebrate' }, topic: 'aulaquipu:emote' }]);
+  });
+});

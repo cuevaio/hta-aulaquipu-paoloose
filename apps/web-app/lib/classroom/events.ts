@@ -4,6 +4,9 @@
 
 export type ClassroomTool = "doc" | "graph" | "board" | "notebook";
 
+/** Reacciones del avatar del tutor IA (herramienta emote del agente). */
+export type TutorEmote = "celebrate" | "think" | "surprised" | "encourage";
+
 export interface Point {
   x: number; // normalizado 0..1
   y: number;
@@ -40,6 +43,7 @@ export type ClassroomEvent =
   | { type: "quiz_answer"; actor: string; id: string; index: number }
   /** Veredicto del agente para una tarjeta. */
   | { type: "quiz_result"; actor: string; id: string; correct: boolean; correctIndex: number; explanation: string }
+  | { type: "emote"; actor: string; kind: TutorEmote }
   /** Confirmación de una herramienta del agente que sí se ejecutó (chip del chat). */
   | { type: "tool_action"; actor: string; tool: string; label: string }
   | { type: "session_event"; actor: string; kind: string; payload: Record<string, unknown> };

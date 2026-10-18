@@ -2,7 +2,7 @@
 // que consume el aula en modo local:
 // - "aulaquipu:class" (text stream): eventos entre personas (documento, pizarra…)
 // - "aulaquipu:notebook" (byte stream): foto del cuaderno
-// - "aulaquipu:doc" / "aulaquipu:graph" / "aulaquipu:action": herramientas del agente (backend/agents/aulaquipu-tutor)
+// - "aulaquipu:doc" / "aulaquipu:graph" / "aulaquipu:action" / "aulaquipu:emote": herramientas del agente (backend/agents/aulaquipu-tutor)
 // - "aulaquipu:quiz" / "aulaquipu:quiz-result": tarjetas de opción múltiple (agente -> aula);
 //   "aulaquipu:quiz-answer": la respuesta del alumno (aula -> agente)
 // - "lk.chat": chat de texto (el agente lo escucha como entrada)
@@ -15,7 +15,7 @@ import {
   type RemoteParticipant,
   type Room,
 } from "livekit-client";
-import type { ClassroomEvent } from "@/lib/classroom/events";
+import type { ClassroomEvent, TutorEmote } from "@/lib/classroom/events";
 import type { ClassroomTransport } from "@/lib/classroom/transport";
 
 const CLASS_TOPIC = "aulaquipu:class";
@@ -190,6 +190,11 @@ export class LiveKitTransport implements ClassroomTransport {
         correctIndex: typeof msg.correctIndex === "number" ? msg.correctIndex : -1,
         explanation: typeof msg.explanation === "string" ? msg.explanation : "",
       });
+      return;
+    }
+    if (topic === "aulaquipu:emote" && msg.type === "emote") {
+      const kind = msg.kind as TutorEmote;
+      if (kind === "celebrate" || kind === "think" || kind === "surprised" || kind === "encourage") this.emit({ type: "emote", actor, kind });
       return;
     }
     if (topic === "aulaquipu:graph" && msg.type === "graph_op" && typeof msg.id === "string") {

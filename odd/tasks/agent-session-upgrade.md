@@ -28,7 +28,7 @@
 ## Tasks
 - [x] T1 — Tool reliability + confirmations.
 - [x] T2 — Quiz cards.
-- [ ] T3 — Avatar reactions.
+- [x] T3 — Avatar reactions.
 - [ ] T7 — End-of-class summary.
 - [ ] T8 — Browser validation with the real agent (orchestrator).
 
@@ -40,6 +40,7 @@
 ## Progress
 - T1 done: root cause agent.ts voice instructions let GPT-Live say "listo" while delegating (only forbade claiming work that was never delegated) and nothing checked the backend run; tools now return OK/ERROR, publish `aulaquipu:action` chips, `watchDelegations` logs/nudges when a delegation ends without a tool call. Checks: agent tsc 0, vitest 5/5, web tsc 0, eslint clean, /aula/x and /resumen/x 200.
 - T2 done: agent `quizAsk` (answer key stays agent-side), `handleQuizAnswer` judges `aulaquipu:quiz-answer`, publishes `aulaquipu:quiz-result`, logs `tool_call{tool:'quiz'}` and prompts the voice reply; web quiz card + local script quizzes. Checks: agent tsc 0, vitest 9/9, web tsc 0, eslint clean, /aula/x and /resumen/x 200.
+- T3 done: agent `emote` tool + agent-side celebrate/encourage on quiz verdict; web `emote` event drives avatar for 2.5 s (new `surprised` variant), auto-celebrate on correct quiz; local script emits emotes. Checks: agent tsc 0, vitest 10/10, web tsc 0, eslint clean, routes 200.
 
 ## Next step
-- T3.
+- T7.

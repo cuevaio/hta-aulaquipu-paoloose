@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-export type TutorAvatarState = "idle" | "listening" | "thinking" | "speaking" | "writing" | "graphing" | "celebrating";
+export type TutorAvatarState = "idle" | "listening" | "thinking" | "speaking" | "writing" | "graphing" | "celebrating" | "surprised";
 export type TutorGaze = "center" | "left" | "right" | "down";
 
 const GAZE_OFFSET: Record<TutorGaze, [number, number]> = {
@@ -50,6 +50,7 @@ export function AiTutorAvatar({
   const lvl = Math.min(1, Math.max(0, level));
   const mouthOpen = state === "speaking" ? 0.15 + lvl * 0.85 : 0;
   const happy = state === "celebrating";
+  const surprised = state === "surprised";
 
   const bodyAnim =
     state === "celebrating" ? "tutor-anim-bounce" : state === "listening" ? "tutor-anim-tilt" : "tutor-anim-bob";
@@ -83,8 +84,8 @@ export function AiTutorAvatar({
               </>
             ) : (
               <g style={{ transform: `translate(${gx}px, ${gy}px)`, transition: "transform 300ms ease-out" }}>
-                <circle cx="39" cy="48" r="5.5" fill="#1E1B3A" />
-                <circle cx="61" cy="48" r="5.5" fill="#1E1B3A" />
+                <circle cx="39" cy="48" r={surprised ? 7 : 5.5} fill="#1E1B3A" />
+                <circle cx="61" cy="48" r={surprised ? 7 : 5.5} fill="#1E1B3A" />
                 <circle cx="40.8" cy="46.2" r="1.8" fill="#fff" />
                 <circle cx="62.8" cy="46.2" r="1.8" fill="#fff" />
               </g>
@@ -104,6 +105,8 @@ export function AiTutorAvatar({
                 style={{ transform: `scaleY(${mouthOpen})`, transition: "transform 70ms linear" }}
               />
             </g>
+          ) : surprised ? (
+            <ellipse cx="50" cy="62" rx="4.5" ry="6" fill="#1E1B3A" />
           ) : state === "thinking" ? (
             <path d="M44 61h12" stroke="#1E1B3A" strokeWidth="3" strokeLinecap="round" />
           ) : happy ? (

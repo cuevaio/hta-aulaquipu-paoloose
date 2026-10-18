@@ -112,6 +112,9 @@ export default function ClassroomPage() {
   // Última confirmación de una herramienta del tutor: aparece unos segundos aunque el chat esté cerrado
   const [actionChip, setActionChip] = useState<string | null>(null);
   const chipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Reacción puntual del avatar (emote del agente o acierto en un quiz): dura unos segundos
+  const [emote, setEmote] = useState<TutorAvatarState | null>(null);
+  const emoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const elapsed = useElapsed(data?.session.started_at);
   const myActor = `profile:${userId}`;
@@ -190,7 +193,15 @@ export default function ClassroomPage() {
         if (writerTimer.current) clearTimeout(writerTimer.current);
         writerTimer.current = setTimeout(() => setWriter(null), 900);
       };
+      const showEmote = (state: TutorAvatarState) => {
+        setEmote(state);
+        if (emoteTimer.current) clearTimeout(emoteTimer.current);
+        emoteTimer.current = setTimeout(() => setEmote(null), 2500);
+      };
       switch (e.type) {
+        case "emote":
+          if (fromAi) showEmote(e.kind === "think" ? "thinking" : e.kind === "surprised" ? "surprised" : "celebrating");
+          break;
         case "doc_write":
           setDocDraft((d) => (e.mode === "append" ? (d ?? savedDoc) + e.markdown : e.markdown));
           if (e.actor !== myActor) markWriter();
@@ -246,6 +257,7 @@ export default function ClassroomPage() {
           setQuiz({ id: e.id, question: e.question, options: e.options, picked: null, result: null });
           break;
         case "quiz_result":
+          if (e.correct) showEmote("celebrating");
           setQuiz((q) =>
             q && q.id === e.id ? { ...q, result: { correct: e.correct, correctIndex: e.correctIndex, explanation: e.explanation } } : q,
           );
@@ -269,6 +281,7 @@ export default function ClassroomPage() {
     () => () => {
       if (busyTimer.current) clearTimeout(busyTimer.current);
       if (chipTimer.current) clearTimeout(chipTimer.current);
+      if (emoteTimer.current) clearTimeout(emoteTimer.current);
     },
     [],
   );
@@ -279,7 +292,7 @@ export default function ClassroomPage() {
   const aiLevel = useSyntheticLevel(aiSpeaking);
   const quizWaiting = !!quiz && !quiz.result;
   const aiState: TutorAvatarState =
-    tutorBusy ?? (aiSpeaking ? "speaking" : quiz?.picked != null && quizWaiting ? "thinking" : question || quizWaiting ? "listening" : "idle");
+    emote ?? tutorBusy ?? (aiSpeaking ? "speaking" : quiz?.picked != null && quizWaiting ? "thinking" : question || quizWaiting ? "listening" : "idle");
 
   // Si el veredicto nunca llega (agente caído), la tarjeta no se queda colgada
   useEffect(() => {
