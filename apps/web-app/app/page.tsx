@@ -34,6 +34,9 @@ export default function LoginPage() {
     try {
       const { userId } = await api.login(dni, password);
       selectUser(userId);
+      // Next conserva esta página oculta al navegar: se deja el formulario listo para el próximo login
+      setPending(false);
+      setPassword("");
       router.push("/campus");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos iniciar sesión. Intenta de nuevo.");
