@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AvatarConfig, Equipped } from "@/lib/types";
+import { setWalking, useWalking } from "@/lib/campus/walk-store";
 import { AiAvatar, Avatar } from "@/components/avatar";
 import {
   CLASS_DOORS,
@@ -131,6 +132,12 @@ const OBJECT_STYLE: Partial<Record<WorldObject["kind"], string>> = {
   gate: "bg-[#8a5a3c] shadow-[inset_0_-6px_0_#6b432b] ring-2 ring-[#2b2550]/20",
 };
 const BIG_EMOJI = new Set(["plant", "tree", "fountain"]);
+
+/** Avatar del campus que anima sus pasos cuando su dueño camina (estado en walk-store). */
+function WalkingAvatar({ id, ...props }: React.ComponentProps<typeof Avatar> & { id: string }) {
+  const walking = useWalking(id);
+  return <Avatar {...props} walking={walking} bare />;
+}
 
 export function CampusWorld({
   me,
@@ -343,6 +350,7 @@ export function CampusWorld({
         player.current.style.transform = `translate3d(${p.x * T - T / 2}px, ${p.y * T - T * 0.85}px, 0)`;
         player.current.style.zIndex = String(Math.floor(p.y * 10) + 5);
         player.current.classList.toggle("walking", moving);
+        setWalking("me", moving);
         if (vx) facing.current = vx < 0 ? -1 : 1;
         if (body.current) body.current.style.transform = `scaleX(${facing.current})`;
 
@@ -352,6 +360,7 @@ export function CampusWorld({
           const target = peerPositions.current?.get(id);
           if (!target) {
             el.style.opacity = "0";
+            setWalking(id, false);
             continue;
           }
           let d = peerDrawn.current.get(id);
@@ -364,6 +373,7 @@ export function CampusWorld({
           el.style.transform = `translate3d(${d.x * T - T / 2}px, ${d.y * T - T * 0.85}px, 0)`;
           el.style.zIndex = String(Math.floor(d.y * 10) + 5);
           el.classList.toggle("walking", moving);
+          setWalking(id, moving);
           const inner = el.firstElementChild as HTMLElement | null;
           if (inner) inner.style.transform = `scaleX(${target.f})`;
         }
@@ -611,7 +621,7 @@ export function CampusWorld({
               className="hidden absolute bottom-full left-1/2 z-10 w-max max-w-[11rem] -translate-x-1/2 rounded-2xl rounded-bl-sm bg-white px-2.5 py-1.5 text-xs leading-snug font-semibold break-words text-navy shadow-lg ring-1 ring-black/10"
             />
             <div className="player-body">
-              <Avatar config={peer.avatar} equipped={peer.equipped} size={T * 0.95} label={peer.name} bare />
+              <WalkingAvatar id={peer.id} config={peer.avatar} equipped={peer.equipped} size={T * 0.95} label={peer.name} />
             </div>
             <span className="mt-0.5 flex items-center gap-1 rounded-full bg-navy/85 px-1.5 py-px text-[10px] font-bold whitespace-nowrap text-white">
               <span className="size-1.5 rounded-full bg-mint" />
@@ -629,7 +639,7 @@ export function CampusWorld({
               className="hidden absolute bottom-full left-1/2 z-10 w-max max-w-[11rem] -translate-x-1/2 rounded-2xl rounded-bl-sm bg-white px-2.5 py-1.5 text-xs leading-snug font-semibold break-words text-navy shadow-lg ring-1 ring-black/10"
             />
           <div ref={body} className="player-body">
-            <Avatar config={me.avatar} equipped={me.equipped} size={T * 0.95} label={me.name} bare />
+            <WalkingAvatar id="me" config={me.avatar} equipped={me.equipped} size={T * 0.95} label={me.name} />
           </div>
           <span className="mt-0.5 rounded-full bg-mint px-1.5 py-px text-[10px] font-black whitespace-nowrap text-navy shadow">
             {me.name} (tú)
