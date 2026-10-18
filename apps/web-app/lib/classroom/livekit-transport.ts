@@ -2,7 +2,8 @@
 // que consume el aula en modo local:
 // - "aulaquipu:class" (text stream): eventos entre personas (documento, pizarra…)
 // - "aulaquipu:notebook" (byte stream): foto del cuaderno
-// - "aulaquipu:doc" / "aulaquipu:graph" / "aulaquipu:action" / "aulaquipu:emote": herramientas del agente (backend/agents/aulaquipu-tutor)
+// - "aulaquipu:doc" / "aulaquipu:graph" / "aulaquipu:action" / "aulaquipu:emote"
+//   "aulaquipu:control": cierre de clase (wrap_up del alumno -> wrap_up_done del agente): herramientas del agente (backend/agents/aulaquipu-tutor)
 // - "aulaquipu:quiz" / "aulaquipu:quiz-result": tarjetas de opción múltiple (agente -> aula);
 //   "aulaquipu:quiz-answer": la respuesta del alumno (aula -> agente)
 // - "lk.chat": chat de texto (el agente lo escucha como entrada)
@@ -114,6 +115,13 @@ export class LiveKitTransport implements ClassroomTransport {
       void this.sendImage(event.url);
       return;
     }
+    if (event.type === "wrap_up") {
+      const body = JSON.stringify({ type: "wrap_up", doc: event.doc.slice(0, 12000) });
+      void this.room.localParticipant
+        .publishData(new TextEncoder().encode(body), { reliable: true, topic: "aulaquipu:control" })
+        .catch(() => {});
+      return;
+    }
     if (event.type === "quiz_answer") {
       const body = JSON.stringify({ type: "quiz_answer", id: event.id, index: event.index });
       void this.room.localParticipant
@@ -190,6 +198,10 @@ export class LiveKitTransport implements ClassroomTransport {
         correctIndex: typeof msg.correctIndex === "number" ? msg.correctIndex : -1,
         explanation: typeof msg.explanation === "string" ? msg.explanation : "",
       });
+      return;
+    }
+    if (topic === "aulaquipu:control" && msg.type === "wrap_up_done") {
+      this.emit({ type: "wrap_up_done", actor, ok: msg.ok === true });
       return;
     }
     if (topic === "aulaquipu:emote" && msg.type === "emote") {

@@ -24,6 +24,8 @@ export const QUIZ_TOPIC = 'aulaquipu:quiz';
 export const QUIZ_RESULT_TOPIC = 'aulaquipu:quiz-result';
 export const EMOTE_TOPIC = 'aulaquipu:emote';
 
+export const CONTROL_TOPIC = 'aulaquipu:control';
+
 export const EMOTES = ['celebrate', 'think', 'surprised', 'encourage'] as const;
 export type EmoteKind = (typeof EMOTES)[number];
 
@@ -137,6 +139,62 @@ export async function handleQuizAnswer(
   return g.correct
     ? `El alumno respondió la pregunta de opción múltiple con ${chosen} y es CORRECTA. Felicítalo con entusiasmo en una frase y refuerza la idea: ${g.explanation}. Luego sigue con la clase.`
     : `El alumno respondió la pregunta de opción múltiple con ${chosen} y es INCORRECTA; la correcta era ${letter(g.correctIndex)}) ${g.options[g.correctIndex]}. Anímalo sin regañar, explica el porqué en dos frases cortas (${g.explanation}) y ofrécele otro ejemplo o un nuevo intento.`;
+}
+
+// --- Resumen de fin de clase ---
+
+export const SUMMARY_SECTION = 'Resumen de la clase';
+const SUMMARY_TIMEOUT_MS = 20_000;
+
+function summaryPrompt(input: { transcript: string; doc: string; topic: string; studentName: string }) {
+  return [
+    `Eres un tutor de secundaria en Perú. Escribe el resumen de fin de clase${input.studentName ? ` para ${input.studentName}` : ''}${input.topic ? ` sobre ${input.topic}` : ''}, en español claro, tuteando.`,
+    'Responde SOLO con markdown, con exactamente estas tres partes, sin título general y sin texto extra:',
+    '### Lo que vimos\n(3 a 5 viñetas con las ideas clave)',
+    '### Lo que te costó\n(1 a 3 viñetas con lo que al alumno le costó o dudó; si no hubo dificultades, dilo en una viñeta)',
+    '### 3 ejercicios para practicar\n(lista numerada con 3 ejercicios concretos, cortos y resolubles; fórmulas en LaTeX entre signos de dólar)',
+    '',
+    `Conversación de la clase:\n${input.transcript || '(sin transcripción disponible)'}`,
+    '',
+    `Documento de la clase:\n${input.doc.slice(0, 6000) || '(vacío)'}`,
+  ].join('\n');
+}
+
+/**
+ * Escribe la sección "Resumen de la clase" en el documento y avisa a la web con `wrap_up_done`.
+ * Corre fuera del modelo de voz (llamada directa a un LLM): no depende de la delegación.
+ */
+export async function wrapUpClass(
+  hooks: TutorHooks,
+  generate: (prompt: string) => Promise<string>,
+  input: { transcript: string; doc: string; topic: string; studentName: string },
+): Promise<boolean> {
+  let ok = false;
+  try {
+    const markdown = (
+      await Promise.race([
+        generate(summaryPrompt(input)),
+        new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error('tiempo agotado generando el resumen')), SUMMARY_TIMEOUT_MS),
+        ),
+      ])
+    ).trim();
+    if (!markdown) throw new Error('el resumen salió vacío');
+    const out = await runAction(hooks, {
+      tool: 'docWrite',
+      label: `Escrito en el documento: ${SUMMARY_SECTION}`,
+      msg: { type: 'doc_op', op: 'write', section: SUMMARY_SECTION, markdown },
+      topic: 'aulaquipu:doc',
+      log: { section: SUMMARY_SECTION, wrapUp: true },
+      ok: 'OK',
+    });
+    ok = out === 'OK';
+  } catch (err) {
+    await hooks.logEvent('error', { tool: 'wrapUp', message: String(err) });
+  }
+  // Siempre se responde: la web espera este mensaje (o su propio tiempo límite)
+  await hooks.publish({ type: 'wrap_up_done', ok }, CONTROL_TOPIC).catch(() => {});
+  return ok;
 }
 
 // --- Vigilancia de la delegación ---

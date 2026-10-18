@@ -12,6 +12,7 @@ import {
   createAgent,
   createQuizBook,
   handleQuizAnswer,
+  wrapUpClass,
   watchDelegations,
   type TutorHooks,
 } from './agent.ts';
@@ -166,5 +167,32 @@ describe('emote', () => {
     const out = await run(toolsOf(hooks).emote, { kind: 'celebrate' });
     expect(out).toMatch(/^OK/);
     expect(published).toEqual([{ msg: { type: 'emote', kind: 'celebrate' }, topic: 'aulaquipu:emote' }]);
+  });
+});
+
+describe('resumen de fin de clase', () => {
+  const input = { transcript: 'Alumno: no entiendo', doc: '## Fracciones', topic: 'Fracciones', studentName: 'Ana' };
+
+  it('escribe la sección en el documento y avisa wrap_up_done', async () => {
+    const { hooks, published, events } = makeHooks();
+    const ok = await wrapUpClass(hooks, async () => '### Lo que vimos\n- fracciones', input);
+    expect(ok).toBe(true);
+    expect(published[0]).toMatchObject({ topic: 'aulaquipu:doc', msg: { op: 'write', section: 'Resumen de la clase' } });
+    expect(published.at(-1)).toEqual({ msg: { type: 'wrap_up_done', ok: true }, topic: 'aulaquipu:control' });
+    expect(events.some((e) => e.kind === 'error')).toBe(false);
+  });
+
+  it('si el modelo falla registra el error y aun así responde ok:false', async () => {
+    const { hooks, published, events } = makeHooks();
+    const ok = await wrapUpClass(
+      hooks,
+      async () => {
+        throw new Error('sin modelo');
+      },
+      input,
+    );
+    expect(ok).toBe(false);
+    expect(events).toContainEqual({ kind: 'error', payload: expect.objectContaining({ tool: 'wrapUp' }) });
+    expect(published).toEqual([{ msg: { type: 'wrap_up_done', ok: false }, topic: 'aulaquipu:control' }]);
   });
 });

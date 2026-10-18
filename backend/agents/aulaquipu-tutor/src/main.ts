@@ -1,4 +1,4 @@
-import { ServerOptions, cli, defineAgent, voice } from '@livekit/agents';
+import { ServerOptions, cli, defineAgent, inference, llm, voice } from '@livekit/agents';
 import { ParticipantKind, RoomEvent } from '@livekit/rtc-node';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +7,7 @@ import {
   createAgent,
   createQuizBook,
   handleQuizAnswer,
+  wrapUpClass,
   watchDelegations,
 } from './agent.ts';
 import { memoryScope, recallBrief, remember } from './memory.ts';
@@ -120,10 +121,30 @@ export default defineAgent({
       console.warn('no se pudo vigilar la delegación', err);
     }
 
-    // Mensajes del alumno al agente: respuestas a las tarjetas de quiz
+    // Transcripción corrida de la clase, para el resumen de cierre
+    const transcript: string[] = [];
+    session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (ev) => {
+      const item = ev.item;
+      if (item.type !== 'message' || !item.textContent) return;
+      transcript.push(`${item.role === 'user' ? 'Alumno' : klass.tutorName}: ${item.textContent.slice(0, 400)}`);
+      if (transcript.length > 80) transcript.shift();
+    });
+    const generateSummary = async (prompt: string) => {
+      const model = new inference.LLM({ model: 'openai/gpt-4.1-mini' });
+      try {
+        const chatCtx = llm.ChatContext.empty();
+        chatCtx.addMessage({ role: 'user', content: prompt });
+        return (await model.chat({ chatCtx }).collect()).text;
+      } finally {
+        await model.aclose();
+      }
+    };
+    let wrappingUp = false;
+
+    // Mensajes del alumno al agente: respuestas a las tarjetas de quiz y cierre de clase
     ctx.room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
       if (!participant || participant.kind === ParticipantKind.AGENT) return;
-      let msg: { type?: unknown; id?: unknown; index?: unknown };
+      let msg: { type?: unknown; id?: unknown; index?: unknown; doc?: unknown };
       try {
         msg = JSON.parse(decoder.decode(payload));
       } catch {
@@ -134,6 +155,16 @@ export default defineAgent({
         void handleQuizAnswer(hooks, quizzes, { id: msg.id, index: msg.index }).then((prompt) => {
           // El tutor de voz reacciona: felicita o anima y explica
           if (prompt) session.generateReply({ instructions: prompt });
+        });
+      } else if (topic === 'aulaquipu:control' && msg.type === 'wrap_up' && !wrappingUp) {
+        wrappingUp = true;
+        void wrapUpClass(hooks, generateSummary, {
+          transcript: transcript.join('\n'),
+          doc: typeof msg.doc === 'string' ? msg.doc.slice(0, 12000) : '',
+          topic: klass.topic,
+          studentName: klass.studentName,
+        }).finally(() => {
+          wrappingUp = false;
         });
       }
     });

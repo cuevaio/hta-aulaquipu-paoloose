@@ -103,6 +103,13 @@ export default function ClassroomPage() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [voice, setVoice] = useState(true);
   const [confirmEnd, setConfirmEnd] = useState(false);
+  // Esperando el resumen del tutor antes de cerrar (wrapping = lectura sin render para el handler de eventos)
+  const [wrappingUp, setWrappingUp] = useState(false);
+  const wrapping = useRef(false);
+  const wrapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const finishing = useRef(false);
+  const finishRef = useRef<() => Promise<void>>(async () => {});
+  const docRef = useRef("");
   const tutorRef = useRef<SimulatedAiTutor | null>(null);
   const docSync = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Actividad breve del tutor IA (escribiendo / graficando) y hacia dónde mira
@@ -149,6 +156,9 @@ export default function ClassroomPage() {
 
   const savedDoc = data?.session.doc_markdown ?? "";
   const doc = docDraft ?? savedDoc;
+  useEffect(() => {
+    docRef.current = doc;
+  }, [doc]);
   const docLoaded = !!data;
 
   const names = useMemo(() => {
@@ -262,6 +272,13 @@ export default function ClassroomPage() {
             q && q.id === e.id ? { ...q, result: { correct: e.correct, correctIndex: e.correctIndex, explanation: e.explanation } } : q,
           );
           break;
+        case "wrap_up_done":
+          if (!wrapping.current || !fromAi) break;
+          if (!e.ok) toast("Quipu no pudo escribir el resumen; cerramos la clase.", "error");
+          // El documento con el resumen ya llegó (mismo canal ordenado); un respiro para que React lo asiente
+          if (wrapTimer.current) clearTimeout(wrapTimer.current);
+          wrapTimer.current = setTimeout(() => void finishRef.current(), 400);
+          break;
         case "tool_action":
           pushChat({ actor: e.actor, name: "", text: `✓ ${e.label}`, kind: "action" });
           setActionChip(`✓ ${e.label}`);
@@ -275,13 +292,14 @@ export default function ClassroomPage() {
           break;
       }
     });
-  }, [transport, names, myActor, pushChat, savedDoc, onRoomClosed, aiKey]);
+  }, [transport, names, myActor, pushChat, savedDoc, onRoomClosed, aiKey, toast]);
 
   useEffect(
     () => () => {
       if (busyTimer.current) clearTimeout(busyTimer.current);
       if (chipTimer.current) clearTimeout(chipTimer.current);
       if (emoteTimer.current) clearTimeout(emoteTimer.current);
+      if (wrapTimer.current) clearTimeout(wrapTimer.current);
     },
     [],
   );
@@ -404,15 +422,51 @@ export default function ClassroomPage() {
     setQuestion(null);
   };
 
-  const endClass = async () => {
-    if (!userId) return;
-    await api.saveSessionDoc(userId, sessionId, doc).catch(() => {});
+  // Cierre real: guarda el documento (con el resumen del tutor si llegó) y termina la sesión
+  const finishClass = async () => {
+    if (!userId || finishing.current) return;
+    finishing.current = true;
+    if (wrapTimer.current) clearTimeout(wrapTimer.current);
+    await api.saveSessionDoc(userId, sessionId, docRef.current).catch(() => {});
     tutorRef.current?.stop();
     const res = await run((u) => api.endSession(u, sessionId));
     if (res) {
       transport?.publish({ type: "session_event", actor: myActor, kind: "completed", payload: {} });
       router.push(`/resumen/${sessionId}`);
-    } else setConfirmEnd(false);
+    } else {
+      finishing.current = false;
+      wrapping.current = false;
+      setWrappingUp(false);
+      setConfirmEnd(false);
+    }
+  };
+  useEffect(() => {
+    finishRef.current = finishClass;
+  });
+
+  // En una clase con tutor IA se le pide el resumen antes de cerrar la sala
+  const endClass = async () => {
+    if (!userId) return;
+    const aiClass = data?.session.tutor_kind === "ai";
+    if (!aiClass || wrapping.current) return finishClass();
+    if (realtime && transport) {
+      transport.publish({ type: "wrap_up", actor: myActor, doc: docRef.current });
+    } else if (tutorRef.current && data) {
+      tutorRef.current.writeSummary(docRef.current, data.topic.name);
+    } else return finishClass();
+    wrapping.current = true;
+    setConfirmEnd(false);
+    setWrappingUp(true);
+    if (realtime) {
+      // Sin respuesta del agente en ~25 s se cierra igual, con el documento tal cual
+      wrapTimer.current = setTimeout(() => {
+        toast("Quipu no alcanzó a escribir el resumen; cerramos la clase.", "error");
+        void finishRef.current();
+      }, 25_000);
+    } else {
+      // Local: el resumen ya se escribió; un respiro para que se vea antes de cerrar
+      wrapTimer.current = setTimeout(() => void finishRef.current(), 1500);
+    }
   };
 
   if (error)
@@ -798,6 +852,21 @@ export default function ClassroomPage() {
           <MessageCircle className="size-5" />
         </button>
       </footer>
+
+      {/* Esperando el resumen del tutor */}
+      {wrappingUp && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm" role="dialog" aria-modal>
+          <div className="w-full max-w-sm rounded-[2rem] bg-card p-6 text-center text-foreground shadow-2xl animate-in zoom-in-95">
+            <p className="animate-pulse font-heading text-2xl font-semibold">
+              {aiTutor?.name ?? "Quipu"} está escribiendo el resumen…
+            </p>
+            <p className="mt-2 text-muted-foreground">Lo que vimos, lo que te costó y tres ejercicios para practicar.</p>
+            <button onClick={() => void finishClass()} className={cn(btn.soft, btn.md, "mt-6 w-full")}>
+              Terminar sin resumen
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Confirmación de cierre: aquí se liquidan los quipus */}
       {confirmEnd && (

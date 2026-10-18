@@ -24,6 +24,8 @@ export class SimulatedAiTutor {
   private unsub: (() => void) | null = null;
   private awaiting: ((text: string | null) => void) | null = null;
   private questions: string[] = [];
+  /** Preguntas que el alumno falló: alimentan "Lo que te costó" del resumen. */
+  private struggled: string[] = [];
   private quizWait: { id: string; resolve: (index: number | null) => void } | null = null;
   voice = true;
 
@@ -73,6 +75,29 @@ export class SimulatedAiTutor {
     if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
   }
 
+  /** Cierre de clase: escribe "Resumen de la clase" con lo que se vio en el documento y deja de hablar. */
+  writeSummary(doc: string, topic: string) {
+    const seen = [...doc.matchAll(/^#{1,3}\s+(.+)$/gm)]
+      .map((m) => m[1].trim())
+      .filter((h) => !/resumen|practicar/i.test(h) && h.toLowerCase() !== topic.toLowerCase());
+    const bullets = (items: string[]) => items.map((i) => `- ${i}`).join("\n");
+    const markdown = [
+      "### Lo que vimos",
+      bullets(seen.length ? seen.slice(0, 5) : [`Una primera mirada a ${topic}.`]),
+      "",
+      "### Lo que te costó",
+      bullets(this.struggled.length ? this.struggled.slice(0, 3).map((q) => `Repasa: ${q}`) : ["No hubo dificultades importantes en esta clase."]),
+      "",
+      "### 3 ejercicios para practicar",
+      `1. Explica con tus palabras la idea central de ${topic}.`,
+      "2. Inventa un ejemplo propio y resuélvelo paso a paso.",
+      "3. Busca un error típico y escribe cómo lo evitarías.",
+    ].join("\n");
+    this.stop();
+    this.emit({ type: "doc_section", actor: this.actor, section: "Resumen de la clase", markdown });
+    this.emit({ type: "tool_action", actor: this.actor, tool: "docWrite", label: "Escrito en el documento: Resumen de la clase" });
+  }
+
   private async runSteps(steps: ScriptStep[]) {
     for (const step of steps) {
       if (this.stopped) return;
@@ -117,6 +142,7 @@ export class SimulatedAiTutor {
       return;
     }
     const correct = index === correctIndex;
+    if (!correct) this.struggled.push(question);
     this.emit({ type: "quiz_result", actor: this.actor, id, correct, correctIndex, explanation });
     this.emit({ type: "session_event", actor: this.actor, kind: "tool_call", payload: { tool: "quiz", id, correct } });
     this.emit({ type: "emote", actor: this.actor, kind: correct ? "celebrate" : "encourage" });
@@ -139,6 +165,7 @@ export class SimulatedAiTutor {
     const answer = await answerP;
     if (this.stopped) return;
     this.emit({ type: "session_event", actor: this.actor, kind: "student_answer", payload: { question: step.ask, answer } });
+    if (answer !== null && step.check && !step.check(answer)) this.struggled.push(step.ask);
     if (answer === null) {
       await this.say("Te espero otro ratito en la próxima. Sigamos, lo practicamos al final.");
       return;
