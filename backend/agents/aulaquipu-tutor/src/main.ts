@@ -1,7 +1,14 @@
 import { ServerOptions, cli, defineAgent, voice } from '@livekit/agents';
+import { ParticipantKind, RoomEvent } from '@livekit/rtc-node';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
-import { type ClassContext, createAgent, watchDelegations } from './agent.ts';
+import {
+  type ClassContext,
+  createAgent,
+  createQuizBook,
+  handleQuizAnswer,
+  watchDelegations,
+} from './agent.ts';
 import { memoryScope, recallBrief, remember } from './memory.ts';
 
 dotenv.config({ path: '.env.local' });
@@ -11,6 +18,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 function sessionIdFromRoom(roomName: string | undefined): string | null {
   const match = /^session-([0-9a-fA-F-]{36})$/.exec(roomName ?? '');
@@ -101,7 +109,8 @@ export default defineAgent({
         : 'progreso del alumno y temas vistos en clases anteriores',
     );
 
-    const agent = createAgent(hooks, klass, memoryBrief);
+    const quizzes = createQuizBook();
+    const agent = createAgent(hooks, klass, memoryBrief, quizzes);
     await session.start({ agent, room: ctx.room });
 
     // Si el modelo de respaldo termina sin llamar herramientas, se registra y el tutor lo dice
@@ -110,6 +119,24 @@ export default defineAgent({
     } catch (err) {
       console.warn('no se pudo vigilar la delegación', err);
     }
+
+    // Mensajes del alumno al agente: respuestas a las tarjetas de quiz
+    ctx.room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
+      if (!participant || participant.kind === ParticipantKind.AGENT) return;
+      let msg: { type?: unknown; id?: unknown; index?: unknown };
+      try {
+        msg = JSON.parse(decoder.decode(payload));
+      } catch {
+        return;
+      }
+      if (topic === 'aulaquipu:quiz-answer' && msg.type === 'quiz_answer') {
+        if (typeof msg.id !== 'string' || typeof msg.index !== 'number') return;
+        void handleQuizAnswer(hooks, quizzes, { id: msg.id, index: msg.index }).then((prompt) => {
+          // El tutor de voz reacciona: felicita o anima y explica
+          if (prompt) session.generateReply({ instructions: prompt });
+        });
+      }
+    });
 
     await ctx.connect();
     await logEvent('join', { name: klass.tutorName, guide: !!klass.guide });

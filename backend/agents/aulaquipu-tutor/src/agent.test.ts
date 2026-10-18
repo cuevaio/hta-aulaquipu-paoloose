@@ -8,7 +8,13 @@
 // Debajo: pruebas sin red de las herramientas del tutor (el hook publish se simula).
 
 import { describe, expect, it, vi } from 'vitest';
-import { createAgent, watchDelegations, type TutorHooks } from './agent.ts';
+import {
+  createAgent,
+  createQuizBook,
+  handleQuizAnswer,
+  watchDelegations,
+  type TutorHooks,
+} from './agent.ts';
 
 function makeHooks(overrides: Partial<TutorHooks> = {}) {
   const published: Array<{ msg: Record<string, unknown>; topic: string }> = [];
@@ -105,5 +111,51 @@ describe('vigilancia de la delegación', () => {
     }
     expect(t.appendCommentary.mock.calls[0][0]).toMatch(/vuelve a delegar/);
     expect(t.appendCommentary.mock.calls[1][0]).toMatch(/no pudiste hacerlo/);
+  });
+});
+
+describe('quiz de opción múltiple', () => {
+  const quiz = { question: '¿1/2 + 1/2?', options: ['1', '2', '1/4'], correctIndex: 0, explanation: 'Medio y medio es uno.' };
+
+  it('quizAsk muestra la tarjeta sin enviar la respuesta correcta', async () => {
+    const { hooks, published } = makeHooks();
+    const out = await run(toolsOf(hooks).quizAsk, quiz);
+    expect(out).toMatch(/^OK/);
+    expect(published).toHaveLength(1);
+    expect(published[0].topic).toBe('aulaquipu:quiz');
+    expect(JSON.stringify(published[0].msg)).not.toMatch(/correctIndex|Medio y medio/);
+  });
+
+  it('quizAsk rechaza un quiz inválido sin mostrar nada', async () => {
+    const { hooks, published } = makeHooks();
+    const out = await run(toolsOf(hooks).quizAsk, { ...quiz, correctIndex: 3 });
+    expect(out).toMatch(/^ERROR/);
+    expect(published).toHaveLength(0);
+  });
+
+  it('califica la primera respuesta, publica el veredicto y registra el resultado', async () => {
+    const { hooks, published, events } = makeHooks();
+    const book = createQuizBook();
+    const id = book.add(quiz);
+    const prompt = await handleQuizAnswer(hooks, book, { id, index: 0 });
+    expect(prompt).toMatch(/CORRECTA/);
+    const result = published.find((p) => p.topic === 'aulaquipu:quiz-result')!;
+    expect(result.msg).toMatchObject({ id, correct: true, correctIndex: 0, explanation: quiz.explanation });
+    expect(events).toContainEqual({
+      kind: 'tool_call',
+      payload: expect.objectContaining({ tool: 'quiz', correct: true }),
+    });
+    // una segunda respuesta al mismo quiz se ignora
+    expect(await handleQuizAnswer(hooks, book, { id, index: 1 })).toBeNull();
+  });
+
+  it('una respuesta incorrecta anima y revela la correcta', async () => {
+    const { hooks, published } = makeHooks();
+    const book = createQuizBook();
+    const id = book.add(quiz);
+    const prompt = await handleQuizAnswer(hooks, book, { id, index: 2 });
+    expect(prompt).toMatch(/INCORRECTA/);
+    expect(published.find((p) => p.topic === 'aulaquipu:quiz-result')!.msg).toMatchObject({ correct: false, correctIndex: 0 });
+    expect(await handleQuizAnswer(hooks, book, { id: 'nope', index: 0 })).toBeNull();
   });
 });

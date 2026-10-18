@@ -3,6 +3,8 @@
 // - "aulaquipu:class" (text stream): eventos entre personas (documento, pizarra…)
 // - "aulaquipu:notebook" (byte stream): foto del cuaderno
 // - "aulaquipu:doc" / "aulaquipu:graph" / "aulaquipu:action": herramientas del agente (backend/agents/aulaquipu-tutor)
+// - "aulaquipu:quiz" / "aulaquipu:quiz-result": tarjetas de opción múltiple (agente -> aula);
+//   "aulaquipu:quiz-answer": la respuesta del alumno (aula -> agente)
 // - "lk.chat": chat de texto (el agente lo escucha como entrada)
 // - "lk.transcription": subtítulos de lo que dice el agente y de lo que dice el alumno
 
@@ -112,6 +114,13 @@ export class LiveKitTransport implements ClassroomTransport {
       void this.sendImage(event.url);
       return;
     }
+    if (event.type === "quiz_answer") {
+      const body = JSON.stringify({ type: "quiz_answer", id: event.id, index: event.index });
+      void this.room.localParticipant
+        .publishData(new TextEncoder().encode(body), { reliable: true, topic: "aulaquipu:quiz-answer" })
+        .catch(() => {});
+      return;
+    }
     if (!PEER_EVENTS.has(event.type)) return;
     // Text streams: fiables y sin el límite de ~15 KB de los paquetes de datos (documentos largos, trazos)
     void this.room.localParticipant.sendText(JSON.stringify(event), { topic: CLASS_TOPIC }).catch(() => {});
@@ -165,6 +174,22 @@ export class LiveKitTransport implements ClassroomTransport {
     }
     if (topic === "aulaquipu:action" && msg.type === "action" && typeof msg.label === "string") {
       this.emit({ type: "tool_action", actor, tool: typeof msg.tool === "string" ? msg.tool : "", label: msg.label.slice(0, 120) });
+      return;
+    }
+    if (topic === "aulaquipu:quiz" && msg.type === "quiz" && typeof msg.id === "string" && typeof msg.question === "string") {
+      const options = Array.isArray(msg.options) ? msg.options.map(String).slice(0, 4) : [];
+      if (options.length >= 2) this.emit({ type: "quiz_ask", actor, id: msg.id, question: msg.question, options });
+      return;
+    }
+    if (topic === "aulaquipu:quiz-result" && msg.type === "quiz_result" && typeof msg.id === "string") {
+      this.emit({
+        type: "quiz_result",
+        actor,
+        id: msg.id,
+        correct: msg.correct === true,
+        correctIndex: typeof msg.correctIndex === "number" ? msg.correctIndex : -1,
+        explanation: typeof msg.explanation === "string" ? msg.explanation : "",
+      });
       return;
     }
     if (topic === "aulaquipu:graph" && msg.type === "graph_op" && typeof msg.id === "string") {

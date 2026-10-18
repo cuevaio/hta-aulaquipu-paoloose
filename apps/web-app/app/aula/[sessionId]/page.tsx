@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Camera,
   CameraOff,
+  Check,
   FileText,
   LineChart,
   MessageCircle,
@@ -42,6 +43,14 @@ const TOOLS: { id: ClassroomTool; label: string; icon: typeof FileText }[] = [
   { id: "board", label: "Pizarra", icon: PenTool },
   { id: "notebook", label: "Cuaderno", icon: NotebookPen },
 ];
+
+interface QuizCard {
+  id: string;
+  question: string;
+  options: string[];
+  picked: number | null;
+  result: { correct: boolean; correctIndex: number; explanation: string } | null;
+}
 
 interface ChatLine {
   id: number;
@@ -87,6 +96,7 @@ export default function ClassroomPage() {
   const [chat, setChat] = useState<ChatLine[]>([]);
   const [question, setQuestion] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
+  const [quiz, setQuiz] = useState<QuizCard | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [micOn, setMicOn] = useState(false);
@@ -232,6 +242,14 @@ export default function ClassroomPage() {
         case "chat":
           pushChat({ actor: e.actor, name: e.name, text: e.text, kind: "chat" });
           break;
+        case "quiz_ask":
+          setQuiz({ id: e.id, question: e.question, options: e.options, picked: null, result: null });
+          break;
+        case "quiz_result":
+          setQuiz((q) =>
+            q && q.id === e.id ? { ...q, result: { correct: e.correct, correctIndex: e.correctIndex, explanation: e.explanation } } : q,
+          );
+          break;
         case "tool_action":
           pushChat({ actor: e.actor, name: "", text: `✓ ${e.label}`, kind: "action" });
           setActionChip(`✓ ${e.label}`);
@@ -259,7 +277,25 @@ export default function ClassroomPage() {
   // Siguiente paso: exponer la pista de audio del agente y pasarla como `audioStream` en ParticipantCard.
   const aiSpeaking = !!aiKey && !!speaking[aiKey];
   const aiLevel = useSyntheticLevel(aiSpeaking);
-  const aiState: TutorAvatarState = tutorBusy ?? (aiSpeaking ? "speaking" : question ? "listening" : "idle");
+  const quizWaiting = !!quiz && !quiz.result;
+  const aiState: TutorAvatarState =
+    tutorBusy ?? (aiSpeaking ? "speaking" : quiz?.picked != null && quizWaiting ? "thinking" : question || quizWaiting ? "listening" : "idle");
+
+  // Si el veredicto nunca llega (agente caído), la tarjeta no se queda colgada
+  useEffect(() => {
+    if (!quiz || quiz.picked === null || quiz.result) return;
+    const id = quiz.id;
+    const t = setTimeout(() => setQuiz((q) => (q && q.id === id && !q.result ? null : q)), 30_000);
+    return () => clearTimeout(t);
+  }, [quiz]);
+
+  // La tarjeta con el veredicto se cierra sola tras unos segundos (o con "Seguir")
+  useEffect(() => {
+    if (!quiz?.result) return;
+    const id = quiz.id;
+    const t = setTimeout(() => setQuiz((q) => (q && q.id === id ? null : q)), 14_000);
+    return () => clearTimeout(t);
+  }, [quiz?.id, quiz?.result]);
 
   // Tutor IA simulado: solo sin LiveKit. En vivo, el agent-worker entra a la sala por su cuenta.
   useEffect(() => {
@@ -339,6 +375,12 @@ export default function ClassroomPage() {
     setDocDraft(md);
     if (docSync.current) clearTimeout(docSync.current);
     docSync.current = setTimeout(() => transport?.publish({ type: "doc_write", actor: myActor, markdown: md, mode: "replace" }), 350);
+  };
+
+  const pickOption = (index: number) => {
+    if (!quiz || quiz.picked !== null || !transport) return;
+    setQuiz({ ...quiz, picked: index });
+    transport.send({ type: "quiz_answer", actor: myActor, id: quiz.id, index });
   };
 
   const submitAnswer = (e: React.FormEvent) => {
@@ -546,11 +588,71 @@ export default function ClassroomPage() {
             )}
 
             {/* Subtítulos de lo que dice el tutor */}
-            {caption && speaking[caption.actor] && !question && (
+            {caption && speaking[caption.actor] && !question && !quiz && (
               <div className="pointer-events-none absolute inset-x-3 bottom-3 flex justify-center">
                 <p className="max-w-2xl rounded-2xl bg-navy/90 px-4 py-2.5 text-sm font-semibold text-white shadow-xl backdrop-blur animate-in fade-in">
                   <b className="text-mint">{captionName}:</b> {caption.text}
                 </p>
+              </div>
+            )}
+
+            {/* Tarjeta de opción múltiple del tutor */}
+            {quiz && (
+              <div
+                role="group"
+                aria-label="Pregunta de opción múltiple"
+                className="absolute inset-x-3 bottom-3 z-10 mx-auto max-h-[85%] max-w-xl overflow-y-auto rounded-3xl bg-navy p-4 text-white shadow-2xl ring-4 ring-gold/60 animate-in slide-in-from-bottom-3"
+              >
+                <p className="text-xs font-bold text-gold">{aiTutor?.name ?? "Tu tutor"} te pregunta · elige una opción</p>
+                <p className="mt-1 font-heading text-lg font-semibold">{quiz.question}</p>
+                <div className="mt-3 flex flex-col gap-2">
+                  {quiz.options.map((opt, i) => {
+                    const r = quiz.result;
+                    const isRight = !!r && i === r.correctIndex;
+                    const isWrongPick = !!r && quiz.picked === i && !r.correct;
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => pickOption(i)}
+                        disabled={quiz.picked !== null}
+                        aria-pressed={quiz.picked === i}
+                        className={cn(
+                          "flex min-h-12 w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-base font-bold transition-colors",
+                          isRight
+                            ? "bg-mint text-navy"
+                            : isWrongPick
+                              ? "bg-coral text-white"
+                              : quiz.picked === i
+                                ? "bg-white/25 text-white"
+                                : "bg-white/10 hover:bg-white/20 disabled:opacity-60",
+                        )}
+                      >
+                        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-black/20 text-sm font-extrabold">
+                          {String.fromCharCode(65 + i)}
+                        </span>
+                        <span className="min-w-0 flex-1">{opt}</span>
+                        {isRight && <Check className="size-5 shrink-0" />}
+                        {isWrongPick && <X className="size-5 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+                {quiz.result ? (
+                  <div className="mt-3">
+                    <p className={cn("font-heading text-lg font-semibold", quiz.result.correct ? "text-mint" : "text-coral")}>
+                      {quiz.result.correct ? "¡Correcto!" : "Casi, esta vez no."}
+                    </p>
+                    {quiz.result.explanation && <p className="mt-1 text-sm font-semibold text-white/80">{quiz.result.explanation}</p>}
+                    <button type="button" onClick={() => setQuiz(null)} className={cn(btn.mint, btn.md, "mt-3 w-full")}>
+                      Seguir
+                    </button>
+                  </div>
+                ) : (
+                  quiz.picked !== null && (
+                    <p className="mt-3 animate-pulse text-sm font-bold text-white/70">{aiTutor?.name ?? "Tu tutor"} está revisando tu respuesta…</p>
+                  )
+                )}
               </div>
             )}
 

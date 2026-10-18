@@ -24,6 +24,7 @@ export class SimulatedAiTutor {
   private unsub: (() => void) | null = null;
   private awaiting: ((text: string | null) => void) | null = null;
   private questions: string[] = [];
+  private quizWait: { id: string; resolve: (index: number | null) => void } | null = null;
   voice = true;
 
   constructor(
@@ -38,6 +39,12 @@ export class SimulatedAiTutor {
 
   async run(steps: ScriptStep[]) {
     this.unsub = this.transport.subscribe((e) => {
+      if (e.type === "quiz_answer" && this.quizWait?.id === e.id) {
+        const { resolve } = this.quizWait;
+        this.quizWait = null;
+        resolve(e.index);
+        return;
+      }
       if (e.type !== "chat" || e.actor === this.actor) return;
       if (this.awaiting) {
         const resolve = this.awaiting;
@@ -62,6 +69,7 @@ export class SimulatedAiTutor {
     this.stopped = true;
     this.unsub?.();
     this.awaiting?.(null);
+    this.quizWait?.resolve(null);
     if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
   }
 
@@ -69,7 +77,8 @@ export class SimulatedAiTutor {
     for (const step of steps) {
       if (this.stopped) return;
       await this.answerQuestions();
-      if ("ask" in step) await this.ask(step);
+      if ("quiz" in step) await this.quiz(step);
+      else if ("ask" in step) await this.ask(step);
       else await this.teach(step);
       await sleep(500);
     }
@@ -84,6 +93,33 @@ export class SimulatedAiTutor {
         this.type(`\n> ❓ **Pregunta del alumno:** ${q}\n`),
       ]);
     }
+  }
+
+  private async quiz(step: Extract<ScriptStep, { quiz: unknown }>) {
+    const { question, options, correctIndex, explanation } = step.quiz;
+    const id = `local-quiz-${Date.now()}`;
+    // Como en ask(): se escucha desde ya, el alumno puede tocar una opción mientras el tutor lee
+    const pickP = new Promise<number | null>((resolve) => {
+      this.quizWait = { id, resolve };
+      setTimeout(() => {
+        if (this.quizWait?.id === id) {
+          this.quizWait = null;
+          resolve(null);
+        }
+      }, ANSWER_TIMEOUT_MS);
+    });
+    this.emit({ type: "quiz_ask", actor: this.actor, id, question, options });
+    await this.say(question);
+    const index = await pickP;
+    if (this.stopped) return;
+    if (index === null) {
+      await this.say("Te espero otro ratito. Sigamos, lo practicamos al final.");
+      return;
+    }
+    const correct = index === correctIndex;
+    this.emit({ type: "quiz_result", actor: this.actor, id, correct, correctIndex, explanation });
+    this.emit({ type: "session_event", actor: this.actor, kind: "tool_call", payload: { tool: "quiz", id, correct } });
+    await this.say(correct ? step.right : step.wrong);
   }
 
   private async ask(step: Extract<ScriptStep, { ask: string }>) {
@@ -112,7 +148,7 @@ export class SimulatedAiTutor {
     else await this.say(step.right);
   }
 
-  private async teach(step: Exclude<ScriptStep, { ask: string }>) {
+  private async teach(step: Exclude<ScriptStep, { ask: string } | { quiz: unknown }>) {
     if (step.focus) this.emit({ type: "focus_tool", actor: this.actor, tool: step.focus });
     if (step.clearBoard) this.emit({ type: "board_clear", actor: this.actor, target: "board" });
     const tools = (async () => {

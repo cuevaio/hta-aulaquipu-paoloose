@@ -20,6 +20,12 @@ export type ClassContext = {
 };
 
 export const ACTION_TOPIC = 'aulaquipu:action';
+export const QUIZ_TOPIC = 'aulaquipu:quiz';
+export const QUIZ_RESULT_TOPIC = 'aulaquipu:quiz-result';
+export const EMOTE_TOPIC = 'aulaquipu:emote';
+
+export const EMOTES = ['celebrate', 'think', 'surprised', 'encourage'] as const;
+export type EmoteKind = (typeof EMOTES)[number];
 
 // LaTeX de Desmos a algo legible para el chip del chat ("y=\frac{1}{2}x" -> "y = 1/2x")
 function prettyLatex(latex: string): string {
@@ -57,6 +63,80 @@ async function runAction(hooks: TutorHooks, a: Action): Promise<string> {
   // El chip es un extra: si falla, la acción ya se hizo
   await hooks.publish({ type: 'action', tool: a.tool, label: a.label }, ACTION_TOPIC).catch(() => {});
   return a.ok;
+}
+
+// --- Quiz de opción múltiple: la clave de respuestas se queda en el agente ---
+
+type QuizEntry = {
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+  answered: boolean;
+};
+
+export function createQuizBook() {
+  const entries = new Map<string, QuizEntry>();
+  let seq = 0;
+  return {
+    add(q: Omit<QuizEntry, 'answered'>): string {
+      const id = `q${Date.now().toString(36)}${++seq}`;
+      entries.set(id, { ...q, answered: false });
+      // Tope defensivo: una clase no necesita más
+      if (entries.size > 50) entries.delete(entries.keys().next().value as string);
+      return id;
+    },
+    /** Califica la primera respuesta de cada quiz; null si no existe o ya se respondió. */
+    grade(id: string, index: number) {
+      const e = entries.get(id);
+      if (!e || e.answered || !Number.isInteger(index) || index < 0 || index >= e.options.length)
+        return null;
+      e.answered = true;
+      return { ...e, index, correct: index === e.correctIndex };
+    },
+  };
+}
+export type QuizBook = ReturnType<typeof createQuizBook>;
+
+/**
+ * Llega la respuesta del alumno: publica el veredicto, lo registra y devuelve la indicación
+ * con la que el tutor de voz debe reaccionar (null si el quiz no existe o ya estaba respondido).
+ */
+export async function handleQuizAnswer(
+  hooks: TutorHooks,
+  book: QuizBook,
+  answer: { id: string; index: number },
+): Promise<string | null> {
+  const g = book.grade(answer.id, answer.index);
+  if (!g) return null;
+  const letter = (i: number) => String.fromCharCode(65 + i);
+  try {
+    await hooks.publish(
+      {
+        type: 'quiz_result',
+        id: answer.id,
+        correct: g.correct,
+        correctIndex: g.correctIndex,
+        explanation: g.explanation,
+      },
+      QUIZ_RESULT_TOPIC,
+    );
+    await hooks.publish({ type: 'emote', kind: g.correct ? 'celebrate' : 'encourage' }, EMOTE_TOPIC);
+  } catch (err) {
+    await hooks.logEvent('error', { tool: 'quiz', message: String(err), id: answer.id });
+  }
+  await hooks.logEvent('tool_call', {
+    tool: 'quiz',
+    id: answer.id,
+    question: g.question,
+    answer: g.index,
+    correctIndex: g.correctIndex,
+    correct: g.correct,
+  });
+  const chosen = `${letter(g.index)}) ${g.options[g.index]}`;
+  return g.correct
+    ? `El alumno respondió la pregunta de opción múltiple con ${chosen} y es CORRECTA. Felicítalo con entusiasmo en una frase y refuerza la idea: ${g.explanation}. Luego sigue con la clase.`
+    : `El alumno respondió la pregunta de opción múltiple con ${chosen} y es INCORRECTA; la correcta era ${letter(g.correctIndex)}) ${g.options[g.correctIndex]}. Anímalo sin regañar, explica el porqué en dos frases cortas (${g.explanation}) y ofrécele otro ejemplo o un nuevo intento.`;
 }
 
 // --- Vigilancia de la delegación ---
@@ -168,6 +248,8 @@ function backendInstructions(c: ClassContext, memoryBrief: string): string {
       - Memoria de clases: llama memoryRecall cuando necesites saber qué trabajó o le costó al alumno
         antes, y memorySave con hechos duraderos de su progreso (qué domina, qué le cuesta, acuerdos)
         durante la clase y al cerrarla.
+      - Preguntas de opción múltiple: llama quizAsk (2 a 4 opciones, correctIndex = posición de la correcta
+        empezando en 0, explicación breve). El alumno la verá como tarjeta; no repitas la respuesta en el documento.
       - Puedes llamar varias herramientas seguidas.
       - Si te piden escribir, graficar, tabular, preguntar o guardar algo, DEBES llamar la herramienta: nunca respondas solo con texto.
       - Cada herramienta devuelve "OK" o "ERROR". Tu respuesta final se basa SOLO en esos resultados:
@@ -187,6 +269,7 @@ export function createAgent(
   hooks: TutorHooks,
   context: ClassContext = DEFAULT_CONTEXT,
   memoryBrief = '',
+  quizzes: QuizBook = createQuizBook(),
 ) {
   return Agent.create({
     instructions:
@@ -205,6 +288,7 @@ export function createAgent(
       - Delega cuando haya una tabla útil (comparaciones, valores) o algo que se entienda mejor graficado (funciones, rectas, puntos).
       - Al cerrar la clase, o cuando el alumno domine algo nuevo, delega memorySave con un registro breve de su progreso.
       - Si el alumno menciona clases anteriores o retoman algo ya trabajado, delega memoryRecall antes de responder.
+      - Para una pregunta de opción múltiple, delega que se plantee el quiz (tema, dificultad y la respuesta correcta); el alumno la verá como tarjeta en pantalla. Léela en voz alta de forma breve y espera su respuesta: no le digas cuál es la correcta, el sistema te avisará qué eligió y si acertó.
       - Saludos, preguntas de diagnóstico, ánimo y respuestas cortas: respóndelos tú, sin delegar.
 
       # Honestidad con lo que hace la pantalla
@@ -312,6 +396,37 @@ export function createAgent(
             log: { id },
             ok: `OK: curva ${id} quitada del graficador.`,
           }),
+      }),
+      tool({
+        name: 'quizAsk',
+        description:
+          'Muestra al alumno una pregunta de opción múltiple como tarjeta en pantalla. El alumno elige y el sistema avisa al tutor si acertó; no reveles la respuesta antes.',
+        parameters: z.object({
+          question: z.string().describe('Enunciado de la pregunta, claro y corto'),
+          options: z.array(z.string()).min(2).max(4).describe('De 2 a 4 opciones, sin letras ni numeración'),
+          correctIndex: z
+            .number()
+            .int()
+            .min(0)
+            .max(3)
+            .describe('Posición de la opción correcta, empezando en 0'),
+          explanation: z.string().describe('Explicación breve de por qué esa es la correcta'),
+        }),
+        execute: async ({ question, options, correctIndex, explanation }) => {
+          if (options.length < 2 || options.length > 4 || correctIndex >= options.length) {
+            await hooks.logEvent('error', { tool: 'quizAsk', message: 'quiz inválido', correctIndex });
+            return 'ERROR: el quiz es inválido (2 a 4 opciones y correctIndex dentro de ellas). NO se mostró; vuelve a llamarlo corregido.';
+          }
+          const id = quizzes.add({ question, options, correctIndex, explanation });
+          try {
+            await hooks.publish({ type: 'quiz', id, question, options }, QUIZ_TOPIC);
+          } catch (err) {
+            await hooks.logEvent('error', { tool: 'quizAsk', message: String(err) });
+            return `ERROR: no se pudo mostrar la pregunta (${String(err)}). NO está en pantalla; dilo al tutor y no la des por planteada.`;
+          }
+          await hooks.logEvent('tool_call', { tool: 'quizAsk', id, question });
+          return 'OK: pregunta mostrada en pantalla. Pide al tutor que la lea en voz alta y espere la respuesta del alumno sin revelar la correcta.';
+        },
       }),
       tool({
         name: 'memorySave',

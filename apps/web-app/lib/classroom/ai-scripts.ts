@@ -15,6 +15,12 @@ export type ScriptStep =
       clearBoard?: boolean;
     }
   | {
+      /** Tarjeta de opción múltiple: se juzga en el aula, igual que haría el agente. */
+      quiz: { question: string; options: string[]; correctIndex: number; explanation: string };
+      right: string;
+      wrong: string;
+    }
+  | {
       ask: string;
       check?: (answer: string) => boolean;
       right: string;
@@ -103,6 +109,16 @@ function fracciones(student: string): ScriptStep[] {
       ],
     },
     {
+      quiz: {
+        question: "¿Cuál de estas fracciones es la mayor?",
+        options: ["1/2", "3/4", "2/3"],
+        correctIndex: 1,
+        explanation: "Con denominador 12: 1/2 = 6/12, 2/3 = 8/12 y 3/4 = 9/12. La mayor es 3/4.",
+      },
+      right: "¡Correcto! Tres cuartos es la mayor: comparamos llevándolas al mismo denominador.",
+      wrong: "No te preocupes. Comparemos con denominador doce: seis, ocho y nueve doceavos. Gana tres cuartos.",
+    },
+    {
       say: "Muy buen trabajo. Te dejo el resumen y tres ejercicios para practicar. Cuando quieras, termina la clase con el botón rojo.",
       focus: "doc",
       write:
@@ -161,6 +177,16 @@ function ecuaciones(student: string): ScriptStep[] {
       ],
     },
     {
+      quiz: {
+        question: "Para resolver x − 6 = 10, ¿qué haces a los dos lados?",
+        options: ["Restar 6", "Sumar 6", "Dividir entre 6"],
+        correctIndex: 1,
+        explanation: "Para deshacer una resta se suma: x = 10 + 6 = 16.",
+      },
+      right: "¡Eso! Deshaces la resta con una suma, y x vale dieciséis.",
+      wrong: "Casi. Para deshacer una resta sumamos lo mismo a los dos lados: x igual a dieciséis.",
+    },
+    {
       say: "¡Excelente clase! Te dejo el resumen en el documento. Termina la clase cuando quieras.",
       focus: "doc",
       write:
@@ -210,6 +236,16 @@ function funciones(student: string): ScriptStep[] {
       ],
     },
     {
+      quiz: {
+        question: "¿Qué pasa con la recta y = 2x + 5 si cambias el 5 por un 1?",
+        options: ["Sube más rápido", "Baja sin girar", "Se vuelve horizontal"],
+        correctIndex: 1,
+        explanation: "Cambiar b mueve la recta hacia arriba o abajo sin cambiar su inclinación.",
+      },
+      right: "¡Muy bien! Solo cambia el intercepto, la inclinación es la misma.",
+      wrong: "Casi. El número suelto solo mueve la recta de lugar; la pendiente sigue siendo dos.",
+    },
+    {
       say: "¡Gran trabajo! El resumen ya está en el documento. Termina la clase cuando quieras.",
       focus: "doc",
       write:
@@ -254,6 +290,16 @@ function porcentajes(student: string): ScriptStep[] {
       check: (a) => /\b10\b|diez/.test(a.toLowerCase()),
       right: "¡Diez, exacto! Cincuenta por cero coma dos.",
       wrong: [{ say: "Otro camino: el diez por ciento de cincuenta es cinco, solo corro la coma. El veinte es el doble: diez." }],
+    },
+    {
+      quiz: {
+        question: "Un polo cuesta 60 soles y tiene 50% de descuento. ¿Cuánto pagas?",
+        options: ["20 soles", "30 soles", "50 soles"],
+        correctIndex: 1,
+        explanation: "El 50% es la mitad: 60 ÷ 2 = 30 soles.",
+      },
+      right: "¡Correcto, treinta soles! La mitad de sesenta.",
+      wrong: "Casi. El cincuenta por ciento es la mitad de sesenta, o sea treinta soles.",
     },
     {
       say: "¡Muy bien! Te dejé el resumen. Termina la clase cuando quieras.",

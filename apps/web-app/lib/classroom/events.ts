@@ -34,6 +34,12 @@ export type ClassroomEvent =
   | { type: "speaking"; actor: string; on: boolean }
   | { type: "chat"; actor: string; name: string; text: string }
   | { type: "notebook_image"; actor: string; url: string }
+  /** Tarjeta de opción múltiple del tutor (herramienta quizAsk). La clave de respuestas no viaja. */
+  | { type: "quiz_ask"; actor: string; id: string; question: string; options: string[] }
+  /** El alumno eligió una opción: va al agente, que la califica. */
+  | { type: "quiz_answer"; actor: string; id: string; index: number }
+  /** Veredicto del agente para una tarjeta. */
+  | { type: "quiz_result"; actor: string; id: string; correct: boolean; correctIndex: number; explanation: string }
   /** Confirmación de una herramienta del agente que sí se ejecutó (chip del chat). */
   | { type: "tool_action"; actor: string; tool: string; label: string }
   | { type: "session_event"; actor: string; kind: string; payload: Record<string, unknown> };
