@@ -43,7 +43,7 @@
 - [x] T4 — AI teaching guides (3): CRUD + agent metadata + agent instructions.
 - [x] T5 — Management: topics, AI tutors, shop (8–10).
 - [x] T6 — Moderation and announcements (11–12).
-- [ ] T7 — Browser smoke test (orchestrator).
+- [x] T7 — Browser smoke test (orchestrator). Mock mode (temporary worktree, `NEXT_PUBLIC_API_MODE=mock`, port 3001) as demo admin Valeria: Resumen KPIs render with data; Créditos "Todos" +50 with reason → preview "Afectará a 6 alumnos" → "Listo: 6 alumnos recibieron el cambio", balance in campus HUD 120→170; Auditoría shows the grant (scope, amount, reason, affected 6, skipped 0); Anuncios create → "Vigente" → gold banner in campus; Guías IA editor (4 fields, 1500 limit, import button); Precios IA list + promotions section. Not exercised in browser: promotions creation, Contenido, Moderación, chat report, guide reaching the live agent, http mode (migration 003 not applied).
 
 ## Acceptance criteria
 - Non-admins get 403 on every admin API; admin sees `/admin`.
