@@ -9,6 +9,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import {
+  backendInstructions,
   createAgent,
   createQuizBook,
   handleQuizAnswer,
@@ -65,6 +66,25 @@ describe('herramientas del tutor', () => {
     expect(events).toEqual([
       { kind: 'error', payload: expect.objectContaining({ tool: 'docWrite' }) },
     ]);
+  });
+});
+
+describe('gráficos desde la capa de voz', () => {
+  const ctx = { tutorName: 'Inti', style: '', focus: '', topic: '', studentName: '', guide: '', studentId: '', topicId: '' };
+
+  it('graphSet publica el color y graphRemove quita la curva', async () => {
+    const { hooks, published } = makeHooks();
+    const tools = toolsOf(hooks);
+    expect(await run(tools.graphSet, { id: 'f2', latex: 'y=x^2', color: '#7C6BF2' })).toMatch(/^OK/);
+    expect(published[0]).toMatchObject({ topic: 'aulaquipu:graph', msg: { type: 'graph_op', op: 'set', id: 'f2', color: '#7C6BF2' } });
+    expect(await run(tools.graphRemove, { id: 'f2' })).toMatch(/^OK/);
+    expect(published[2]).toMatchObject({ topic: 'aulaquipu:graph', msg: { op: 'remove', id: 'f2' } });
+  });
+
+  it('las instrucciones del modelo de respaldo ya no piden graficar (lo hace el tutor)', () => {
+    const text = backendInstructions(ctx, '');
+    expect(text).not.toMatch(/llama graphSet/);
+    expect(text).toMatch(/gráficos .*tutor directamente/);
   });
 });
 

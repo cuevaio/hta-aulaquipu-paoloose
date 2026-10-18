@@ -342,7 +342,7 @@ function memorySection(brief: string): string {
 // Instrucciones del modelo de razonamiento al que GPT-Live delega el trabajo. El modelo de voz
 // NO ve las herramientas: solo decide qué delegar; este modelo es el que las llama
 // (https://docs.livekit.io/agents/models/realtime/gpt-live/).
-function backendInstructions(c: ClassContext, memoryBrief: string): string {
+export function backendInstructions(c: ClassContext, memoryBrief: string): string {
   return (
     dedent`
       Atiendes lo que delega ${c.tutorName}, tutor de voz de AulaQuipu, en una clase de secundaria en Perú.
@@ -353,9 +353,6 @@ function backendInstructions(c: ClassContext, memoryBrief: string): string {
         Escribe las fórmulas en LaTeX entre signos de dólar: $\\frac{1}{2}+\\frac{1}{3}$ en línea y $$...$$ para destacarlas.
         Reusa el mismo título para corregir o ampliar una sección.
       - Comparaciones o datos ordenados: llama docAppendTable.
-      - Funciones, rectas, parábolas o puntos: llama graphSet con LaTeX de Desmos, por ejemplo "y=2x+1",
-        "y=\\frac{1}{2}x" o "(1,3)". Usa ids cortos como "f1", "f2"; reutiliza el id para cambiar una curva.
-        El color es opcional (hexadecimal, por ejemplo "#7C6BF2"): úsalo para distinguir varias curvas.
       - Memoria de clases: llama memoryRecall cuando necesites saber qué trabajó o le costó al alumno
         antes, y memorySave con hechos duraderos de su progreso (qué domina, qué le cuesta, acuerdos)
         durante la clase y al cerrarla.
@@ -366,8 +363,9 @@ function backendInstructions(c: ClassContext, memoryBrief: string): string {
         Usa el banco del tema o Wikimedia por ti. Máximo ${MAX_IMAGES_PER_CLASS} por clase; no la repitas ni la describas en el documento.
       - Reacciones del avatar: llama emote (celebrate, think, surprised o encourage) con moderación, cuando el tutor
         lo pida o el momento lo merezca.
+      - Los gráficos (graphSet, graphRemove) los hace el tutor directamente, sin pasar por ti: no los repitas.
       - Puedes llamar varias herramientas seguidas.
-      - Si te piden escribir, graficar, tabular, preguntar o guardar algo, DEBES llamar la herramienta: nunca respondas solo con texto.
+      - Si te piden escribir, tabular, preguntar o guardar algo, DEBES llamar la herramienta: nunca respondas solo con texto.
       - Cada herramienta devuelve "OK" o "ERROR". Tu respuesta final se basa SOLO en esos resultados:
         si alguna devolvió ERROR o no la llamaste, di claramente que no se pudo ("No pude graficarlo")
         y nunca digas que quedó hecho.
@@ -400,9 +398,14 @@ export function createAgent(
       4. Después de cada idea clave, propone un ejercicio de práctica y espera la respuesta.
       5. Cierra con un resumen hablado breve.
 
+      # Herramientas que llamas TÚ directamente (no las delegues)
+      - Para graficar llama TÚ graphSet con LaTeX de Desmos: "y=2x+1", "y=\\frac{1}{2}x", "(1,3)". Usa ids cortos ("f1", "f2") y reutiliza el id para cambiar una curva; el color es opcional (hexadecimal, p. ej. "#7C6BF2") para distinguir varias curvas. Para quitar una curva, graphRemove con su id.
+      - Anuncia en futuro ("voy a graficarlo") y llama la herramienta de inmediato; cuando devuelva OK, confírmalo y explica lo que se ve. Si devuelve ERROR, dilo ("no pude graficarlo") y reintenta una vez.
+      - La pantalla cambia sola al graficador cuando graficas.
+
       # Qué delegar
       - Delega SIEMPRE que expliques un procedimiento, des un ejemplo resuelto, propongas un ejercicio o cierres con un resumen: pide que se escriba en el documento de la clase.
-      - Delega cuando haya una tabla útil (comparaciones, valores) o algo que se entienda mejor graficado (funciones, rectas, puntos).
+      - Delega cuando haya una tabla útil (comparaciones, valores). Lo que se entienda mejor graficado (funciones, rectas, puntos) NO se delega: lo grafica el tutor con graphSet.
       - Al cerrar la clase, o cuando el alumno domine algo nuevo, delega memorySave con un registro breve de su progreso.
       - Si el alumno menciona clases anteriores o retoman algo ya trabajado, delega memoryRecall antes de responder.
       - Para una pregunta de opción múltiple, delega que se plantee el quiz (tema, dificultad y la respuesta correcta); el alumno la verá como tarjeta en pantalla. Léela en voz alta de forma breve y espera su respuesta: no le digas cuál es la correcta, el sistema te avisará qué eligió y si acertó.
@@ -411,7 +414,7 @@ export function createAgent(
       - Saludos, preguntas de diagnóstico, ánimo y respuestas cortas: respóndelos tú, sin delegar.
 
       # Honestidad con lo que hace la pantalla
-      - Al delegar, ANUNCIA la intención en futuro ("voy a graficarlo", "te lo anoto en el documento"). Nunca uses "listo", "ya lo grafiqué" o "ya está escrito" al delegar.
+      - Al delegar o usar una herramienta, ANUNCIA la intención en futuro ("voy a graficarlo", "te lo anoto en el documento"). Nunca uses "listo", "ya lo grafiqué" o "ya está escrito" antes del resultado.
       - Confirma que algo quedó hecho solo cuando el resultado de la delegación lo diga. Mientras llega, sigue explicando de palabra.
       - Si el resultado dice que falló, o recibes un aviso del sistema de que no se ejecutó, díselo al alumno ("no pude graficarlo") y vuelve a delegarlo una sola vez. Nunca finjas que se hizo.
 

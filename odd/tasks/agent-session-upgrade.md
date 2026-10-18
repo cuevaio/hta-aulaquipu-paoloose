@@ -38,6 +38,14 @@
   - Minor: after ending, the browser landed on /campus instead of /resumen/<id>.
   - Insight: tools exposed directly on the realtime layer (showImage) and direct LLM calls (wrap-up) work; tools that rely on delegation to the backend model did not fire.
 
+### Round 2 (user feedback after live test)
+- [x] T10 — Graphing is essential: expose `graphSet`/`graphRemove` (with color) directly on the realtime voice layer (same pattern as `showImage`, which worked live) instead of relying on delegation; auto-switch to the Graficador tab when graphing.
+- [ ] T11 — New "Actividad" tab replaces "Pizarra": the tutor's interactive space (quiz cards now; room for future activities). `quizAsk` and `emote` on the realtime layer; switching to the tab automatically when a quiz arrives.
+- [ ] T12 — Unify whiteboard + notebook into a single "Cuaderno" tab: free drawing, optional photo of the notebook as background, eraser and alignment fixes preserved.
+- [ ] T13 — Images: smaller in the doc (never larger than the content column; capped height, click to enlarge) and non-blocking `showImage` so the tutor keeps talking while it searches.
+- [ ] T14 — `src/memory.ts` real implementation with `@atomicmemory/sdk` (already in package.json; README "Class memory" section), scoped per student, configured by `ATOMICMEMORY_API_URL`/`ATOMICMEMORY_API_KEY`; graceful no-op when not configured. Committed (replaces the local stub).
+- [ ] T15 — Minor: after ending an AI class, land on `/resumen/<id>` (observed landing on /campus).
+
 ## Acceptance criteria
 - Asking the tutor to graph produces a graph and a confirmation, or an explicit failure message — never a false "listo".
 - A quiz card appears, the student answers, the avatar celebrates on a correct answer and the tutor reacts.
@@ -49,6 +57,7 @@
 - T3 done: agent `emote` tool + agent-side celebrate/encourage on quiz verdict; web `emote` event drives avatar for 2.5 s (new `surprised` variant), auto-celebrate on correct quiz; local script emits emotes. Checks: agent tsc 0, vitest 10/10, web tsc 0, eslint clean, routes 200.
 - T7 done: web sends `aulaquipu:control` wrap_up (+doc) on "Terminar" in AI classes; agent `wrapUpClass` generates the summary with a direct LLM call from transcript+doc, writes "Resumen de la clase" via the doc topic and replies `wrap_up_done`; web waits (25 s timeout, "Terminar sin resumen"), saves doc, then endSession. Local tutor writes a script-based summary. Checks: agent tsc 0, vitest 12/12, web tsc 0, eslint clean, routes 200.
 - T9 done (004 pending user approval, NOT applied): `004_topic_images.sql` (+ database.sql section 11; validated twice in PGlite on base+seed: RLS on, url/caption checks, service_role only); admin API `GET/POST admin/topics/:id/images`, `DELETE admin/topic-images/:id` (audited `topic_image.add/delete`, 503 "Falta aplicar la migración 004" notice if missing) + "Imágenes del tema" panel + mock; agent `showImage` (bank first, then Wikimedia Commons with User-Agent, upload.wikimedia.org + png/jpeg/svg only, title denylist, 6 s timeout, max 3 per class, chip "Imagen: …"); roomToken sends `topicId`; web markdown renders `<img>` only for upload.wikimedia.org / Supabase host / same-origin, else "[imagen bloqueada]". Local mode step skipped (not trivial). Checks: agent tsc 0, vitest 16/16, web tsc 0, eslint clean, /aula/x and /admin/guias-ia 200, new admin APIs 401 without cookie.
+- T10 done: voice-layer instructions now tell the tutor to call graphSet/graphRemove (with optional color) itself; backend instructions drop graph and say the tutor does it. Tools stay in the single shared tool list (the SDK has no per-layer split; ownership is by instruction). Web already auto-focuses the Graficador (transport emits focus_tool graph on graph_set). Checks: agent tsc 0, vitest 18/18.
 
 ## Next step
 - T8 browser validation with the real agent (orchestrator; restart the agent worker first).
