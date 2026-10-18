@@ -61,6 +61,8 @@ export interface AiPersona {
   tagline: string;
   style: string;
   voice: string;
+  /** Especialidad (la usa el agente); la edita el admin. */
+  focus?: string;
 }
 
 /** Promoción vigente que aplica a este alumno en un tutor IA. */
@@ -76,6 +78,8 @@ export interface AiTutor {
   persona: AiPersona;
   /** Precio de lista. Lo que paga el alumno es `effective_price` (si no viene, es este). */
   price_quipus: number;
+  /** false = pausado por un admin: no se lista ni se reserva. */
+  active?: boolean;
   effective_price?: number;
   promo?: AiPromoInfo | null;
 }
@@ -156,6 +160,8 @@ export interface Skin {
   kind: SkinKind;
   price_quipus: number;
   meta: SkinMeta;
+  /** false = oculto de la tienda por un admin (solo lo ven quienes ya lo tienen). */
+  active?: boolean;
 }
 
 export interface ProfileSkin {

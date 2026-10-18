@@ -49,6 +49,13 @@ const admin: AdminApi = {
   guide: (u, topicId) => call(u, "GET", `/admin/guides/${q(topicId)}`),
   saveGuide: (u, topicId, input) => call(u, "PUT", `/admin/guides/${q(topicId)}`, input),
   deleteGuide: (u, topicId) => call(u, "DELETE", `/admin/guides/${q(topicId)}`),
+  topics: (u) => call(u, "GET", "/admin/topics"),
+  updateTopic: (u, id, patch) => call(u, "PUT", `/admin/topics/${q(id)}`, patch),
+  mergeTopics: (u, sourceId, targetId) => call(u, "POST", "/admin/topics/merge", { sourceId, targetId }),
+  saveAiTutor: (u, id, input) =>
+    id ? call(u, "PUT", `/admin/ai-tutors/${q(id)}`, input) : call(u, "POST", "/admin/ai-tutors", input),
+  skins: (u) => call(u, "GET", "/admin/skins"),
+  saveSkin: (u, id, input) => (id ? call(u, "PUT", `/admin/skins/${q(id)}`, input) : call(u, "POST", "/admin/skins", input)),
 };
 
 export const httpApi: ApiClient = {

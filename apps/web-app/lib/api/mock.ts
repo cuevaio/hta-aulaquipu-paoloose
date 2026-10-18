@@ -304,6 +304,13 @@ function withPromos(s: DbState, userId: UUID | undefined, ais: AiTutor[]): AiTut
   return ais.map((a) => priceWithPromos(a, s.ai_promotions, first));
 }
 
+/** Tienda: los artículos ocultos por un admin solo los ven quienes ya los tienen. */
+function shopSkins(s: DbState, owned: Map<string, { equipped: boolean }>) {
+  return s.skins
+    .filter((k) => k.active !== false || owned.has(k.id))
+    .map((k) => ({ ...k, owned: owned.has(k.id), equipped: owned.get(k.id)?.equipped ?? false }));
+}
+
 export const mockApi: ApiClient = {
   admin: buildMockAdmin({ read, write, balanceOf, addLedger, uid, now }),
 
@@ -332,7 +339,7 @@ export const mockApi: ApiClient = {
         profile,
         balance: balanceOf(s, userId),
         available: availableOf(s, userId),
-        skins: s.skins.map((k) => ({ ...k, owned: owned.has(k.id), equipped: owned.get(k.id)?.equipped ?? false })),
+        skins: shopSkins(s, owned),
         equipped: equippedOf(s, userId),
         badges: badgesOf(s, userId),
         stats: statsOf(s, userId),
@@ -422,18 +429,22 @@ export const mockApi: ApiClient = {
         );
 
       const aiIds = new Set(s.ai_tutor_topics.filter((x) => x.topic_id === topic.id).map((x) => x.ai_tutor_id));
-      const aiTutors = aiIds.size ? s.ai_tutors.filter((a) => aiIds.has(a.id)) : s.ai_tutors;
+      // Los de este tema primero; si no hay (o están en pausa), los demás activos
+      const live = s.ai_tutors.filter((a) => a.active !== false);
+      const assigned = live.filter((a) => aiIds.has(a.id));
+      const aiTutors = assigned.length ? assigned : live;
 
       return { request, topic, topicWasCreated: topic.proposed_by === userId, groups, tutors, aiTutors: withPromos(s, userId, aiTutors) };
     }),
 
-  listAiTutors: (userId) => read((s) => withPromos(s, userId, s.ai_tutors)),
+  listAiTutors: (userId) => read((s) => withPromos(s, userId, s.ai_tutors.filter((a) => a.active !== false))),
 
   book: (userId, input: BookingInput) =>
     write((s): BookingResult => {
       if (input.kind === "ai") {
         const ai = s.ai_tutors.find((a) => a.id === input.aiTutorId);
         if (!ai) throw new ApiError("Tutor IA no encontrado", "not_found");
+        if (ai.active === false) throw new ApiError("Este tutor IA está en pausa por ahora. Elige otro.", "conflict");
         const price = aiPrice(withPromos(s, userId, [ai])[0]);
         requireBalance(s, userId, price);
         const request = input.requestId ? s.requests.find((r) => r.id === input.requestId) : null;
@@ -735,7 +746,7 @@ export const mockApi: ApiClient = {
   skins: (userId) =>
     read((s) => {
       const owned = new Map(s.profile_skins.filter((p) => p.profile_id === userId).map((p) => [p.skin_id, p]));
-      return s.skins.map((k) => ({ ...k, owned: owned.has(k.id), equipped: owned.get(k.id)?.equipped ?? false }));
+      return shopSkins(s, owned);
     }),
 
   buySkin: (userId, skinId) =>
@@ -744,6 +755,7 @@ export const mockApi: ApiClient = {
       if (!skin) throw new ApiError("Ese artículo no existe.", "not_found");
       // §11.4: compra idempotente por (profile_id, skin_id)
       if (s.profile_skins.some((p) => p.profile_id === userId && p.skin_id === skinId)) return;
+      if (skin.active === false) throw new ApiError("Ese artículo no existe.", "not_found");
       requireBalance(s, userId, skin.price_quipus);
       addLedger(s, { kind: "skin_purchase", amount: skin.price_quipus, from: userId, to: null });
       s.profile_skins.push({ profile_id: userId, skin_id: skinId, equipped: false });

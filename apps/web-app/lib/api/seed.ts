@@ -56,7 +56,7 @@ export interface DbState {
   ai_guides: (TopicGuide & { topic_id: string; updated_at: string })[];
 }
 
-export const SEED_VERSION = 6;
+export const SEED_VERSION = 7;
 
 const t = (id: string, name: string): Topic => ({ id, name, proposed_by: null, status: "active" });
 

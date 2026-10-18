@@ -51,6 +51,8 @@ interface AiRow {
   name: string;
   persona: Record<string, unknown>;
   price_quipus: number;
+  /** Falta si la migración 003 aún no se aplicó: se trata como activo. */
+  active?: boolean;
 }
 
 // ---------- mapeos ----------
@@ -103,10 +105,12 @@ export async function topicOf(id: string | null): Promise<Topic> {
   return (await topicsById([id])).get(id) ?? UNKNOWN_TOPIC;
 }
 
-export async function aiTutors(ids?: string[]): Promise<AiTutor[]> {
+/** `onlyActive` deja fuera a los tutores pausados (listados); sin él se incluyen (clases ya reservadas). */
+export async function aiTutors(ids?: string[], opts: { onlyActive?: boolean } = {}): Promise<AiTutor[]> {
   let q = db().from("ai_tutors").select("*").order("name");
   if (ids) q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
-  return (await must<AiRow[]>(q)).map(toAi);
+  const rows = await must<AiRow[]>(q);
+  return rows.filter((r) => !opts.onlyActive || r.active !== false).map(toAi);
 }
 
 export async function equippedFor(ids: string[]): Promise<Map<string, Equipped>> {

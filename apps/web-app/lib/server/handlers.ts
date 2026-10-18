@@ -119,8 +119,9 @@ async function skinsFor(userId: string): Promise<(Skin & { owned: boolean; equip
     must<{ skin_id: string; equipped: boolean }[]>(db().from("profile_skins").select("skin_id, equipped").eq("profile_id", userId)),
   ]);
   const mine = new Map(owned.map((o) => [o.skin_id, o.equipped]));
-  // Las skins gratis son de todos aunque no tengan fila en profile_skins
-  return catalog.map((k) => ({ ...k, owned: mine.has(k.id) || k.price_quipus === 0, equipped: mine.get(k.id) ?? false }));
+  // Las skins gratis son de todos aunque no tengan fila en profile_skins.
+  // Las ocultas por el admin dejan de venderse, pero quien ya las tiene las conserva.
+  return catalog.filter((k) => k.active !== false || mine.has(k.id)).map((k) => ({ ...k, owned: mine.has(k.id) || k.price_quipus === 0, equipped: mine.get(k.id) ?? false }));
 }
 
 export async function me(userId: string): Promise<Me> {
@@ -262,7 +263,9 @@ export async function match(userId: string, requestId: string): Promise<MatchOpt
         b.stats.estrellas_promedio - a.stats.estrellas_promedio || b.stats.sesiones_completadas - a.stats.sesiones_completadas,
     );
 
-  const ais = await applyPromos(userId, aiRows.length ? await aiTutors(aiRows.map((a) => a.ai_tutor_id)) : await aiTutors());
+  // Los de este tema primero; si no hay (o están en pausa), los demás activos
+  const assigned = aiRows.length ? await aiTutors(aiRows.map((a) => a.ai_tutor_id), { onlyActive: true }) : [];
+  const ais = await applyPromos(userId, assigned.length ? assigned : await aiTutors(undefined, { onlyActive: true }));
 
   return {
     request,
@@ -282,7 +285,7 @@ export async function match(userId: string, requestId: string): Promise<MatchOpt
   };
 }
 
-export const listAiTutors = async (userId: string) => applyPromos(userId, await aiTutors());
+export const listAiTutors = async (userId: string) => applyPromos(userId, await aiTutors(undefined, { onlyActive: true }));
 
 // ---------- reservas y sesiones ----------
 

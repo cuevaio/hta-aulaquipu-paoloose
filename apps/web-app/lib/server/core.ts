@@ -101,6 +101,9 @@ const RPC_ERRORS: Record<string, [number, string, HttpError["code"]]> = {
   credito_motivo_invalido: [400, "El motivo debe tener entre 3 y 140 caracteres.", "invalid"],
   credito_alcance_invalido: [400, "Elige a quién aplicar los créditos.", "invalid"],
   perfil_no_existe: [404, "No encontramos a ese alumno.", "not_found"],
+  tema_no_existe: [404, "Ese tema no existe.", "not_found"],
+  tema_invalido: [400, "Elige dos temas distintos para unir.", "invalid"],
+  tutor_pausado: [409, "Este tutor IA está en pausa por ahora. Elige otro.", "conflict"],
 };
 
 /** Códigos de Postgres/PostgREST cuando falta una tabla, función o columna (migración sin aplicar). */

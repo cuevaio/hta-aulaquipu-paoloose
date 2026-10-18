@@ -7,6 +7,9 @@ import type {
   AdminAiTutor,
   AdminGuide,
   AdminGuideTopic,
+  AdminSkin,
+  AdminTopic,
+  AiTutorInput,
   AdminMetrics,
   AdminUser,
   AiPromotion,
@@ -15,7 +18,10 @@ import type {
   CreditScope,
   CreditsInput,
   CreditsResult,
+  MergeResult,
   PromotionInput,
+  SkinInput,
+  TopicPatch,
   TopicGuide,
 } from "@/lib/admin-types";
 import type {
@@ -103,6 +109,15 @@ export interface AdminApi {
   guide(userId: UUID, topicId: UUID): Promise<AdminGuide>;
   saveGuide(userId: UUID, topicId: UUID, input: TopicGuide): Promise<AdminGuide>;
   deleteGuide(userId: UUID, topicId: UUID): Promise<void>;
+  topics(userId: UUID): Promise<AdminTopic[]>;
+  updateTopic(userId: UUID, topicId: UUID, patch: TopicPatch): Promise<void>;
+  /** Mueve pedidos, tutores, grupos, clases y guía de `sourceId` a `targetId` y borra el origen. */
+  mergeTopics(userId: UUID, sourceId: UUID, targetId: UUID): Promise<MergeResult>;
+  /** id = null crea; con id edita (persona, temas, precio y pausa). */
+  saveAiTutor(userId: UUID, id: UUID | null, input: AiTutorInput): Promise<AdminAiTutor>;
+  skins(userId: UUID): Promise<AdminSkin[]>;
+  /** id = null crea; con id edita (el tipo no cambia). */
+  saveSkin(userId: UUID, id: UUID | null, input: SkinInput): Promise<AdminSkin>;
 }
 
 export interface ApiClient {

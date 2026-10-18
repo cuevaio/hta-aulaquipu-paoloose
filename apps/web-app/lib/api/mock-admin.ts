@@ -5,7 +5,8 @@ import type { AdminApi } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
 import type { DbState } from "@/lib/api/seed";
 import type { AdminMetrics } from "@/lib/admin-types";
-import type { AdminGuide, AuditRow, TopicGuide } from "@/lib/admin-types";
+import type { AdminAiTutor, AdminGuide, AdminSkin, AdminTopic, AuditRow, TopicGuide } from "@/lib/admin-types";
+import { parseAiTutorInput, parseSkinInput, parseTopicName, type Parsed } from "@/lib/admin-validate";
 import { GUIDE_FIELD_MAX } from "@/lib/admin-types";
 import type { LedgerKind, UUID } from "@/lib/types";
 
@@ -25,6 +26,39 @@ export const isMockAdmin = (s: DbState, userId: UUID) => s.admins.includes(userI
 
 function requireAdmin(s: DbState, userId: UUID) {
   if (!isMockAdmin(s, userId)) throw new ApiError("Solo administradores.", "forbidden");
+}
+
+function check<T>(r: Parsed<T>): T {
+  if (!r.ok) throw new ApiError(r.error);
+  return r.value;
+}
+
+function tutorView(s: DbState, a: DbState["ai_tutors"][number]): AdminAiTutor {
+  return {
+    id: a.id,
+    name: a.name,
+    emoji: a.persona.emoji,
+    color: a.persona.color,
+    tagline: a.persona.tagline,
+    style: a.persona.style,
+    focus: a.persona.focus ?? "",
+    voice: a.persona.voice,
+    price_quipus: a.price_quipus,
+    active: a.active !== false,
+    topic_ids: s.ai_tutor_topics.filter((x) => x.ai_tutor_id === a.id).map((x) => x.topic_id),
+  };
+}
+
+function skinView(s: DbState, k: DbState["skins"][number]): AdminSkin {
+  return {
+    id: k.id,
+    name: k.name,
+    kind: k.kind,
+    price_quipus: k.price_quipus,
+    meta: k.meta,
+    active: k.active !== false,
+    owners: s.profile_skins.filter((p) => p.skin_id === k.id).length,
+  };
 }
 
 function guideView(s: DbState, topicId: UUID): AdminGuide {
@@ -252,7 +286,7 @@ export function buildMockAdmin(h: MockHelpers): AdminApi {
     aiTutors: (u) =>
       h.read((s) => {
         requireAdmin(s, u);
-        return s.ai_tutors.map((a) => ({ id: a.id, name: a.name, emoji: a.persona.emoji, price_quipus: a.price_quipus, active: true }));
+        return s.ai_tutors.map((a) => tutorView(s, a));
       }),
 
     setAiPrice: (u, id, price) =>
@@ -340,6 +374,140 @@ export function buildMockAdmin(h: MockHelpers): AdminApi {
         if (!topic) throw new ApiError("Ese tema no existe.", "not_found");
         audit(s, u, "guide.delete", topicId, { topic: topic.name });
         s.ai_guides = s.ai_guides.filter((g) => g.topic_id !== topicId);
+      }),
+
+    topics: (u) =>
+      h.read((s): AdminTopic[] => {
+        requireAdmin(s, u);
+        return [...s.topics]
+          .sort((a, b) => a.name.localeCompare(b.name, "es"))
+          .map((t) => ({
+            id: t.id,
+            name: t.name,
+            status: t.status,
+            requests: s.requests.filter((r) => r.topic_id === t.id).length,
+            open_requests: s.requests.filter((r) => r.topic_id === t.id && r.status === "open").length,
+            tutors: s.tutor_topics.filter((x) => x.topic_id === t.id).length,
+            ai_tutors: s.ai_tutor_topics.filter((x) => x.topic_id === t.id).length,
+            has_guide: s.ai_guides.some((g) => g.topic_id === t.id),
+          }));
+      }),
+
+    updateTopic: (u, id, patch) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const t = s.topics.find((x) => x.id === id);
+        if (!t) throw new ApiError("Ese tema no existe.", "not_found");
+        const name = patch.name !== undefined ? check(parseTopicName(patch.name)) : undefined;
+        if (patch.status !== undefined && patch.status !== "active" && patch.status !== "flagged") throw new ApiError("Estado inválido.");
+        if (name === undefined && patch.status === undefined) throw new ApiError("No hay nada que cambiar.");
+        if (name && s.topics.some((x) => x.id !== id && x.name.toLowerCase() === name.toLowerCase()))
+          throw new ApiError("Ya existe un tema con ese nombre. Usa “Unir” para combinarlos.", "conflict");
+        if (name && name !== t.name) {
+          audit(s, u, "topic.rename", id, { from: t.name, to: name });
+          t.name = name;
+        }
+        if (patch.status && patch.status !== t.status) {
+          audit(s, u, patch.status === "flagged" ? "topic.flag" : "topic.unflag", id, { name: t.name });
+          t.status = patch.status;
+        }
+      }),
+
+    mergeTopics: (u, sourceId, targetId) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        if (!sourceId || !targetId || sourceId === targetId) throw new ApiError("Elige dos temas distintos para unir.");
+        const src = s.topics.find((t) => t.id === sourceId);
+        const dst = s.topics.find((t) => t.id === targetId);
+        if (!src || !dst) throw new ApiError("Ese tema no existe.", "not_found");
+        const move = <T extends { topic_id: string }>(rows: T[]) => {
+          let n = 0;
+          for (const r of rows) {
+            if (r.topic_id !== sourceId) continue;
+            r.topic_id = targetId;
+            n++;
+          }
+          return n;
+        };
+        const requests = move(s.requests);
+        const groups = move(s.groups);
+        const sessions = move(s.sessions);
+        // Sin duplicados: quien ya enseñaba el tema destino conserva esa fila
+        let tutors = 0;
+        for (const tt of s.tutor_topics.filter((x) => x.topic_id === sourceId)) {
+          if (s.tutor_topics.some((x) => x.tutor_id === tt.tutor_id && x.topic_id === targetId)) continue;
+          tt.topic_id = targetId;
+          tutors++;
+        }
+        s.tutor_topics = s.tutor_topics.filter((x) => x.topic_id !== sourceId);
+        let ai_tutors = 0;
+        for (const at of s.ai_tutor_topics.filter((x) => x.topic_id === sourceId)) {
+          if (s.ai_tutor_topics.some((x) => x.ai_tutor_id === at.ai_tutor_id && x.topic_id === targetId)) continue;
+          at.topic_id = targetId;
+          ai_tutors++;
+        }
+        s.ai_tutor_topics = s.ai_tutor_topics.filter((x) => x.topic_id !== sourceId);
+        const srcGuide = s.ai_guides.find((g) => g.topic_id === sourceId);
+        const guide_moved = !!srcGuide && !s.ai_guides.some((g) => g.topic_id === targetId);
+        if (guide_moved) srcGuide.topic_id = targetId;
+        s.ai_guides = s.ai_guides.filter((g) => g.topic_id !== sourceId);
+        s.topics = s.topics.filter((t) => t.id !== sourceId);
+        const result = { requests, tutors, ai_tutors, groups, sessions, guide_moved };
+        audit(s, u, "topic.merge", sourceId, { from: src.name, into: dst.name, into_id: targetId, ...result });
+        return result;
+      }),
+
+    saveAiTutor: (u, id, input) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const v = check(parseAiTutorInput(input as unknown as Record<string, unknown>));
+        if (v.topic_ids.some((t) => !s.topics.some((x) => x.id === t))) throw new ApiError("Alguno de los temas elegidos no existe.");
+        const persona = { emoji: v.emoji, color: v.color, tagline: v.tagline, style: v.style, voice: v.voice, focus: v.focus };
+        let ai = id ? s.ai_tutors.find((a) => a.id === id) : undefined;
+        if (id && !ai) throw new ApiError("Ese tutor no existe.", "not_found");
+        if (!ai) {
+          ai = { id: h.uid("ai"), name: v.name, price_quipus: v.price_quipus, persona, active: v.active };
+          s.ai_tutors.push(ai);
+          audit(s, u, "ai_tutor.create", ai.id, { name: v.name, price: v.price_quipus, topics: v.topic_ids.length });
+        } else {
+          const wasActive = ai.active !== false;
+          const from = ai.price_quipus;
+          Object.assign(ai, { name: v.name, price_quipus: v.price_quipus, active: v.active, persona: { ...ai.persona, ...persona } });
+          audit(s, u, "ai_tutor.update", ai.id, { name: v.name, topics: v.topic_ids.length });
+          if (from !== v.price_quipus) audit(s, u, "ai_tutor.price", ai.id, { name: v.name, from, to: v.price_quipus });
+          if (wasActive !== v.active) audit(s, u, v.active ? "ai_tutor.resume" : "ai_tutor.pause", ai.id, { name: v.name });
+        }
+        const tutorId = ai.id;
+        s.ai_tutor_topics = s.ai_tutor_topics.filter((x) => x.ai_tutor_id !== tutorId);
+        for (const topic_id of v.topic_ids) s.ai_tutor_topics.push({ ai_tutor_id: tutorId, topic_id });
+        return tutorView(s, ai);
+      }),
+
+    skins: (u) =>
+      h.read((s) => {
+        requireAdmin(s, u);
+        return s.skins.map((k) => skinView(s, k));
+      }),
+
+    saveSkin: (u, id, input) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const before = id ? s.skins.find((k) => k.id === id) : undefined;
+        if (id && !before) throw new ApiError("Ese artículo no existe.", "not_found");
+        const v = check(parseSkinInput({ ...input, kind: before?.kind ?? input.kind }));
+        if (!before) {
+          const row = { id: h.uid("skin"), ...v };
+          s.skins.push(row);
+          audit(s, u, "skin.create", row.id, { name: v.name, kind: v.kind, price: v.price_quipus });
+          return skinView(s, row);
+        }
+        const wasActive = before.active !== false;
+        const from = before.price_quipus;
+        Object.assign(before, v);
+        audit(s, u, "skin.update", before.id, { name: v.name });
+        if (from !== v.price_quipus) audit(s, u, "skin.price", before.id, { name: v.name, from, to: v.price_quipus });
+        if (wasActive !== v.active) audit(s, u, v.active ? "skin.show" : "skin.hide", before.id, { name: v.name });
+        return skinView(s, before);
       }),
   };
 }

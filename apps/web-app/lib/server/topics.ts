@@ -119,6 +119,7 @@ async function createTopic(name: string, proposedBy: string): Promise<TopicRow> 
   const exact = clean.replace(/[\\%_]/g, (c) => `\\${c}`);
   const rows = await must<TopicRow[]>(db().from("topics").select("*").ilike("name", exact).limit(1));
   if (!rows.length) throw new HttpError(500, "No pudimos registrar el tema.");
+  if (rows[0].status === "flagged") throw new HttpError(400, "Ese tema no está disponible. Prueba con otro.");
   return rows[0];
 }
 

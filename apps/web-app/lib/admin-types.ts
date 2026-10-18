@@ -1,6 +1,6 @@
 // Tipos del panel de administración (/admin y /api/admin/*).
 
-import type { UUID } from "@/lib/types";
+import type { SkinKind, SkinMeta, UUID } from "@/lib/types";
 
 export interface AdminMetrics {
   generated_at: string;
@@ -76,14 +76,6 @@ export interface CreditOptions {
   schools: string[];
 }
 
-export interface AdminAiTutor {
-  id: UUID;
-  name: string;
-  emoji: string;
-  price_quipus: number;
-  active: boolean;
-}
-
 export interface AiPromotion {
   id: UUID;
   ai_tutor_id: UUID | null;
@@ -136,4 +128,62 @@ export function guideToAgentText(g: TopicGuide | null | undefined): string | nul
     .map(([title, body]) => `${title}:\n${body}`)
     .join("\n\n");
   return text ? text.slice(0, 4000) : null;
+}
+
+// ---------- contenido: temas, tutores IA y tienda ----------
+
+export interface AdminTopic {
+  id: UUID;
+  name: string;
+  status: "active" | "flagged";
+  requests: number;
+  open_requests: number;
+  tutors: number;
+  ai_tutors: number;
+  has_guide: boolean;
+}
+
+export interface TopicPatch {
+  name?: string;
+  status?: "active" | "flagged";
+}
+
+export interface MergeResult {
+  requests: number;
+  tutors: number;
+  ai_tutors: number;
+  groups: number;
+  sessions: number;
+  guide_moved: boolean;
+}
+
+/** Campos de la persona de un tutor IA que usa la app (AiPersona) y el agente (style, focus). */
+export interface AiTutorInput {
+  name: string;
+  emoji: string;
+  color: string;
+  tagline: string;
+  style: string;
+  focus: string;
+  voice: string;
+  price_quipus: number;
+  active: boolean;
+  topic_ids: UUID[];
+}
+
+export interface AdminAiTutor extends AiTutorInput {
+  id: UUID;
+}
+
+export interface SkinInput {
+  name: string;
+  kind: SkinKind;
+  price_quipus: number;
+  meta: SkinMeta;
+  active: boolean;
+}
+
+export interface AdminSkin extends SkinInput {
+  id: UUID;
+  owners: number;
 }

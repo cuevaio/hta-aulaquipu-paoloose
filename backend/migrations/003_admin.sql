@@ -12,8 +12,10 @@
 --   4. Promociones de precio de los tutores IA (ai_promotions) aplicadas en book_ai.
 --      Clase gratis: sessions.price_quipus admite 0 y end_session no escribe asiento de 0.
 --   5. Anuncios (announcements), reportes del chat (chat_reports).
---   6. Suspensión de cuentas (profiles.suspended_*) y pausa de tutores IA (ai_tutors.active).
---   7. Funciones: admin_grant (créditos atómicos) y admin_metrics (métricas en una llamada).
+--   6. Suspensión de cuentas (profiles.suspended_*), pausa de tutores IA (ai_tutors.active)
+--      y artículos de la tienda ocultos (skins.active).
+--   7. Funciones: admin_grant (créditos atómicos), admin_metrics (métricas en una llamada),
+--      admin_merge_topics (unir temas duplicados) y buy_skin / book_ai que respetan active.
 --   8. Seguridad: todo solo vía API (service role). Las columnas de suspensión no se leen
 --      con la clave pública.
 --   9. Administrador demo: valentina5 (profile 10000000-0000-0000-0000-000000000001).
@@ -155,6 +157,7 @@ create index if not exists ix_chat_reports_open on chat_reports (created_at desc
 alter table profiles add column if not exists suspended_at timestamptz;
 alter table profiles add column if not exists suspended_reason text;
 alter table ai_tutors add column if not exists active boolean not null default true;
+alter table skins add column if not exists active boolean not null default true;
 
 -- ============================================================
 -- 7. FUNCIONES
@@ -204,6 +207,9 @@ begin
   v_price := ai_price_for(p_student_id, p_ai_tutor_id);
   if v_price is null then
     raise exception 'tutor_no_existe';
+  end if;
+  if not (select active from ai_tutors where id = p_ai_tutor_id) then
+    raise exception 'tutor_pausado';
   end if;
   if p_request_id is not null then
     select * into v_req from requests where id = p_request_id;
@@ -276,6 +282,87 @@ begin
             v.tutor_id, v.price_quipus, 'session_payment');
     update requests set status = 'fulfilled' where id = v.request_id;
   end if;
+end $$;
+
+-- Compra de skin (igual que 001, pero un artículo oculto por el admin ya no se vende;
+-- quien ya lo tiene sigue conservándolo: el return idempotente va primero).
+create or replace function buy_skin(p_profile_id uuid, p_skin_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_price int;
+  v_active boolean;
+begin
+  perform lock_wallet(p_profile_id);
+  if exists (select 1 from profile_skins where profile_id = p_profile_id and skin_id = p_skin_id) then
+    return;
+  end if;
+  select price_quipus, active into v_price, v_active from skins where id = p_skin_id;
+  if v_price is null or not v_active then
+    raise exception 'skin_no_existe';
+  end if;
+  if v_price > 0 then
+    if available_balance(p_profile_id) < v_price then
+      raise exception 'saldo_insuficiente';
+    end if;
+    insert into quipus_ledger (from_profile, to_profile, amount, kind)
+    values (p_profile_id, null, v_price, 'skin_purchase');
+  end if;
+  insert into profile_skins (profile_id, skin_id) values (p_profile_id, p_skin_id);
+end $$;
+
+-- Une un tema duplicado (p_src) en otro (p_dst) de forma atómica: mueve pedidos, tutores humanos
+-- y IA, grupos, clases y la guía (si el destino no tiene una) y borra el tema origen.
+-- Escribe su propia fila de auditoría.
+create or replace function admin_merge_topics(p_admin_id uuid, p_src uuid, p_dst uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_src topics%rowtype;
+  v_dst topics%rowtype;
+  v_req int; v_tt int; v_att int; v_grp int; v_ses int; v_guide int;
+begin
+  if p_src is null or p_dst is null or p_src = p_dst then
+    raise exception 'tema_invalido';
+  end if;
+  -- Orden fijo de bloqueo: dos uniones cruzadas no se traban entre sí
+  perform 1 from topics where id in (p_src, p_dst) order by id for update;
+  select * into v_src from topics where id = p_src;
+  select * into v_dst from topics where id = p_dst;
+  if v_src.id is null or v_dst.id is null then
+    raise exception 'tema_no_existe';
+  end if;
+
+  update requests set topic_id = p_dst where topic_id = p_src;
+  get diagnostics v_req = row_count;
+  update groups set topic_id = p_dst where topic_id = p_src;
+  get diagnostics v_grp = row_count;
+  update sessions set topic_id = p_dst where topic_id = p_src;
+  get diagnostics v_ses = row_count;
+
+  insert into tutor_topics (tutor_id, topic_id, level)
+    select tutor_id, p_dst, level from tutor_topics where topic_id = p_src
+    on conflict (tutor_id, topic_id) do nothing;
+  get diagnostics v_tt = row_count;
+  delete from tutor_topics where topic_id = p_src;
+
+  insert into ai_tutor_topics (ai_tutor_id, topic_id)
+    select ai_tutor_id, p_dst from ai_tutor_topics where topic_id = p_src
+    on conflict (ai_tutor_id, topic_id) do nothing;
+  get diagnostics v_att = row_count;
+  delete from ai_tutor_topics where topic_id = p_src;
+
+  update ai_guides set topic_id = p_dst
+    where topic_id = p_src and not exists (select 1 from ai_guides where topic_id = p_dst);
+  get diagnostics v_guide = row_count;
+
+  delete from topics where id = p_src; -- lo que quede (p. ej. la guía duplicada) cae en cascada
+
+  insert into admin_audit (admin_id, action, target, payload)
+  values (p_admin_id, 'topic.merge', p_src::text, jsonb_build_object(
+    'from', v_src.name, 'into', v_dst.name, 'into_id', p_dst,
+    'requests', v_req, 'tutors', v_tt, 'ai_tutors', v_att, 'groups', v_grp, 'sessions', v_ses,
+    'guide_moved', v_guide > 0));
+  return jsonb_build_object('requests', v_req, 'tutors', v_tt, 'ai_tutors', v_att,
+    'groups', v_grp, 'sessions', v_ses, 'guide_moved', v_guide > 0);
 end $$;
 
 -- Créditos: p_amount > 0 regala quipus (grant), p_amount < 0 los descuenta (adjust).
@@ -478,15 +565,17 @@ grant select (id, username, display_name, grade, school, avatar_config, created_
 
 revoke execute on function admin_metrics() from public, anon, authenticated;
 grant execute on function admin_metrics() to service_role;
+revoke execute on function admin_merge_topics(uuid, uuid, uuid) from public, anon, authenticated;
+grant execute on function admin_merge_topics(uuid, uuid, uuid) to service_role;
 
 revoke execute on function
   ai_price_for(uuid, uuid), admin_grant(uuid, text, text, bigint, text),
-  book_ai(uuid, uuid, uuid), end_session(uuid)
+  book_ai(uuid, uuid, uuid), end_session(uuid), buy_skin(uuid, uuid)
 from public, anon, authenticated;
 
 grant execute on function
   ai_price_for(uuid, uuid), admin_grant(uuid, text, text, bigint, text),
-  book_ai(uuid, uuid, uuid), end_session(uuid)
+  book_ai(uuid, uuid, uuid), end_session(uuid), buy_skin(uuid, uuid)
 to service_role;
 
 -- ============================================================
