@@ -24,11 +24,12 @@
 
 ## Tasks
 - [x] T1 — `/info` landing.
-- [ ] T2 — `/presentacion` deck.
+- [x] T2 — `/presentacion` deck.
 - [ ] T3 — Browser review (orchestrator).
 
 ## Progress
 - T1 done: `app/info/page.tsx` (static server component, metadata/OG), shared copy in `lib/public-content.ts` (stats worded as in the spec; team names and public URL are marked placeholders), login footer links in `app/page.tsx`. Checks: tsc clean, eslint clean, /info 200 and / 200 without cookie. Browser review pending (T3).
+- T2 done: `app/presentacion/{page,deck,slides}.tsx` (server page + client controller; 10 static slides on a 1920x1080 stage scaled to the viewport; hash is the source of truth via useSyncExternalStore; keys, halves click, swipe, progress, fullscreen with immersive fallback, notes with N, print CSS one slide/page, motion-safe transitions). Checks: tsc clean, eslint clean, /presentacion /info / 200 without cookie. Not browser-tested (T3). Placeholders: public URL, team names, traction metrics.
 
 ## Next step
-- T2.
+- T3 browser review; team fills placeholders in `lib/public-content.ts` and slide 8.
