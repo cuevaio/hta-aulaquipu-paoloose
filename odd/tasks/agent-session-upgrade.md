@@ -31,7 +31,12 @@
 - [x] T3 — Avatar reactions.
 - [x] T7 — End-of-class summary.
 - [x] T9 — Topic images: agent tool `showImage` inserts an educational image into the live doc. Source order: admin image bank per topic (new table, migration `004_topic_images.sql`, applied only with explicit user approval; graceful fallback if missing), then Wikimedia Commons search done server-side by the agent (only `upload.wikimedia.org` URLs, with credit/license). Web renderer only displays images from allowlisted hosts (doc is student-editable). Admin "Guías IA" page gets an image section per topic (URL or upload).
-- [ ] T8 — Browser validation with the real agent (orchestrator).
+- [ ] T8 — Browser validation with the real agent (orchestrator). Partial (live class with Inti, "Biología celular"):
+  - OK: `showImage` called by the realtime layer → Wikimedia diagram + credit in doc + "✓ Imagen" chip; tutor confirmed only after the tool result.
+  - OK: Terminar → "Inti está escribiendo el resumen…" → summary section (Lo que vimos / Lo que te costó / 3 ejercicios) persisted and shown on /resumen.
+  - FAIL: "Hazme una pregunta de opción múltiple…" and "grafica" → tutor said it would, but no `quizAsk`/`graphSet` call and no delegation event in the agent log; quiz card and graph never appeared. Emote not exercised (depends on quiz).
+  - Minor: after ending, the browser landed on /campus instead of /resumen/<id>.
+  - Insight: tools exposed directly on the realtime layer (showImage) and direct LLM calls (wrap-up) work; tools that rely on delegation to the backend model did not fire.
 
 ## Acceptance criteria
 - Asking the tutor to graph produces a graph and a confirmation, or an explicit failure message — never a false "listo".
