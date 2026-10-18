@@ -20,7 +20,7 @@
 
 ## Tasks
 - [x] T1 — Brand token + hard-coded turquoise.
-- [ ] T2 — Login page refresh with sprite avatars.
+- [x] T2 — Login page refresh with sprite avatars.
 - [ ] T3 — Logo default gold.
 - [ ] T4 — Review (orchestrator).
 
@@ -29,3 +29,4 @@
   Checks: tsc OK, eslint OK on changed files, Tailwind CLI out has --mint:#d9b25f, --mint-deep, .bg-success, no 170-hue oklch left.
   Kept turquoise (#2FD3A3) as content: lib/skins.ts palette `andes` + andino/arcoiris frames; lib/api/seed.ts (Diego color, Killa tutor, "Verde menta" skin); avatar.tsx legacy blob accessories + `selva` deco gradient; ai-tutor-avatar.tsx illustration; whiteboard pen palette; ai-scripts Desmos/graph curves; campus world.tsx tutors-room floor tint and lib/subjects.ts "Ciencias" tone (#cdf3e5, category color coding).
   Green now (semantic success only): online dots (campus HUD, peers, chat toggle, admin live), quiz "¡Correcto!", mic-on, booked-class check.
+- T2 done. Login: gold Logo, badge aurum/15 + aurum-hi text, headline aurum + cream, hero scene now visible on mobile too (h-64 sm:h-72) with 3 bare sprite figures (Valeria wav+cap, Diego backpack, Camila glasses; built via teacherAvatar + starter accessories, since seed profiles have no sprite slots) + llama AiAvatar with IA badge; Sala de profesores chip recolored cream-gold. Right column untouched. Checks: tsc OK, eslint OK, Tailwind CLI contains new classes, sprite folders exist in public/figure, routes /, /info, /presentacion, /campus, /admin 200 (dev server). Visual layout NOT screenshot-verified.

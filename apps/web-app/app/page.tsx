@@ -10,7 +10,21 @@ import { Avatar, AiAvatar } from "@/components/avatar";
 import { Logo } from "@/components/logo";
 import { QuipuIcon, btn } from "@/components/bits";
 import { resetWelcome } from "@/components/campus/welcome";
+import { teacherAvatar } from "@/lib/campus/teacher-avatars";
+import type { AvatarConfig } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+/** Estudiantes del demo (seed) armados con piezas del creador de avatar. */
+const withSlots = (id: string, color: string, extra: Record<string, string>): AvatarConfig => {
+  const base = teacherAvatar(id, color);
+  return { ...base, slots: { ...base.slots, ...extra } };
+};
+
+const HERO_FIGURES = [
+  { id: "Valeria", config: withSlots("usr-valeria", "#7C6BF2", { ha: "hat_U_camocap" }), pose: { action: "wav", frame: 0 }, direction: 2, className: "bottom-[38%] left-[26%]", delay: "0s" },
+  { id: "Diego", config: withSlots("usr-diego", "#ED5C50", { ca: "acc_chest_U_backpack" }), pose: { action: "std", frame: 0 }, direction: 3, className: "bottom-[34%] right-[24%]", delay: ".5s" },
+  { id: "Camila", config: withSlots("usr-camila", "#E7B027", { ea: "acc_eye_U_brownglasses" }), pose: { action: "spk", frame: 0 }, direction: 2, className: "right-[12%] bottom-16", delay: ".2s" },
+] as const;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -51,37 +65,33 @@ export default function LoginPage() {
     <div className="grid min-h-dvh grid-cols-1 lg:grid-cols-[1.1fr_1fr]">
       {/* Lado ilustrado: un pedacito del campus */}
       <section className="hero-sky relative flex flex-col overflow-hidden px-6 py-6 text-white md:px-12 md:py-10">
-        <Logo light />
+        <Logo gold />
         <div className="my-10 lg:my-auto">
-          <p className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-mint">
+          <p className="mb-4 inline-flex items-center gap-2 rounded-full bg-aurum/15 px-3 py-1 text-xs font-bold text-aurum-hi ring-1 ring-aurum/40">
             <QuipuIcon /> Dinero de juego, aprendizaje de verdad
           </p>
           <h1 className="font-heading text-4xl leading-[1.05] font-semibold md:text-5xl">
-            El que sabe <span className="text-mint">enseña y gana.</span>
+            El que sabe <span className="text-aurum">enseña y gana.</span>
             <br />
-            El que aprende <span className="text-gold">paga y mejora.</span>
+            El que aprende <span className="text-cream">paga y mejora.</span>
           </h1>
           <p className="mt-4 max-w-md text-white/75">
             Camina por el campus, entra a la biblioteca a pedir ayuda, a la sala de tutores a enseñar o a un aula IA cuando quieras.
           </p>
         </div>
 
-        <div className="relative mx-auto hidden h-64 w-full max-w-md lg:block" aria-hidden>
+        <div className="relative mx-auto mt-2 h-64 w-full max-w-md sm:h-72" aria-hidden>
           <div className="room-floor absolute inset-0 rounded-[2rem] ring-4 ring-white/10" />
-          <div className="absolute top-5 left-5 rounded-xl bg-[#ecd2ae] px-3 py-2 text-xs font-extrabold text-navy shadow-[inset_0_-4px_0_#c9a57a]">📚 Biblioteca</div>
-          <div className="absolute top-5 right-5 rounded-xl bg-[#cdf3e5] px-3 py-2 text-xs font-extrabold text-navy shadow-[inset_0_-4px_0_#a5dcc6]">🎓 Sala de profesores</div>
-          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-xl bg-[#e3ddff] px-3 py-2 text-xs font-extrabold text-navy shadow-[inset_0_-4px_0_#c1b8f0]">✨ Laboratorio IA</div>
-          <div className="float absolute top-20 left-16">
-            <Avatar config={{ color: "#7C6BF2" }} equipped={{ avatar: { id: "", name: "", kind: "avatar", price_quipus: 0, meta: { accessory: "chullo" } } }} size={52} />
-          </div>
-          <div className="float absolute top-24 right-20 [animation-delay:.5s]">
-            <Avatar config={{ color: "#2FD3A3", shape: "round" }} size={46} />
-          </div>
-          <div className="float absolute bottom-16 left-24 [animation-delay:1s]">
-            <AiAvatar emoji="🦙" color="#FF8A65" size={46} />
-          </div>
-          <div className="float absolute right-28 bottom-14 [animation-delay:.2s]">
-            <Avatar config={{ color: "#FFC94D", shape: "bean" }} size={42} />
+          <div className="absolute top-4 left-4 rounded-xl bg-[#ecd2ae] px-3 py-2 text-xs font-extrabold text-navy shadow-[inset_0_-4px_0_#c9a57a]">📚 Biblioteca</div>
+          <div className="absolute top-4 right-4 rounded-xl bg-[#f3e3b8] px-3 py-2 text-xs font-extrabold text-navy shadow-[inset_0_-4px_0_#d9b25f]">🎓 Sala de profesores</div>
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-xl bg-[#e3ddff] px-3 py-2 text-xs font-extrabold whitespace-nowrap text-navy shadow-[inset_0_-4px_0_#c1b8f0]">✨ Laboratorio IA</div>
+          {HERO_FIGURES.map((f) => (
+            <div key={f.id} className={cn("float absolute", f.className)} style={{ animationDelay: f.delay }}>
+              <Avatar config={f.config} size={48} bare pose={f.pose} direction={f.direction} label={f.id} />
+            </div>
+          ))}
+          <div className="float absolute bottom-16 left-[14%] [animation-delay:1s]">
+            <AiAvatar emoji="🦙" color="#7C6BF2" size={46} />
           </div>
         </div>
       </section>
