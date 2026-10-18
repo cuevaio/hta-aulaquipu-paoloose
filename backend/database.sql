@@ -1567,3 +1567,25 @@ to service_role;
 insert into admins (profile_id)
 select p.id from profiles p where p.id = '10000000-0000-0000-0000-000000000001'
 on conflict (profile_id) do nothing;
+
+-- ============================================================
+-- 11. BANCO DE IMÁGENES POR TEMA (migración 004)
+-- ============================================================
+-- Imágenes educativas (URLs https) que el administrador asocia a un tema; el tutor IA las
+-- muestra con la herramienta showImage. Solo vía API / agente (service role).
+
+create table if not exists topic_images (
+  id uuid primary key default gen_random_uuid(),
+  topic_id uuid not null references topics(id) on delete cascade,
+  url text not null check (url ~ '^https://'),
+  caption text not null default '' check (char_length(caption) <= 140),
+  credit text not null default '' check (char_length(credit) <= 200),
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists ix_topic_images_topic on topic_images (topic_id, created_at);
+
+alter table topic_images enable row level security;
+revoke all on topic_images from anon, authenticated;
+grant select, insert, update, delete on topic_images to service_role;

@@ -30,6 +30,7 @@
 - [x] T2 — Quiz cards.
 - [x] T3 — Avatar reactions.
 - [x] T7 — End-of-class summary.
+- [x] T9 — Topic images: agent tool `showImage` inserts an educational image into the live doc. Source order: admin image bank per topic (new table, migration `004_topic_images.sql`, applied only with explicit user approval; graceful fallback if missing), then Wikimedia Commons search done server-side by the agent (only `upload.wikimedia.org` URLs, with credit/license). Web renderer only displays images from allowlisted hosts (doc is student-editable). Admin "Guías IA" page gets an image section per topic (URL or upload).
 - [ ] T8 — Browser validation with the real agent (orchestrator).
 
 ## Acceptance criteria
@@ -42,6 +43,7 @@
 - T2 done: agent `quizAsk` (answer key stays agent-side), `handleQuizAnswer` judges `aulaquipu:quiz-answer`, publishes `aulaquipu:quiz-result`, logs `tool_call{tool:'quiz'}` and prompts the voice reply; web quiz card + local script quizzes. Checks: agent tsc 0, vitest 9/9, web tsc 0, eslint clean, /aula/x and /resumen/x 200.
 - T3 done: agent `emote` tool + agent-side celebrate/encourage on quiz verdict; web `emote` event drives avatar for 2.5 s (new `surprised` variant), auto-celebrate on correct quiz; local script emits emotes. Checks: agent tsc 0, vitest 10/10, web tsc 0, eslint clean, routes 200.
 - T7 done: web sends `aulaquipu:control` wrap_up (+doc) on "Terminar" in AI classes; agent `wrapUpClass` generates the summary with a direct LLM call from transcript+doc, writes "Resumen de la clase" via the doc topic and replies `wrap_up_done`; web waits (25 s timeout, "Terminar sin resumen"), saves doc, then endSession. Local tutor writes a script-based summary. Checks: agent tsc 0, vitest 12/12, web tsc 0, eslint clean, routes 200.
+- T9 done (004 pending user approval, NOT applied): `004_topic_images.sql` (+ database.sql section 11; validated twice in PGlite on base+seed: RLS on, url/caption checks, service_role only); admin API `GET/POST admin/topics/:id/images`, `DELETE admin/topic-images/:id` (audited `topic_image.add/delete`, 503 "Falta aplicar la migración 004" notice if missing) + "Imágenes del tema" panel + mock; agent `showImage` (bank first, then Wikimedia Commons with User-Agent, upload.wikimedia.org + png/jpeg/svg only, title denylist, 6 s timeout, max 3 per class, chip "Imagen: …"); roomToken sends `topicId`; web markdown renders `<img>` only for upload.wikimedia.org / Supabase host / same-origin, else "[imagen bloqueada]". Local mode step skipped (not trivial). Checks: agent tsc 0, vitest 16/16, web tsc 0, eslint clean, /aula/x and /admin/guias-ia 200, new admin APIs 401 without cookie.
 
 ## Next step
 - T8 browser validation with the real agent (orchestrator; restart the agent worker first).

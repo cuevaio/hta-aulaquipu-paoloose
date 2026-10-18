@@ -1,11 +1,16 @@
 import { Agent, dedent, inference, tool } from '@livekit/agents';
 import { z } from 'zod';
+import { imageMarkdown, pickBankImage, searchCommons, type ClassImage } from './images.ts';
 
 export type TutorHooks = {
   publish: (msg: Record<string, unknown>, topic: string) => Promise<void>;
   logEvent: (kind: string, payload: Record<string, unknown>) => Promise<void>;
   remember: (content: string) => Promise<boolean>;
   recall: (query: string) => Promise<string>;
+  /** Imágenes del banco del tema (admin). Opcional: sin banco, showImage va directo a Wikimedia. */
+  topicImages?: () => Promise<Array<{ url: string; caption: string; credit: string }>>;
+  /** fetch para Wikimedia (se inyecta en las pruebas) */
+  fetch?: typeof fetch;
 };
 
 export type ClassContext = {
@@ -17,6 +22,8 @@ export type ClassContext = {
   /** Guía del tema definida por la plataforma (admin). Vacía si el tema no tiene guía. */
   guide: string;
   studentId: string;
+  /** Id (uuid) del tema reservado, para leer su banco de imágenes. */
+  topicId: string;
 };
 
 export const ACTION_TOPIC = 'aulaquipu:action';
@@ -197,6 +204,51 @@ export async function wrapUpClass(
   return ok;
 }
 
+// --- Imágenes del tema ---
+
+export const MAX_IMAGES_PER_CLASS = 3;
+
+/** Fuente: banco del tema, luego Wikimedia. Devuelve la imagen o un texto ERROR/aviso para el modelo. */
+export async function showImage(
+  hooks: TutorHooks,
+  shown: Set<string>,
+  args: { query: string; caption?: string | undefined },
+): Promise<string> {
+  if (shown.size >= MAX_IMAGES_PER_CLASS) {
+    return `ERROR: ya se mostraron ${MAX_IMAGES_PER_CLASS} imágenes en esta clase y NO se agregó otra; explica de palabra o con un gráfico.`;
+  }
+  let img: ClassImage | null = null;
+  try {
+    const bank = hooks.topicImages ? await hooks.topicImages() : [];
+    img = pickBankImage(bank, args.query, args.caption, shown);
+  } catch (err) {
+    await hooks.logEvent('error', { tool: 'showImage', stage: 'bank', message: String(err) });
+  }
+  if (!img) {
+    try {
+      img = await searchCommons(args.query, args.caption, hooks.fetch ?? fetch, shown);
+    } catch (err) {
+      await hooks.logEvent('error', { tool: 'showImage', stage: 'wikimedia', message: String(err), query: args.query });
+      return `ERROR: no se pudo buscar la imagen (${String(err)}). NO está en pantalla; dilo al tutor y sigue con palabras o un gráfico.`;
+    }
+  }
+  if (!img) {
+    await hooks.logEvent('tool_call', { tool: 'showImage', query: args.query, found: false });
+    return 'ERROR: no encontré una imagen adecuada para eso. NO está en pantalla; dilo al tutor y explica de palabra o con un gráfico.';
+  }
+  const section = `Imagen: ${img.caption}`.slice(0, 80);
+  const out = await runAction(hooks, {
+    tool: 'showImage',
+    label: `Imagen: ${img.caption}`,
+    msg: { type: 'doc_op', op: 'write', section, markdown: imageMarkdown(img) },
+    topic: 'aulaquipu:doc',
+    log: { query: args.query, url: img.url, source: img.source },
+    ok: `OK: imagen "${img.caption}" insertada en el documento.`,
+  });
+  if (out.startsWith('OK')) shown.add(img.url);
+  return out;
+}
+
 // --- Vigilancia de la delegación ---
 
 type DelegationEmitter = {
@@ -259,6 +311,7 @@ const DEFAULT_CONTEXT: ClassContext = {
   studentName: '',
   guide: '',
   studentId: '',
+  topicId: '',
 };
 
 function classBrief(c: ClassContext): string {
@@ -308,6 +361,9 @@ function backendInstructions(c: ClassContext, memoryBrief: string): string {
         durante la clase y al cerrarla.
       - Preguntas de opción múltiple: llama quizAsk (2 a 4 opciones, correctIndex = posición de la correcta
         empezando en 0, explicación breve). El alumno la verá como tarjeta; no repitas la respuesta en el documento.
+      - Imágenes: llama showImage con una consulta corta del concepto visual (por ejemplo "célula animal",
+        "triángulo rectángulo", "mapa del Perú", "partes de una planta") y, si quieres, un título breve.
+        Usa el banco del tema o Wikimedia por ti. Máximo ${MAX_IMAGES_PER_CLASS} por clase; no la repitas ni la describas en el documento.
       - Reacciones del avatar: llama emote (celebrate, think, surprised o encourage) con moderación, cuando el tutor
         lo pida o el momento lo merezca.
       - Puedes llamar varias herramientas seguidas.
@@ -331,6 +387,7 @@ export function createAgent(
   memoryBrief = '',
   quizzes: QuizBook = createQuizBook(),
 ) {
+  const shownImages = new Set<string>();
   return Agent.create({
     instructions:
       dedent`
@@ -349,6 +406,7 @@ export function createAgent(
       - Al cerrar la clase, o cuando el alumno domine algo nuevo, delega memorySave con un registro breve de su progreso.
       - Si el alumno menciona clases anteriores o retoman algo ya trabajado, delega memoryRecall antes de responder.
       - Para una pregunta de opción múltiple, delega que se plantee el quiz (tema, dificultad y la respuesta correcta); el alumno la verá como tarjeta en pantalla. Léela en voz alta de forma breve y espera su respuesta: no le digas cuál es la correcta, el sistema te avisará qué eligió y si acertó.
+      - Para conceptos visuales (células, triángulos, mapas, partes de una planta, el sistema solar…) delega que se muestre una imagen del tema; sirve como apoyo, no más de unas 3 veces por clase.
       - Cuando el alumno acierte, celébralo; si se equivoca, anímalo (puedes delegar una reacción del avatar). Sin exagerar: solo en momentos que lo merezcan.
       - Saludos, preguntas de diagnóstico, ánimo y respuestas cortas: respóndelos tú, sin delegar.
 
@@ -488,6 +546,16 @@ export function createAgent(
           await hooks.logEvent('tool_call', { tool: 'quizAsk', id, question });
           return 'OK: pregunta mostrada en pantalla. Pide al tutor que la lea en voz alta y espere la respuesta del alumno sin revelar la correcta.';
         },
+      }),
+      tool({
+        name: 'showImage',
+        description:
+          'Muestra en el documento de la clase una imagen educativa de un concepto visual (célula, triángulo, mapa, planta…). Usa primero las imágenes del tema y si no hay, busca en Wikimedia Commons. Máximo 3 por clase.',
+        parameters: z.object({
+          query: z.string().min(2).describe('Qué mostrar, en pocas palabras, por ejemplo "célula animal"'),
+          caption: z.string().optional().describe('Título breve de la imagen para el alumno'),
+        }),
+        execute: (args) => showImage(hooks, shownImages, args),
       }),
       tool({
         name: 'emote',

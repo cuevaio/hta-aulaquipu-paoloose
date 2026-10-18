@@ -7,6 +7,7 @@ import type { DbState } from "@/lib/api/seed";
 import type { AdminMetrics } from "@/lib/admin-types";
 import { STUCK_AFTER_MIN } from "@/lib/admin-types";
 import type { AdminAiTutor, AdminGuide, AdminSkin, AdminTopic, AuditRow, TopicGuide } from "@/lib/admin-types";
+import { parseTopicImage } from "@/lib/admin-types";
 import { parseAiTutorInput, parseAnnouncement, parseReason, parseSkinInput, parseTopicName, type Parsed } from "@/lib/admin-validate";
 import { GUIDE_FIELD_MAX } from "@/lib/admin-types";
 import type { LedgerKind, UUID } from "@/lib/types";
@@ -385,6 +386,36 @@ export function buildMockAdmin(h: MockHelpers): AdminApi {
         if (!topic) throw new ApiError("Ese tema no existe.", "not_found");
         audit(s, u, "guide.delete", topicId, { topic: topic.name });
         s.ai_guides = s.ai_guides.filter((g) => g.topic_id !== topicId);
+      }),
+
+    topicImages: (u, topicId) =>
+      h.read((s) => {
+        requireAdmin(s, u);
+        return (s.topic_images ?? []).filter((i) => i.topic_id === topicId).sort((a, b) => a.created_at.localeCompare(b.created_at));
+      }),
+
+    addTopicImage: (u, topicId, input) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const topic = s.topics.find((t) => t.id === topicId);
+        if (!topic) throw new ApiError("Ese tema no existe.", "not_found");
+        const parsed = parseTopicImage(input);
+        if ("error" in parsed) throw new ApiError(parsed.error);
+        s.topic_images ??= [];
+        if (s.topic_images.filter((i) => i.topic_id === topicId).length >= 30) throw new ApiError("Cada tema admite hasta 30 imágenes.");
+        const row = { id: h.uid("img"), topic_id: topicId, ...parsed.value, created_at: h.now() };
+        s.topic_images.push(row);
+        audit(s, u, "topic_image.add", topicId, { topic: topic.name, image_id: row.id, url: row.url, caption: row.caption });
+        return row;
+      }),
+
+    deleteTopicImage: (u, imageId) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const row = (s.topic_images ?? []).find((i) => i.id === imageId);
+        if (!row) throw new ApiError("Esa imagen no existe.", "not_found");
+        audit(s, u, "topic_image.delete", row.topic_id, { image_id: imageId, url: row.url, caption: row.caption });
+        s.topic_images = (s.topic_images ?? []).filter((i) => i.id !== imageId);
       }),
 
     topics: (u) =>

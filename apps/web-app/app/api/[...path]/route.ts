@@ -110,6 +110,9 @@ const ROUTES: Route[] = [
   a("GET", "admin/guides/:topicId", ({ params }) => ad.guideOf(params[0])),
   a("PUT", "admin/guides/:topicId", ({ user, params, body }) => ad.saveGuide(user, params[0], body)),
   a("DELETE", "admin/guides/:topicId", ({ user, params }) => ad.deleteGuide(user, params[0])),
+  a("GET", "admin/topics/:id/images", ({ params }) => ad.topicImages(params[0])),
+  a("POST", "admin/topics/:id/images", ({ user, params, body }) => ad.addTopicImage(user, params[0], body)),
+  a("DELETE", "admin/topic-images/:id", ({ user, params }) => ad.deleteTopicImage(user, params[0])),
 ];
 
 function find(method: string, segments: string[]): { route: Route; params: string[] } | null {

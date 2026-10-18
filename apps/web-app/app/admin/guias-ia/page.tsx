@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { useMutation, useQuery } from "@/components/providers";
 import { Card, ErrorBox, Pill, Skeleton, btn, timeAgo } from "@/components/bits";
 import { Empty, PageHeader, Panel, inputCls } from "@/components/admin/admin-ui";
-import { GUIDE_FIELD_MAX, type AdminGuide, type TopicGuide } from "@/lib/admin-types";
+import { GUIDE_FIELD_MAX, IMAGE_CAPTION_MAX, IMAGE_CREDIT_MAX, parseTopicImage, type AdminGuide, type TopicGuide } from "@/lib/admin-types";
 import { cn } from "@/lib/utils";
 
 const FIELDS: { key: keyof TopicGuide; label: string; hint: string }[] = [
@@ -87,7 +87,14 @@ export default function AdminGuidesPage() {
             ))}
           </ul>
         </Panel>
-        {topicId ? <GuideEditor key={topicId} topicId={topicId} /> : <Empty>Elige un tema para ver o escribir su guía.</Empty>}
+        {topicId ? (
+          <div className="min-w-0 space-y-4">
+            <GuideEditor key={topicId} topicId={topicId} />
+            <TopicImagesPanel key={`img-${topicId}`} topicId={topicId} />
+          </div>
+        ) : (
+          <Empty>Elige un tema para ver o escribir su guía.</Empty>
+        )}
       </div>
     </div>
   );
@@ -185,5 +192,93 @@ function GuideForm({ guide }: { guide: AdminGuide }) {
       </div>
       <p className="text-xs text-muted-foreground">Se aplica a las clases IA que empiecen después de guardar.</p>
     </Card>
+  );
+}
+
+/** Banco de imágenes del tema: el tutor IA las muestra en la clase antes de buscar en Wikimedia. */
+function TopicImagesPanel({ topicId }: { topicId: string }) {
+  const q = useQuery((u) => api.admin.topicImages(u, topicId), [topicId]);
+  const { run, pending } = useMutation();
+  const [url, setUrl] = useState("");
+  const [caption, setCaption] = useState("");
+  const [credit, setCredit] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const missing = !!q.error && !q.data && /004/.test(q.error);
+
+  const add = async () => {
+    const parsed = parseTopicImage({ url, caption, credit });
+    if ("error" in parsed) return setFormError(parsed.error);
+    setFormError(null);
+    const created = await run((u) => api.admin.addTopicImage(u, topicId, parsed.value), "Imagen agregada");
+    if (created) {
+      setUrl("");
+      setCaption("");
+      setCredit("");
+    }
+  };
+
+  return (
+    <Panel
+      title="Imágenes del tema"
+      hint="El tutor IA muestra estas imágenes en el documento de la clase; si el tema no tiene, busca en Wikimedia Commons."
+    >
+      {missing && (
+        <p role="status" className="rounded-2xl bg-muted px-4 py-3 text-sm font-semibold">
+          Falta aplicar 004: la migración <code>004_topic_images.sql</code> aún no está en la base de datos. El resto de la página funciona con normalidad.
+        </p>
+      )}
+      {q.error && !q.data && !missing && <ErrorBox message={q.error} />}
+      {!q.data && !q.error && <Skeleton className="h-24" />}
+      {q.data && !q.data.length && <Empty>Este tema aún no tiene imágenes propias.</Empty>}
+      {q.data && q.data.length > 0 && (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {q.data.map((img) => (
+            <li key={img.id} className="flex gap-3 rounded-2xl border border-border p-3">
+              {/* eslint-disable-next-line @next/next/no-img-element -- URL externa elegida por el admin */}
+              <img src={img.url} alt={img.caption} loading="lazy" referrerPolicy="no-referrer" className="size-20 shrink-0 rounded-xl bg-muted object-cover" />
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="text-sm font-bold">{img.caption}</p>
+                {img.credit && <p className="truncate text-xs text-muted-foreground">{img.credit}</p>}
+                <button
+                  onClick={() => confirm("¿Quitar esta imagen del tema?") && run((u) => api.admin.deleteTopicImage(u, img.id), "Imagen eliminada")}
+                  disabled={pending}
+                  className={cn(btn.ghost, btn.sm, "text-destructive")}
+                >
+                  <Trash2 className="size-4" /> Quitar
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!missing && (
+        <div className="space-y-2">
+          <label className="block space-y-1 text-sm font-bold">
+            URL de la imagen (https)
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://upload.wikimedia.org/…" className={inputCls} />
+          </label>
+          <label className="block space-y-1 text-sm font-bold">
+            <span className="flex justify-between gap-2">
+              Descripción
+              <span className="text-xs font-semibold tabular-nums text-muted-foreground">{caption.length}/{IMAGE_CAPTION_MAX}</span>
+            </span>
+            <input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Partes de una célula animal" className={inputCls} />
+          </label>
+          <label className="block space-y-1 text-sm font-bold">
+            <span className="flex justify-between gap-2">
+              Crédito y licencia (opcional)
+              <span className="text-xs font-semibold tabular-nums text-muted-foreground">{credit.length}/{IMAGE_CREDIT_MAX}</span>
+            </span>
+            <input value={credit} onChange={(e) => setCredit(e.target.value)} placeholder="Autor, CC BY-SA 4.0" className={inputCls} />
+          </label>
+          {formError && <p className="text-xs font-semibold text-destructive">{formError}</p>}
+          <button onClick={add} disabled={pending || !url.trim() || !caption.trim()} className={cn(btn.primary, btn.md)}>
+            {pending ? "Guardando…" : "Agregar imagen"}
+          </button>
+          <p className="text-xs text-muted-foreground">En clase solo se muestran imágenes de upload.wikimedia.org o del almacenamiento del proyecto.</p>
+        </div>
+      )}
+    </Panel>
   );
 }

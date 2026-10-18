@@ -10,6 +10,7 @@ import {
   wrapUpClass,
   watchDelegations,
 } from './agent.ts';
+import { fetchTopicImages } from './images.ts';
 import { memoryScope, recallBrief, remember } from './memory.ts';
 
 dotenv.config({ path: '.env.local' });
@@ -39,9 +40,10 @@ function classContextFrom(metadata: string | undefined): ClassContext {
       // Tope defensivo: la web ya la recorta, pero el metadata viene de fuera del proceso
       guide: typeof raw.guide === 'string' ? raw.guide.trim().slice(0, 4500) : '',
       studentId: typeof raw.studentId === 'string' ? raw.studentId : '',
+      topicId: typeof raw.topicId === 'string' ? raw.topicId : '',
     };
   } catch {
-    return { tutorName: 'Quipu', style: '', focus: '', topic: '', studentName: '', guide: '', studentId: '' };
+    return { tutorName: 'Quipu', style: '', focus: '', topic: '', studentName: '', guide: '', studentId: '', topicId: '' };
   }
 }
 
@@ -103,6 +105,7 @@ export default defineAgent({
       logEvent,
       remember: (content: string) => remember(scope, content),
       recall: (query: string) => recallBrief(scope, query),
+      topicImages: () => fetchTopicImages({ url: SUPABASE_URL, key: SUPABASE_SECRET_KEY }, klass.topicId),
     };
     const memoryBrief = await hooks.recall(
       klass.topic

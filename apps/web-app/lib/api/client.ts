@@ -28,6 +28,8 @@ import type {
   StuckSession,
   TopicPatch,
   TopicGuide,
+  TopicImage,
+  TopicImageInput,
 } from "@/lib/admin-types";
 import type {
   ActiveAnnouncement,
@@ -116,6 +118,9 @@ export interface AdminApi {
   guide(userId: UUID, topicId: UUID): Promise<AdminGuide>;
   saveGuide(userId: UUID, topicId: UUID, input: TopicGuide): Promise<AdminGuide>;
   deleteGuide(userId: UUID, topicId: UUID): Promise<void>;
+  topicImages(userId: UUID, topicId: UUID): Promise<TopicImage[]>;
+  addTopicImage(userId: UUID, topicId: UUID, input: TopicImageInput): Promise<TopicImage>;
+  deleteTopicImage(userId: UUID, imageId: UUID): Promise<void>;
   topics(userId: UUID): Promise<AdminTopic[]>;
   updateTopic(userId: UUID, topicId: UUID, patch: TopicPatch): Promise<void>;
   /** Mueve pedidos, tutores, grupos, clases y guía de `sourceId` a `targetId` y borra el origen. */

@@ -1,12 +1,12 @@
 // Endpoints del panel de administración (/api/admin/*). route.ts ya exigió sesión + admin;
 // cada mutación llama a audit() (o lo hace la función SQL, como admin_grant).
 
-import { db, fromDbError, HttpError, must, rpc } from "@/lib/server/core";
+import { db, fromDbError, HttpError, isMissingSchema, must, rpc } from "@/lib/server/core";
 import { audit, forgetUser, isAdmin } from "@/lib/server/admin";
 import { aiTutors, membersOf, profilesById, toAi, topicsById } from "@/lib/server/data";
 import { closeRoom } from "@/lib/server/livekit";
 import { str, uuidParam, type Body } from "@/lib/server/handlers";
-import { GUIDE_FIELD_MAX } from "@/lib/admin-types";
+import { GUIDE_FIELD_MAX, parseTopicImage } from "@/lib/admin-types";
 import { parseAiTutorInput, parseAnnouncement, parseReason, parseReportText, parseSkinInput, parseTopicName, type Parsed } from "@/lib/admin-validate";
 import { STUCK_AFTER_MIN } from "@/lib/admin-types";
 import type {
@@ -22,6 +22,7 @@ import type {
   AdminGuide,
   AdminGuideTopic,
   TopicGuide,
+  TopicImage,
   AdminMetrics,
   AdminUser,
   AiPromotion,
@@ -280,6 +281,54 @@ export async function deleteGuide(adminId: string, topicId: string) {
   const before = await guideOf(topicId);
   await must(db().from("ai_guides").delete().eq("topic_id", before.topic_id));
   await audit(adminId, "guide.delete", before.topic_id, { topic: before.name });
+}
+
+// ---------- banco de imágenes por tema (migración 004) ----------
+
+const MISSING_004 = "Falta aplicar la migración 004_topic_images.sql en la base de datos.";
+const IMAGE_COLUMNS = "id, topic_id, url, caption, credit, created_at";
+
+function imageDbError(err: { message: string; code?: string }): HttpError {
+  if (isMissingSchema(err)) return new HttpError(503, MISSING_004, "unavailable");
+  return fromDbError(err);
+}
+
+export async function topicImages(topicId: string): Promise<TopicImage[]> {
+  const id = uuidParam(topicId, "tema");
+  const { data, error } = await db().from("topic_images").select(IMAGE_COLUMNS).eq("topic_id", id).order("created_at").limit(100);
+  if (error) throw imageDbError(error);
+  return (data ?? []) as TopicImage[];
+}
+
+export async function addTopicImage(adminId: string, topicId: string, body: Body): Promise<TopicImage> {
+  const id = uuidParam(topicId, "tema");
+  const parsed = parseTopicImage(body);
+  if ("error" in parsed) throw new HttpError(400, parsed.error);
+  const [topic] = await must<{ id: string; name: string }[]>(db().from("topics").select("id, name").eq("id", id).limit(1));
+  if (!topic) throw new HttpError(404, "Ese tema no existe.", "not_found");
+  const { count, error: countErr } = await db().from("topic_images").select("id", { count: "exact", head: true }).eq("topic_id", id);
+  if (countErr) throw imageDbError(countErr);
+  if ((count ?? 0) >= 30) throw new HttpError(400, "Cada tema admite hasta 30 imágenes.");
+  const { data, error } = await db()
+    .from("topic_images")
+    .insert({ topic_id: id, ...parsed.value, created_by: adminId })
+    .select(IMAGE_COLUMNS)
+    .limit(1);
+  if (error) throw imageDbError(error);
+  const row = (data as TopicImage[])[0];
+  await audit(adminId, "topic_image.add", id, { topic: topic.name, image_id: row.id, url: row.url, caption: row.caption });
+  return row;
+}
+
+export async function deleteTopicImage(adminId: string, imageId: string) {
+  const id = uuidParam(imageId, "imagen");
+  const { data, error } = await db().from("topic_images").select(IMAGE_COLUMNS).eq("id", id).limit(1);
+  if (error) throw imageDbError(error);
+  const row = (data as TopicImage[])[0];
+  if (!row) throw new HttpError(404, "Esa imagen no existe.", "not_found");
+  const del = await db().from("topic_images").delete().eq("id", id);
+  if (del.error) throw imageDbError(del.error);
+  await audit(adminId, "topic_image.delete", row.topic_id, { image_id: id, url: row.url, caption: row.caption });
 }
 
 // ---------- contenido: temas ----------

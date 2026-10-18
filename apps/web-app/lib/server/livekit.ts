@@ -26,6 +26,8 @@ export interface AgentContext {
   style: string;
   focus: string;
   topic: string;
+  /** Id del tema (uuid) para que el agente lea el banco de imágenes; vacío si la clase no tiene tema. */
+  topicId?: string;
   studentName: string;
   /** Guía de enseñanza del tema definida en el panel de admin (opcional, ≤ ~4000 caracteres). */
   guide?: string;

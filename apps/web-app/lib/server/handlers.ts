@@ -355,6 +355,7 @@ export async function roomToken(userId: string, id: string): Promise<RoomToken> 
       style: persona[0]?.persona?.style ?? "",
       focus: persona[0]?.persona?.focus ?? "",
       topic: topic.id ? topic.name.toLowerCase() : "",
+      ...(topic.id ? { topicId: topic.id } : {}),
       studentName: firstName,
       ...(guide ? { guide } : {}),
       studentId: userId,

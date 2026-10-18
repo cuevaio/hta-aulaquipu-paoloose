@@ -113,6 +113,44 @@ export interface AdminGuide extends TopicGuide {
   updated_at: string | null;
 }
 
+// ---------- banco de imágenes por tema ----------
+
+export const IMAGE_CAPTION_MAX = 140;
+export const IMAGE_CREDIT_MAX = 200;
+
+export interface TopicImage {
+  id: UUID;
+  topic_id: UUID;
+  url: string;
+  caption: string;
+  credit: string;
+  created_at: string;
+}
+
+export interface TopicImageInput {
+  url: string;
+  caption: string;
+  credit: string;
+}
+
+/** Valida una imagen del banco; devuelve el mensaje de error o la entrada limpia. */
+export function parseTopicImage(raw: { url?: unknown; caption?: unknown; credit?: unknown }): { error: string } | { value: TopicImageInput } {
+  const url = typeof raw.url === "string" ? raw.url.trim() : "";
+  const caption = typeof raw.caption === "string" ? raw.caption.trim() : "";
+  const credit = typeof raw.credit === "string" ? raw.credit.trim() : "";
+  let parsed: URL | null = null;
+  try {
+    parsed = new URL(url);
+  } catch {
+    parsed = null;
+  }
+  if (!parsed || parsed.protocol !== "https:" || url.length > 2000) return { error: "La URL debe empezar con https://." };
+  if (!caption) return { error: "Escribe una descripción corta de la imagen." };
+  if (caption.length > IMAGE_CAPTION_MAX) return { error: `La descripción admite hasta ${IMAGE_CAPTION_MAX} caracteres.` };
+  if (credit.length > IMAGE_CREDIT_MAX) return { error: `El crédito admite hasta ${IMAGE_CREDIT_MAX} caracteres.` };
+  return { value: { url, caption, credit } };
+}
+
 /** Texto de la guía que viaja al agente (≤ ~4000 caracteres), o null si el tema no tiene guía. */
 export function guideToAgentText(g: TopicGuide | null | undefined): string | null {
   if (!g) return null;

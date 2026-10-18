@@ -33,6 +33,8 @@ const LABEL: Record<string, string> = {
   "announcement.update": "Editó un anuncio",
   "announcement.delete": "Eliminó un anuncio",
   "guide.save": "Guardó una guía de enseñanza IA",
+  "topic_image.add": "Agregó una imagen al banco de un tema",
+  "topic_image.delete": "Quitó una imagen del banco de un tema",
   "guide.delete": "Quitó una guía de enseñanza IA",
 };
 

@@ -196,3 +196,97 @@ describe('resumen de fin de clase', () => {
     expect(published).toEqual([{ msg: { type: 'wrap_up_done', ok: false }, topic: 'aulaquipu:control' }]);
   });
 });
+
+describe('showImage', () => {
+  const commons = {
+    query: {
+      pages: {
+        '1': {
+          title: 'File:Nude study.jpg',
+          index: 1,
+          imageinfo: [{ url: 'https://upload.wikimedia.org/a/a.jpg', thumburl: 'https://upload.wikimedia.org/a/800px-a.jpg', mime: 'image/jpeg', extmetadata: {} }],
+        },
+        '2': {
+          title: 'File:Cell.gif',
+          index: 2,
+          imageinfo: [{ url: 'https://upload.wikimedia.org/c/c.gif', thumburl: 'https://upload.wikimedia.org/c/800px-c.gif', mime: 'image/gif', extmetadata: {} }],
+        },
+        '3': {
+          title: 'File:Evil host.png',
+          index: 3,
+          imageinfo: [{ url: 'https://evil.example.com/x.png', thumburl: 'https://evil.example.com/x.png', mime: 'image/png', extmetadata: {} }],
+        },
+        '4': {
+          title: 'File:Animal cell diagram.svg',
+          index: 4,
+          imageinfo: [
+            {
+              url: 'https://upload.wikimedia.org/w/Animal_cell.svg',
+              thumburl: 'https://upload.wikimedia.org/w/800px-Animal_cell.svg.png',
+              mime: 'image/svg+xml',
+              extmetadata: { Artist: { value: '<a href="//x">Mariana <b>Ruiz</b></a>' }, LicenseShortName: { value: 'CC BY-SA 4.0' } },
+            },
+          ],
+        },
+      },
+    },
+  };
+  const jsonFetch = (body: unknown, ok = true) =>
+    vi.fn(async (_url: unknown, _init?: unknown) => ({ ok, status: ok ? 200 : 503, json: async () => body }) as Response);
+
+  it('usa el banco del tema antes que Wikimedia y elige por coincidencia de palabras', async () => {
+    const fetchMock = jsonFetch(commons);
+    const { hooks, published, events } = makeHooks({
+      fetch: fetchMock as unknown as typeof fetch,
+      topicImages: async () => [
+        { url: 'https://cdn.example.com/triangulo.png', caption: 'Triángulo rectángulo', credit: 'Equipo' },
+        { url: 'https://cdn.example.com/celula.png', caption: 'Partes de la célula animal', credit: '' },
+      ],
+    });
+    const out = await run(toolsOf(hooks).showImage, { query: 'célula animal' });
+    expect(out).toMatch(/^OK/);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(published[0]).toMatchObject({
+      topic: 'aulaquipu:doc',
+      msg: { type: 'doc_op', op: 'write', markdown: expect.stringContaining('![Partes de la célula animal](https://cdn.example.com/celula.png)') },
+    });
+    expect(published[1].msg).toMatchObject({ type: 'action', tool: 'showImage', label: 'Imagen: Partes de la célula animal' });
+    expect(events[0]).toMatchObject({ kind: 'tool_call', payload: { tool: 'showImage', source: 'bank' } });
+  });
+
+  it('sin banco busca en Wikimedia: filtra título inseguro, mime, host y toma el crédito sin HTML', async () => {
+    const fetchMock = jsonFetch(commons);
+    const { hooks, published } = makeHooks({ fetch: fetchMock as unknown as typeof fetch });
+    const out = await run(toolsOf(hooks).showImage, { query: 'animal cell', caption: 'La célula animal' });
+    expect(out).toMatch(/^OK/);
+    const [calledUrl, init] = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
+    expect(calledUrl).toContain('commons.wikimedia.org/w/api.php');
+    expect(calledUrl).toContain('gsrsearch=animal+cell');
+    expect(init.headers['User-Agent']).toMatch(/AulaQuipu/);
+    const md = (published[0].msg as { markdown: string }).markdown;
+    expect(md).toContain('![La célula animal](https://upload.wikimedia.org/w/800px-Animal_cell.svg.png)');
+    expect(md).toContain('*Imagen: Mariana Ruiz, CC BY-SA 4.0 · Wikimedia Commons*');
+    expect(md).not.toContain('evil.example.com');
+  });
+
+  it('devuelve ERROR sin publicar si Wikimedia falla o no hay resultados', async () => {
+    const down = makeHooks({ fetch: jsonFetch({}, false) as unknown as typeof fetch });
+    expect(await run(toolsOf(down.hooks).showImage, { query: 'mapa del Perú' })).toMatch(/^ERROR/);
+    expect(down.published).toHaveLength(0);
+    expect(down.events[0]).toMatchObject({ kind: 'error', payload: { tool: 'showImage' } });
+
+    const empty = makeHooks({ fetch: jsonFetch({ batchcomplete: '' }) as unknown as typeof fetch });
+    expect(await run(toolsOf(empty.hooks).showImage, { query: 'algo raro' })).toMatch(/^ERROR: no encontré/);
+    expect(empty.published).toHaveLength(0);
+  });
+
+  it('limita a 3 imágenes por clase', async () => {
+    const { hooks, published } = makeHooks({
+      topicImages: async () => [1, 2, 3, 4].map((n) => ({ url: `https://cdn.example.com/${n}.png`, caption: `Imagen ${n}`, credit: '' })),
+    });
+    const t = toolsOf(hooks).showImage;
+    for (let i = 0; i < 3; i++) expect(await run(t, { query: 'imagen' })).toMatch(/^OK/);
+    expect(await run(t, { query: 'imagen' })).toMatch(/^ERROR: ya se mostraron 3/);
+    expect(published.filter((p) => p.topic === 'aulaquipu:doc')).toHaveLength(3);
+  });
+});
