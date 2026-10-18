@@ -117,7 +117,9 @@ export async function testAccounts(): Promise<TestAccount[]> {
 
 async function skinsFor(userId: string): Promise<(Skin & { owned: boolean; equipped: boolean })[]> {
   const [catalog, owned] = await Promise.all([
-    must<Skin[]>(db().from("skins").select("*").order("kind").order("price_quipus")),
+    // El volcado de sprites (cientos de ítems "avatar" con meta.sprite) no se vende aquí y llenaba el
+    // tope de 1000 filas de PostgREST, dejando fuera marcos, fondos, insignias y cabezas.
+    must<Skin[]>(db().from("skins").select("*").or("kind.neq.avatar,meta->>sprite.is.null").order("kind").order("price_quipus")),
     must<{ skin_id: string; equipped: boolean }[]>(db().from("profile_skins").select("skin_id, equipped").eq("profile_id", userId)),
   ]);
   const mine = new Map(owned.map((o) => [o.skin_id, o.equipped]));

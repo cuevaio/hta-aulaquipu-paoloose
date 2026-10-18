@@ -59,6 +59,28 @@ export function spriteSlot(meta: SkinMeta | undefined): string {
   return (meta?.item && figureSlot(meta.item)) || meta?.slot || meta?.item || "acc";
 }
 
+/** Los diseños de cabeza de la tienda eran dibujos SVG; en el avatar sprite se ven como estas piezas. */
+const HEAD_SPRITES: Record<NonNullable<SkinMeta["accessory"]>, string> = {
+  chullo: "hat_U_incahat",
+  lentes: "acc_eye_U_sunglasses1",
+  corona: "hat_U_elegantcrown",
+  audifonos: "acc_head_U_hheadphones",
+  birrete: "hat_U_studentcap",
+  flor: "acc_head_U_big_flower",
+  gorra: "hat_U_backcap",
+  cresta: "hat_U_punkhat",
+  gato: "hat_U_cathat",
+  lazo: "acc_head_U_bow",
+  sombrero: "hat_U_straw",
+  rulos: "acc_head_F_buns",
+  antenas: "acc_head_U_antenna",
+};
+
+/** Pieza sprite equivalente a un diseño de cabeza, o undefined si no hay (o no es de ese tipo). */
+export function headSprite(meta: SkinMeta | undefined): string | undefined {
+  return meta?.accessory ? HEAD_SPRITES[meta.accessory] : undefined;
+}
+
 export function avatarColor(config: AvatarConfig): string {
   return config.color ?? (config.palette ? PALETTES[config.palette]?.color : undefined) ?? "#7C6BF2";
 }

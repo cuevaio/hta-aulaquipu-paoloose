@@ -43,9 +43,13 @@ export function initialAvatar(current: AvatarConfig | undefined): AvatarConfig {
   };
 }
 
+const TILE = "flex min-w-0 flex-col items-center gap-1 rounded-2xl border-2 p-1.5 transition";
+const TILE_ON = "border-primary bg-secondary";
+const TILE_OFF = "border-transparent hover:bg-muted";
+
 function Swatches({ colors, value, onPick, label }: { colors: string[]; value?: string; onPick: (c: string) => void; label: string }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2">
+    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2 p-1.5">
       {colors.map((c) => (
         <button
           key={c}
@@ -53,7 +57,7 @@ function Swatches({ colors, value, onPick, label }: { colors: string[]; value?: 
           aria-checked={value === c}
           aria-label={c}
           onClick={() => onPick(c)}
-          className={cn("size-9 rounded-full ring-2 ring-offset-2 transition", value === c ? "ring-primary" : "ring-transparent hover:ring-border")}
+          className={cn("size-9 rounded-full ring-2 ring-offset-2 ring-offset-card transition", value === c ? "ring-primary" : "ring-transparent hover:ring-border")}
           style={{ background: c }}
         />
       ))}
@@ -96,8 +100,6 @@ export function AvatarBuilder({
   const withSlot = (slot: string, item: string): AvatarConfig => ({ ...config, slots: { ...slots, [slot]: item } });
   // Al elegir pelo se quita también el gorro de la miniatura, que si no lo taparía
   const tileEquipped = (slot: string) => equippedWithout(new Set(touched).add(slot).add(slot === "hr" ? "ha" : slot));
-  // Mientras una compra ocupe el slot, la pieza del creador no se ve: no se marca como puesta
-  const shadowed = (slot: string) => !touched.has(slot) && storeParts.some((p) => spriteSlot(p.meta) === slot);
 
   const category = BASE_CATEGORIES.find((c) => c.slot === tab);
 
@@ -117,7 +119,7 @@ export function AvatarBuilder({
       <div className="grid shrink-0 place-items-center rounded-3xl bg-gradient-to-b from-secondary to-muted p-3 sm:w-44">
         {/* Figura entera más alta que su caja (modo campus): el relleno le deja espacio arriba */}
         <div style={{ paddingTop: 110 }}>
-          <Avatar config={config} equipped={equippedWithout(touched)} size={110} bare label="Vista previa de tu avatar" />
+          <Avatar config={config} equipped={equippedWithout(touched)} size={110} bare puff label="Vista previa de tu avatar" />
         </div>
       </div>
 
@@ -139,7 +141,7 @@ export function AvatarBuilder({
           ))}
         </div>
 
-        <div className="mt-3 max-h-[46vh] space-y-3 overflow-y-auto pr-1 sm:max-h-80">
+        <div className="mt-3 max-h-[46vh] space-y-3 overflow-y-auto pr-1 [scrollbar-gutter:stable] sm:max-h-80">
           {tab === "piel" && (
             <Swatches label="Tono de piel" colors={SKIN_TONES} value={config.skin} onPick={(skin) => setConfig((c) => ({ ...c, skin }))} />
           )}
@@ -152,16 +154,16 @@ export function AvatarBuilder({
               {tab === "ch" && (
                 <Swatches label="Color de ropa" colors={CLOTHES_COLORS} value={config.color} onPick={(color) => setConfig((c) => ({ ...c, color }))} />
               )}
-              <div role="radiogroup" aria-label={category.label} className="grid grid-cols-4 gap-2">
+              <div role="radiogroup" aria-label={category.label} className="grid grid-cols-4 gap-2 p-1">
                 {category.options.map((o) => {
-                  const on = slots[category.slot] === o.item && !shadowed(category.slot);
+                  const on = slots[category.slot] === o.item;
                   return (
                     <button
                       key={o.item}
                       role="radio"
                       aria-checked={on}
                       onClick={() => setSlot(category.slot, o.item)}
-                      className={cn("flex flex-col items-center gap-1 rounded-2xl p-1.5 ring-2 transition", on ? "bg-secondary ring-primary" : "ring-transparent hover:bg-muted")}
+                      className={cn(TILE, on ? TILE_ON : TILE_OFF)}
                     >
                       <Avatar
                         config={withSlot(category.slot, o.item)}
@@ -180,15 +182,15 @@ export function AvatarBuilder({
           {tab === "acc" && (
             <>
               <p className="text-sm text-muted-foreground">De regalo para empezar. Toca para ponerte o quitarte cada uno.</p>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-4 gap-2 p-1">
                 {STARTER_ACCESSORIES.map((a) => {
-                  const on = slots[a.slot] === a.item && !shadowed(a.slot);
+                  const on = slots[a.slot] === a.item;
                   return (
                     <button
                       key={a.item}
                       aria-pressed={on}
                       onClick={() => setSlot(a.slot, on ? undefined : a.item)}
-                      className={cn("relative flex flex-col items-center gap-1 rounded-2xl p-1.5 ring-2 transition", on ? "bg-secondary ring-primary" : "ring-transparent hover:bg-muted")}
+                      className={cn(TILE, "relative", on ? TILE_ON : TILE_OFF)}
                     >
                       <Avatar config={withSlot(a.slot, a.item)} equipped={tileEquipped(a.slot)} size={56} view={a.slot === "ca" ? "full" : "bust"} />
                       <span className="text-[11px] leading-tight font-bold">{a.label}</span>

@@ -16,6 +16,7 @@ import { buildMockAdmin, check, isMockAdmin } from "@/lib/api/mock-admin";
 import { parseReportText } from "@/lib/admin-validate";
 import { sanitizeAvatar } from "@/lib/avatar-catalog";
 import { aiPrice, priceWithPromos } from "@/lib/pricing";
+import { cleanTopicName } from "@/lib/topic-name";
 import { isSpriteSkin, spriteSlot } from "@/lib/skins";
 import { buildSeed, SEED_VERSION, TOPIC_KEYWORDS, type DbState } from "@/lib/api/seed";
 import type {
@@ -216,12 +217,7 @@ function normalizeTopic(s: DbState, text: string, userId: UUID): { topic: Topic;
   if (best) return { topic: topicOf(s, best.id), created: false };
 
   // Tema nuevo propuesto por el alumno: nombre corto a partir del texto
-  const name = text
-    .replace(/^(no entiendo|necesito|quiero aprender|ayuda con|me cuesta)\s+/i, "")
-    .replace(/^(lo de |las |los |el |la )/i, "")
-    .replace(/[.?!]+$/, "")
-    .trim()
-    .slice(0, 40);
+  const name = cleanTopicName(text);
   const topic: Topic = {
     id: uid("top"),
     name: name.charAt(0).toUpperCase() + name.slice(1),

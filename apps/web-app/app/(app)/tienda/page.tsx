@@ -56,7 +56,7 @@ export default function ShopPage() {
             className="grid h-64 place-items-center"
             style={{ background: deco ? DECO_BG[deco] : "linear-gradient(135deg,var(--primary),var(--mint))" }}
           >
-            <Avatar config={me.profile.avatar_config} equipped={shown} size={150} className="float" label="Vista previa" />
+            <Avatar config={me.profile.avatar_config} equipped={shown} size={150} className="float" label="Vista previa" puff />
           </div>
           <div className="flex items-center justify-between bg-card p-4">
             <div>

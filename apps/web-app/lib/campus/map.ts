@@ -137,8 +137,6 @@ export const OBJECTS: WorldObject[] = [
   o("plaza-tree-4", "tree", 38, 15, 1, 1, { sprites: ["ducket_c26_appletree"], scale: 0.45 }),
   o("plaza-tree-5", "tree", 12, 12, 1, 1, { sprites: ["xmas_c15_alpinetree"], scale: 0.5 }),
   o("plaza-tree-6", "tree", 27, 12, 1, 1, { sprites: ["xmas_c15_alpinetree"], scale: 0.5 }),
-  o("plaza-bench-1", "bench", 14, 14, 2, 1, { sprites: ["school_c22_bench"], scale: 0.85 }),
-  o("plaza-bench-2", "bench", 24, 14, 2, 1, { sprites: ["school_c22_bench"], scale: 0.85 }),
   o("plaza-bench-3", "bench", 5, 12, 2, 1, { sprites: ["autumn_c20_bench"], scale: 0.8 }),
   o("plaza-bench-4", "bench", 33, 12, 2, 1, { sprites: ["xmas_c17_bench"], scale: 0.8 }),
 
