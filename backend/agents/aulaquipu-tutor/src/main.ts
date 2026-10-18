@@ -6,6 +6,7 @@ import {
   type ClassContext,
   createAgent,
   createQuizBook,
+  groupNames,
   handleDirectorDone,
   handleQuizAnswer,
   wrapUpClass,
@@ -13,6 +14,7 @@ import {
 } from './agent.ts';
 import { fetchTopicImages } from './images.ts';
 import { memoryScope, recallBrief, remember } from './memory.ts';
+import { nextSpeaker, speakerNote } from './speakers.ts';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config({ path: '../../.env' });
@@ -42,6 +44,15 @@ function classContextFrom(metadata: string | undefined): ClassContext {
       guide: typeof raw.guide === 'string' ? raw.guide.trim().slice(0, 4500) : '',
       studentId: typeof raw.studentId === 'string' ? raw.studentId : '',
       topicId: typeof raw.topicId === 'string' ? raw.topicId : '',
+      // Clase compartida (hasta 5): ids y nombres, con topes defensivos
+      students: Array.isArray(raw.students)
+        ? raw.students
+            .filter((s): s is { id: string; name: string } => !!s && typeof s.id === 'string' && typeof s.name === 'string')
+            .slice(0, 5)
+            .map((s) => ({ id: s.id.slice(0, 64), name: s.name.trim().slice(0, 40) }))
+            .filter((s) => s.name)
+        : [],
+      detail: typeof raw.detail === 'string' ? raw.detail.trim().slice(0, 280) : '',
     };
   } catch {
     return { tutorName: 'Quipu', style: '', focus: '', topic: '', studentName: '', guide: '', studentId: '', topicId: '' };
@@ -126,6 +137,46 @@ export default defineAgent({
     const agent = createAgent(hooks, klass, memoryBrief, quizzes);
     await session.start({ agent, room: ctx.room });
 
+    // Clase compartida: el agente escucha a una persona a la vez. Se pasa a quien está hablando
+    // (cuando quien se escuchaba ya calló) y se le dice al modelo su nombre para que le responda.
+    const group = groupNames(klass);
+    let speakerName = klass.studentName;
+    const listenTo = async (identity: string, name: string) => {
+      const io = session._roomIO;
+      if (!io || io.linkedParticipant?.identity === identity) return;
+      io.setParticipant(identity);
+      speakerName = name || speakerName;
+      try {
+        const chat = agent.chatCtx.copy();
+        chat.addMessage({ role: 'system', content: speakerNote(speakerName) });
+        await agent.updateChatCtx(chat);
+      } catch (err) {
+        console.warn('[tutor] no se pudo avisar quién habla', err instanceof Error ? err.message : err);
+      }
+    };
+    if (group) {
+      ctx.room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+        const self = ctx.room.localParticipant?.identity;
+        const pick = nextSpeaker(
+          speakers.map((p) => ({
+            identity: p.identity,
+            name: p.name || '',
+            isAgent: p.identity === self || ('kind' in p && p.kind === ParticipantKind.AGENT),
+          })),
+          session._roomIO?.linkedParticipant?.identity ?? null,
+        );
+        if (pick) void listenTo(pick.identity, pick.name);
+      });
+      // Si se va la persona que se escuchaba, se pasa a otro alumno que siga en la sala
+      ctx.room.on(RoomEvent.ParticipantDisconnected, (gone) => {
+        if (session._roomIO?.linkedParticipant && session._roomIO.linkedParticipant.identity !== gone.identity) return;
+        const next = [...ctx.room.remoteParticipants.values()].find(
+          (p) => p.identity !== gone.identity && p.kind !== ParticipantKind.AGENT && p.identity.startsWith('profile:'),
+        );
+        if (next) void listenTo(next.identity, next.name || '');
+      });
+    }
+
     // Si el modelo de respaldo termina sin llamar herramientas, se registra y el tutor lo dice
     try {
       watchDelegations(agent.duplexSession as unknown as Parameters<typeof watchDelegations>[0], hooks);
@@ -138,7 +189,8 @@ export default defineAgent({
     session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (ev) => {
       const item = ev.item;
       if (item.type !== 'message' || !item.textContent) return;
-      transcript.push(`${item.role === 'user' ? 'Alumno' : klass.tutorName}: ${item.textContent.slice(0, 400)}`);
+      const who = item.role === 'user' ? (group ? speakerName || 'Alumno' : 'Alumno') : klass.tutorName;
+      transcript.push(`${who}: ${item.textContent.slice(0, 400)}`);
       if (transcript.length > 80) transcript.shift();
     });
     const generateSummary = async (prompt: string) => {
@@ -164,7 +216,9 @@ export default defineAgent({
       }
       if (topic === 'aulaquipu:quiz-answer' && msg.type === 'quiz_answer') {
         if (typeof msg.id !== 'string' || typeof msg.index !== 'number') return;
-        void handleQuizAnswer(hooks, quizzes, { id: msg.id, index: msg.index }).then((prompt) => {
+        // Quién respondió: cada alumno tiene su propio intento y su propio veredicto
+        const who = { identity: participant.identity, name: participant.name || '' };
+        void handleQuizAnswer(hooks, quizzes, { id: msg.id, index: msg.index, who }).then((prompt) => {
           // El tutor de voz reacciona: felicita o anima y explica
           if (prompt) session.generateReply({ instructions: prompt });
         });
@@ -178,7 +232,7 @@ export default defineAgent({
           transcript: transcript.join('\n'),
           doc: typeof msg.doc === 'string' ? msg.doc.slice(0, 12000) : '',
           topic: klass.topic,
-          studentName: klass.studentName,
+          studentName: group || klass.studentName,
         }).finally(() => {
           wrappingUp = false;
         });
@@ -188,9 +242,11 @@ export default defineAgent({
     await ctx.connect();
     await logEvent('join', { name: klass.tutorName, guide: !!klass.guide });
 
-    const who = klass.studentName ? ` a ${klass.studentName}` : ' al alumno';
+    const who = group ? ` a ${group}` : klass.studentName ? ` a ${klass.studentName}` : ' al alumno';
     session.generateReply({
-      instructions: klass.topic
+      instructions: group
+        ? `Saluda como ${klass.tutorName}${who}, por sus nombres. Di que hoy trabajarán ${klass.topic || 'el tema que eligieron'} juntos y haz tu primera pregunta de diagnóstico a uno de ellos por su nombre. Sé breve y cercano.`
+        : klass.topic
         ? `Saluda como ${klass.tutorName}${who}, di que hoy trabajarán ${klass.topic} y haz tu primera pregunta de diagnóstico. Sé breve y cercano.`
         : `Saluda como ${klass.tutorName}${who} y pregunta qué tema quiere trabajar hoy. Sé breve y cercano.`,
     });

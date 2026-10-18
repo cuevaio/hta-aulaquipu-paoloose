@@ -52,7 +52,19 @@ export type ClassroomEvent =
   /** El alumno eligió una opción: va al agente, que la califica. */
   | { type: "quiz_answer"; actor: string; id: string; index: number }
   /** Veredicto del agente para una tarjeta. */
-  | { type: "quiz_result"; actor: string; id: string; correct: boolean; correctIndex: number; explanation: string }
+  /** `for`: identidad de quien respondió (clase compartida: cada uno ve solo su veredicto). */
+  | { type: "quiz_result"; actor: string; id: string; correct: boolean; correctIndex: number; explanation: string; for?: string }
+  /** Alguien entró tarde (o recargó): pide a los demás lo que ya está en pantalla. */
+  | { type: "sync_request"; actor: string }
+  /** Respuesta a sync_request: gráfico, cuaderno y documento actuales, para `to`. */
+  | {
+      type: "class_snapshot";
+      actor: string;
+      to: string;
+      graph: { id: string; latex: string; color?: string }[];
+      strokes: Stroke[];
+      doc: string;
+    }
   | { type: "emote"; actor: string; kind: TutorEmote }
   /** El alumno terminó la clase: el agente debe escribir el resumen antes de que se cierre la sala. */
   | { type: "wrap_up"; actor: string; doc: string }

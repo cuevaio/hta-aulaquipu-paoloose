@@ -118,6 +118,125 @@ Las cifras de apuestas y ludopatía en adolescentes vienen de fuentes secundaria
 
 ---
 
+## Estado actual de la solución (AulaQuipu)
+
+Fuentes: diseño del 2026-10-17 (`docs/superpowers/specs/2026-10-17-aulaquipu-design.md`), tareas en `odd/tasks/`, y el código de `apps/web-app` y `backend/agents/aulaquipu-tutor`. Estado al 2026-10-18.
+
+### La solución en una frase
+
+Un mercado escolar donde los alumnos publican lo que quieren aprender, otros alumnos o tutores de IA dan la clase dentro de la plataforma, y el pago en quipus (dinero simulado sin salida a dinero real) fluye del que aprende al que enseña.
+
+### Actores
+
+- **Alumno (secundaria, grados 1 a 5, menores de edad).** Puede aprender y, si domina un tema, enseñar. Ver §5.3 del diseño.
+- **Tutor humano.** Cualquier alumno que declara un tema con nivel (básico, intermedio o avanzado). Sin barrera de entrada; la reputación se construye desde cero.
+- **Tutor de IA.** Profesores con nombre, voz y estilo propios (Ayni, Inti, Quipu) que dan la clase completa.
+- **Administrador.** Panel de operación (`/admin`).
+
+### Flujo principal (el bucle del producto)
+
+1. **Entrada:** cada cuenta nueva recibe 100 quipus como primer movimiento del ledger. La bienvenida muestra los pasos del juego y el creador de avatar; Killa guía el campus.
+2. **Aprender:** el alumno escribe qué quiere aprender en texto libre. La plataforma lo normaliza a un tema (con LLM si hay clave, o por palabras clave) y crea el tema si no existe.
+3. **Reservar:** el sistema recomienda tutores del tema (por estrellas y sesiones) o un tutor de IA. El alumno confirma en dos toques. Si ya hay grupo formándose, se une y paga su parte.
+4. **Clase en vivo:** dentro de la plataforma, sin enlaces externos (ver "Aula en vivo").
+5. **Cierre:** el pago se libera al terminar; se escribe un resumen de clase y el alumno califica (estrellas públicas, reseña privada).
+6. **Enseñar:** el alumno declara temas, fija precio por clase (lo fija el tutor) y recibe pedidos. Los temas que muchos piden y nadie enseña aparecen como demanda.
+7. **Gastar en personalización:** tienda de accesorios, marcos, fondos e insignias de prestigio (las de logro no se compran).
+
+### Mercado, reputación y precios
+
+- **Pedidos en texto libre** con modo grupo o individual, y **grupos que se arman solos** (3 a 5 alumnos) con el precio repartido entre los miembros.
+- **Matching por demanda:** el panel "Alumnos que buscan ayuda ahora" muestra a los tutores potenciales qué temas faltan.
+- **Precios:** el tutor fija su precio grupal; los tutores de IA tienen precio de plataforma, con promociones y créditos administrables.
+- **Reputación:** estrellas (1 a 5) públicas y reseñas privadas para el tutor. Perfil con estrellas, clases dadas, quipus, insignias e historial.
+
+### Aula en vivo
+
+- Video y voz entre participantes (LiveKit), con el tutor de IA como participante de voz.
+- **Graficador tipo Desmos** que el tutor (o el director) maneja en vivo. Valida que las expresiones sean graficables (no deja letras sin definir, como `v=d/t`).
+- **Documento vivo** en markdown: explicaciones, tablas y fórmulas en LaTeX que se escriben durante la clase. Imágenes educativas (banco por tema y Wikimedia Commons).
+- **Cuaderno:** pizarra libre con foto del cuaderno como fondo.
+- **Actividad:** preguntas de opción múltiple como tarjetas que el alumno responde; el tutor recibe si acertó.
+- **Reacciones del avatar** del tutor (celebrar, pensar, sorpresa, ánimo).
+- **Resumen de clase** al terminar, con quipus pagados y ganados.
+
+### Tutores de IA
+
+- Voz en tiempo real (modelo de voz con herramientas: documento, gráfico, cuestionario, imagen, reacción y memoria).
+- **Memoria de clases** por alumno (AtomicMemory): recuerda qué domina y qué le cuesta, y lo usa en la siguiente clase.
+- **Guías por tema** que el administrador escribe; el tutor las sigue.
+- **Director:** un segundo modelo que convierte lo que el tutor anuncia en acciones concretas (graficar, cuestionario, imagen). Cuando la acción se cumple, el tutor lo confirma en voz alta; si falla, lo dice.
+- Pruebas automáticas del agente: 30 pasan (`vitest`).
+
+### Campus (mapa multijugador)
+
+- Mapa estilo gather: salón, pasillo con las puertas de cada clase, biblioteca, tesorería, kiosco, plaza, y el colegio con sus tutores.
+- **Presencia en tiempo real:** ves quién está conectado, cómo camina y hacia dónde mira; el chat de proximidad muestra globos sobre cada persona y guarda el registro para quien está cerca.
+- **Tutores de IA de pie** en el campus, con poses que cambian (explicar, señalar, saludar, reverencia).
+- **Killa (la llama):** guía del colegio. Aparece abierta en una tarjeta que no tapa el mapa; al elegir una opción, dibuja un camino de flechas hasta el lugar.
+- **Puertas de clase:** cada clase agendada es una puerta; si el tutor ya está en la misma clase en vivo, el alumno entra a esa sala.
+
+### Avatar, tienda e insignias
+
+- **Creador de avatar** (onboarding y "Editar avatar"): cuerpo, pelo, polo, pantalón, zapatos, y accesorios de regalo (gorra, lentes, lentes de sol y mochila), con colores de piel, pelo y ropa.
+- **Sprites Habbo** (formato paperdoll): el avatar se ve en 8 direcciones y camina en el campus, y se usa en la tienda y el perfil.
+- **Efecto de humo** al cambiar el look: la figura nueva aparece tras la nube, sin salto brusco.
+- **Tienda:** pestañas de colores, cabeza (accesorios de sprite), marcos, fondos y insignias. Vista previa en un probador.
+- **Mercado de accesorios** (plan en `odd/tasks/accessories-market.md`, T0 hecho): catálogo curado, categorías, probador y precios por rareza.
+
+### Administración
+
+- **Métricas de tráfico y economía:** usuarios, sesiones, demanda sin cubrir, quipus en circulación y calidad.
+- **Créditos** a alumnos, **precios y promociones** de tutores de IA.
+- **Guías por tema** (rúbricas de la IA), **temas**, **tutores de IA** y **tienda**.
+- **Moderación:** reportes de chat, suspensión de cuentas y anuncios en el campus.
+
+### Plataforma y técnica
+
+- **Frontend:** Next.js 16 y React, diseño responsivo tipo celular.
+- **Datos:** Supabase (Postgres) con un ledger de quipus del que sale todo saldo (el saldo nunca es un número editable). Funciones de base de datos para compras, reservas y cierre de sesión.
+- **Tiempo real:** LiveKit (video, voz y datos entre participantes).
+- **Agente de voz:** LiveKit Agents con el modelo de voz de OpenAI; memoria con AtomicMemory.
+- **Modo demo:** toda la app funciona sin base de datos (datos simulados en el navegador), útil para presentar sin depender de la red.
+
+### Estado por función
+
+| Función | Estado | Evidencia |
+| --- | --- | --- |
+| Pedidos, reservas, grupos y cuotas | Hecho | código y modo demo |
+| Clase en vivo con voz, documento y gráfico | Hecho | validación en vivo (tarea de agente, T19) |
+| Cuestionarios y reacciones del tutor | Hecho | tareas de agente (T2, T3) |
+| Resumen de clase | Hecho | tarea de agente (T7) |
+| Memoria de clases del tutor | Hecho | tarea de agente (T14) |
+| Director (graficar y acciones confirmadas) | Hecho | tarea de agente (T16–T18) |
+| Campus multijugador, chat de proximidad | Hecho | tarea de campus (T1–T2) y pruebas en navegador |
+| Avatar, tienda e insignias | Hecho (parte) | creador y sprites funcionando; mercado de accesorios en plan |
+| Administración | Hecho | tarea admin (T1–T7) |
+| Animaciones Manim en la clase | Idea | `backend/manim-animations.md` |
+| Profe Rosa (guía con sprite) | Reemplazada por Killa | cambio en la fusión con upstream |
+| Accesorios con precio de la tienda | En plan | `odd/tasks/accessories-market.md` (T1–T8 pendientes) |
+| Compartir y publicar en producción | Pendiente | depende de credenciales y despliegue |
+
+### Qué cambió frente al diseño (para decirlo con honestidad)
+
+- **Avatares en el campus:** el diseño dice "sin avatares móviles". El mapa tiene avatares que caminan y dan la sensación de un lugar vivo. El aula en vivo debe conservar las tarjetas fijas; hay que verificarlo antes de presentar.
+- **Editor y tienda de sprites:** el diseño pedía 8 a 12 skins. Hoy hay cientos de piezas de sprite; el catálogo se está curando.
+- **Tutores de IA:** el diseño hablaba de un "browser embebido". Se usaron herramientas dentro del aula, sin navegador embebido (decisión de alcance del diseño, §6.4).
+
+### Riesgos y límites que conviene decir en la presentación
+
+- **Menores de edad:** el chat de proximidad y los pedidos en texto libre tienen filtros básicos (lista corta de groserías, bloqueo de enlaces, teléfonos y correos), reportes y moderación en el admin. No es moderación completa.
+- **Calidad de la enseñanza entre pares:** no hay formación de tutores todavía; el efecto protégé depende de cómo se enseña (ver la sección de evidencia).
+- **Dependencia de servicios:** el tutor de voz, la memoria y el aula dependen de credenciales de OpenAI, AtomicMemory y LiveKit.
+- **Nada publicado todavía:** los cambios están sin commitear en la rama principal; la demo corre en local.
+- **Pruebas:** el agente tiene 30 pruebas automáticas; la web app no tiene corredor de pruebas, y se verificó con pruebas de navegador.
+
+### Métricas para la presentación
+
+Las métricas las calcula el panel de administración (usuarios, sesiones, demanda sin cubrir y quipus). Antes de presentar, conviene tomar una foto de esas cifras con datos reales de la demo y dejar claro cuáles son de prueba.
+
+---
+
 ## Fuentes
 
 Las fuentes con "(búsqueda)" se leyeron solo por el resumen del buscador, sin abrir el documento.
@@ -173,11 +292,85 @@ Las fuentes con "(búsqueda)" se leyeron solo por el resumen del buscador, sin a
 - INEI, inflación de Lima 2025: https://www.gob.pe/en/institucion/inei/noticias/1325052-inei-precios-al-consumidor-de-lima-metropolitana-subieron-1-51-en-el-ano-2025 (búsqueda)
 - Datum, encuesta de educación de marzo 2025: https://datum.com.pe/new_web_files/files/pdf/Encuesta DATUM - Marzo 2025 - Informe EDUCACIÓN_250317110708.pdf (búsqueda; sin revisar contenido)
 
----
+**educationendowmentfoundation.org**
 
-## Instrucciones para regenerar
+Peer tutoring
+High impact for very low cost based on extensive evidence
 
-workflow: firecrawl-deep-research
-topic: Evidencia y contexto para la presentación de AulaQuipu (mercado de tutoría entre estudiantes con quipus; aprendizaje, tutoría entre pares, educación financiera y apuestas en adolescentes)
-depth: thorough
-output: markdown
+What is it?
+
+Peer tutoring includes a range of approaches in which learners work in pairs or small groups to provide each other with explicit teaching support, such as:
+
+cross-age tutoring, in which an older learner takes the tutoring role and is paired with a younger tutee or tutees;
+same-age peer tutoring, in which learners of the same age take on fixed roles as tutor or tutee; and
+reciprocal peer tutoring, in which pupils (usually of the same age) alternate between the role of tutor and tutee.
+The common characteristic is that learners take on responsibility for aspects of teaching and for evaluating their success.
+
+Peer assessment involves the peer tutor providing feedback to the tutee relating to their performance and can take different forms, such as reinforcing learning or correcting misunderstandings.
+
+Peer tutoring has some cross-overs with Collaborative learning
+approaches, which is its own topic in the Toolkit. Other types of tutoring, where an adult is the tutor, include Small group tuition and One to one tuition.
+
+Key findings
+1. Peer tutoring, on average, has a positive impact on both tutors and tutees and may be a cost-effective approach to delivering one to one or small group tuition in a school.
+
+2. Peer tutoring seems most effective when used to review or consolidate learning, rather than introducing new material.
+
+3. Training for staff and tutors is essential for success. It is crucial to allocate sufficient time to train both staff and tutors, to ensure training provides structure to the tutoring, and to identify and implement improvements as the programme progresses.
+
+4. Peer tutoring may be particularly effective for low-attaining pupils in the role of tutee. This approach shows promise for supporting these pupils to catch up with their peers.
+
+How effective is the approach?
+Peer tutoring approaches have been shown to have a positive impact on learning, with an average positive effect equivalent to approximately six additional months’ progress within one academic year. Studies have identified benefits for both tutors and tutees, and for a wide range of age groups. Though all types of pupils appear to benefit from peer tutoring, there is some evidence that pupils who are low-attaining and those with special educational needs make the biggest gains.
+
+Peer tutoring appears to be particularly effective when pupils are provided with support to ensure that the quality of peer interaction is high: for example, questioning frames to use in tutoring sessions, and training and feedback for tutors. In cross-age peer tutoring some studies have found that a gap of less than three years is optimal, although ensuring that the gap is wide enough so that the work is challenging to the tutee whilst easy enough for the tutor to support them is key. Regular tutoring sessions (4−5 times a week) of up to 10 weeks appear to be more effective than less intensive or longer programmes.
+
+Successful approaches may also have other benefits, such as supporting the social and personal development of pupils and boosting their self-confidence and motivation for learning.
+
+Behind the average
+There is a slightly higher impact (+7 months) for secondary age pupils than primary age pupils (+5 months).
+
+Peer tutoring has a similar average impact in maths and literacy, and can be effective across the curriculum.
+
+Lower attaining pupils tend to benefit more (+6 months) than higher attaining pupils.
+
+A number of studies have been undertaken involving digital technology, with similar overall impact.
+
+In cross-age tutoring, it is more effective when tutors and tutees are not matched by attainment. In same-age tutoring, this may also be the case, but it is a less consistent finding.
+
+Closing the disadvantage gap
+While there is limited evidence that specifically examines pupils from a disadvantaged background, studies have shown that pupils who are low attaining typically receive additional benefits from peer tutoring. Peer-led tutoring approaches may help pupils to close gaps in their learning by offering targeted, peer-led support to consolidate within class learning, practice skills, and identify and overcome misconceptions. There is also some evidence to suggest that peer-led tutoring can offer tutors the chance to revisit and revise skills, prior knowledge, and develop metacognitive understanding of topics.
+
+Applications and approaches
+Impact on tutors
++6
+
+
+
+
+
+Reciprocal tutoring
++7
+
+
+
+How could you implement in your setting?
+Peer tutoring relies on close interaction between two or more students with learners taking responsibility for aspects of teaching and for evaluating their success. When implementing peer tutoring approaches, schools should consider how to ensure high quality interactions between pupils. This might include:
+
+Carefully structured tasks so sessions focus on existing knowledge;
+Training for peer tutors on teaching approaches, such as modelling knowledge, overcoming common misconceptions, feedback and evaluating progress;
+Careful consideration of appropriate pairing of tutors and tutees;
+Providing teaching aids and learning frames to guide tutors on how to structure learning, or the types of questions to ask tutees.
+Peer tutoring interventions are typically delivered over four to ten week intensive blocks. Approaches may involve cross-age or same-age tutoring usually in pairs. Approaches may be based on a fixed tutee and tutor relationship, while others may be reciprocal.
+
+When introducing new approaches, schools should consider implementation. For more information see Putting Evidence to Work – A School’s Guide to Implementation.
+
+What does it cost
+The average cost of peer tutoring is expected to be very low. The cost to schools is largely based on teacher training and learning resources. Implementing peer tutoring will also require a moderate amount of staff time, compared with other approaches.
+
+Alongside time and cost, school leaders should consider how to maximise the quality of peer tutoring interactions and ensure sufficient time is allocated to identify and implement improvements to approaches. When utilising programmes, school leaders should assess the quality and strength of evidence behind them.
+
+How secure is the evidence?
+The security of the evidence around peer tutoring is rated as high. 145 studies were identified that meet the inclusion criteria of the Toolkit. The topic lost a padlock because a large percentage of the studies were not independently evaluated. Evaluations conducted by organisations connected with the approach – for example, commercial providers, typically have larger impacts, which may influence the overall impact of the strand.
+
+As with any evidence review, the Toolkit summarises the average impact of approaches when researched in academic studies. It is important to consider your context and apply your professional judgement when implementing an approach in your setting.

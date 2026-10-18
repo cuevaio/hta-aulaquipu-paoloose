@@ -73,9 +73,21 @@ export function UpcomingClasses({ hideWhenEmpty }: { hideWhenEmpty?: boolean }) 
               </div>
               {c.myShare !== null && <Quipus amount={c.myShare} className="text-sm" />}
             </div>
-            <button onClick={() => enterClass(c.group.id)} disabled={pending} className={cn(btn.primary, btn.sm)}>
-              {c.liveSessionId ? "Volver al aula" : c.role === "tutor" ? "Abrir el aula" : "Entrar al aula"}
-            </button>
+            {c.group.ai_tutor_id && !c.liveSessionId ? (
+              // Clase IA compartida aún sin empezar: se espera (o se inicia, si eres el anfitrión) en su lobby
+              <Link href={`/lobby/${c.group.id}`} className={cn(btn.primary, btn.sm)}>
+                Ver el grupo
+              </Link>
+            ) : c.role === "tutor" && !c.liveSessionId ? (
+              // El profe no abre el aula solo: llama y espera a que un alumno acepte
+              <Link href="/ensenar" className={cn(btn.primary, btn.sm)}>
+                Llamar a mis alumnos
+              </Link>
+            ) : (
+              <button onClick={() => enterClass(c.group.id)} disabled={pending} className={cn(btn.primary, btn.sm)}>
+                {c.liveSessionId ? "Volver al aula" : "Entrar al aula"}
+              </button>
+            )}
           </Card>
         ))}
       </div>

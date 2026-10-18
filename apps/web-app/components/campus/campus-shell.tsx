@@ -17,6 +17,10 @@ import { AvatarDialog, MissionCard, WelcomeOverlay, useFlag, writeFlag } from "@
 import { CampusWorld, type CampusPerson, type ClassDoor, type Interactable } from "@/components/campus/world";
 import { AnnouncementBanner } from "@/components/campus/announcement-banner";
 import { ChatPanel } from "@/components/campus/chat-panel";
+import { ClassInvite } from "@/components/campus/class-invite";
+import { useClassAlerts, type ClassAlert } from "@/lib/campus/use-class-alerts";
+import { askNotifyOnFirstVisit } from "@/lib/notify";
+import { stopRinging } from "@/lib/ring";
 import { useCampusChat } from "@/lib/campus/use-campus-chat";
 import { useCampusPresence } from "@/lib/campus/use-campus-presence";
 import { cn } from "@/lib/utils";
@@ -41,7 +45,6 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   const goToRef = useRef<((targetId: string | null, opts?: { trail?: boolean }) => void) | null>(null);
   const bubbleRef = useRef<((id: string, text: string) => void) | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
-  const [banner, setBanner] = useState<Room | null>(null);
   const [near, setNear] = useState<Interactable | null>(null);
   // Killa, la mascota guía: su conversación y el lugar al que te está llevando
   // La mascota arranca abierta; minimizada queda como una figura chica en la esquina
@@ -116,16 +119,27 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
       const who =
         c.role === "tutor"
           ? "Enseñas tú"
-          : c.tutor
-            ? `con ${c.tutor.display_name.split(" ")[0]}`
-            : "";
+          : c.group.ai_tutor_id
+            ? c.liveSessionId
+              ? "con IA"
+              : "grupo con IA · esperando"
+            : c.tutor
+              ? `con ${c.tutor.display_name.split(" ")[0]}`
+              : "";
       return {
         title: c.topic.name,
         subtitle: live
           ? who || "En vivo"
           : `${friendlyWhen(c.group.scheduled_at)}${who ? ` · ${who}` : ""}`,
         live,
-        href: live ? `/aula/${c.liveSessionId}` : `class:${c.group.id}`,
+        // El profe llama desde su panel; los alumnos entran (y así abren) la clase. Un grupo IA espera en su lobby.
+        href: live
+          ? `/aula/${c.liveSessionId}`
+          : c.group.ai_tutor_id
+            ? `/lobby/${c.group.id}`
+            : c.role === "tutor"
+              ? "/ensenar"
+              : `class:${c.group.id}`,
         prompt: live
           ? `Entrar a ${c.topic.name} (en vivo)`
           : `Entrar a tu clase de ${c.topic.name}`,
@@ -194,20 +208,33 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
     [router, userId, toastMsg],
   );
   const close = useCallback(() => router.push("/campus"), [router]);
+
+  // Invitaciones: tu profe agenda o abre la clase → aviso nativo y tarjeta para unirte
+  const joinClass = useCallback(
+    (alert: ClassAlert) => {
+      stopRinging();
+      if (alert.kind === "class") return void open(`class:${alert.groupId}`);
+      // Invitación a un grupo IA: unirse (reserva tu parte) y esperar en su lobby
+      if (!userId) return;
+      void api
+        .book(userId, { kind: "group", groupId: alert.groupId })
+        .then(() => router.push(`/lobby/${alert.groupId}`))
+        .catch((e: unknown) => toastMsg(e instanceof Error ? e.message : "No pudimos unirte al grupo", "error"));
+    },
+    [open, userId, router, toastMsg],
+  );
+  const classAlerts = useClassAlerts(ready ? userId : null, joinClass);
+  // Primera entrada a la app: se pide el permiso de avisos del navegador una vez
+  useEffect(() => {
+    if (ready && userId) void askNotifyOnFirstVisit();
+  }, [ready, userId]);
   useEffect(() => {
     if (panelOpen) panelOpenedAt.current = Date.now();
   }, [panelOpen]);
 
   const onRoomChange = useCallback((r: Room | null) => {
     setRoom(r);
-    if (r) setBanner(r);
   }, []);
-
-  useEffect(() => {
-    if (!banner) return;
-    const t = setTimeout(() => setBanner(null), 2200);
-    return () => clearTimeout(t);
-  }, [banner]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -372,28 +399,6 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      {/* Cartel al entrar a una sala */}
-      {banner && !panelOpen && (
-        <div
-          key={banner.id}
-          className={cn(
-            "pointer-events-none absolute inset-x-0 z-[55] flex justify-center px-4",
-            showMission ? "top-44 sm:top-20" : "top-20",
-          )}
-        >
-          <div className="rounded-2xl bg-white/95 px-5 py-2.5 text-center shadow-xl animate-in fade-in slide-in-from-top-2">
-            <p className="font-heading text-lg font-semibold text-navy">
-              {banner.emoji} {banner.name}
-            </p>
-            {banner.subtitle && (
-              <p className="text-xs font-bold text-muted-foreground">
-                {banner.subtitle}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Misión inicial */}
       {showMission && !panelOpen && (
         <div className="pointer-events-none absolute inset-x-0 top-[4.5rem] z-[54] flex px-3 sm:justify-start">
@@ -503,6 +508,18 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
+      {!welcome && classAlerts.alerts[0] && (
+        <ClassInvite
+          key={classAlerts.alerts[0].key}
+          alert={classAlerts.alerts[0]}
+          onJoin={() => {
+            const a = classAlerts.alerts[0];
+            classAlerts.dismiss(a.key);
+            joinClass(a);
+          }}
+          onDismiss={() => classAlerts.dismiss(classAlerts.alerts[0].key)}
+        />
+      )}
       {welcome && (
         <WelcomeOverlay balance={me.balance} avatar={me.profile.avatar_config} onClose={closeWelcome} />
       )}
@@ -514,8 +531,9 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
       {!panelOpen && (room || API_MODE === "mock") && (
         <div className="pointer-events-none absolute right-3 bottom-[9.5rem] z-[56] flex flex-col items-end gap-1">
           {room && (
-            <span className="rounded-full bg-navy/90 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur">
+            <span className="rounded-2xl bg-navy/90 px-3 py-1.5 text-right text-xs font-bold text-white shadow-lg backdrop-blur">
               {room.emoji} {room.name}
+              {room.subtitle && <span className="block text-[11px] font-semibold text-white/70">{room.subtitle}</span>}
             </span>
           )}
           {API_MODE === "mock" && (

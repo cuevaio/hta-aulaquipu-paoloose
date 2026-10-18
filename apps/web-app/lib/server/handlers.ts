@@ -31,6 +31,7 @@ import { isSpriteSkin, spriteSlot } from "@/lib/skins";
 import { closeRoom, createCampusToken, createRoomToken } from "@/lib/server/livekit";
 import type {
   Group,
+  Topic,
   IncomingRequest,
   LearningRequest,
   LedgerLine,
@@ -44,7 +45,8 @@ import type {
   TutorOption,
   TutorPanel,
 } from "@/lib/types";
-import type { BookingResult, EndResult, RoomToken, TestAccount, UpcomingClass } from "@/lib/api/client";
+import type { BookingResult, EndResult, GroupCall, RoomToken, TestAccount, UpcomingClass } from "@/lib/api/client";
+import { onlineAmong, touchPresence } from "@/lib/server/presence";
 
 export const TEST_PASSWORD = "aula2026";
 
@@ -289,7 +291,23 @@ export async function match(userId: string, requestId: string): Promise<MatchOpt
   };
 }
 
-export const listAiTutors = async (userId: string) => applyPromos(userId, await aiTutors(undefined, { onlyActive: true }));
+export async function listAiTutors(userId: string) {
+  const list = await applyPromos(userId, await aiTutors(undefined, { onlyActive: true }));
+  if (!list.length) return list;
+  // Temas de cada tutor: las sugerencias al elegir de qué será la clase
+  const links = await must<{ ai_tutor_id: string; topic_id: string }[]>(
+    db().from("ai_tutor_topics").select("ai_tutor_id, topic_id").in("ai_tutor_id", list.map((t) => t.id)),
+  );
+  const topics = await topicsById(links.map((l) => l.topic_id));
+  return list.map((t) => ({
+    ...t,
+    topics: links
+      .filter((l) => l.ai_tutor_id === t.id)
+      .map((l) => topics.get(l.topic_id))
+      .filter((x): x is Topic => !!x && x.status === "active")
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  }));
+}
 
 // ---------- reservas y sesiones ----------
 
@@ -324,6 +342,21 @@ export async function book(userId: string, body: Body): Promise<BookingResult> {
 
 export async function startGroupSession(userId: string, groupId: string) {
   const gid = uuidParam(groupId, "grupo");
+  // La clase empieza cuando un alumno acepta la llamada: el profe solo entra a una que ya está abierta
+  const [grp] = await must<{ tutor_id: string | null; status: string; ai_tutor_id: string | null; host_id: string | null }[]>(
+    db().from("groups").select("tutor_id, status, ai_tutor_id, host_id").eq("id", gid).limit(1),
+  );
+  // Clase IA compartida: la inicia su anfitrión; los demás entran cuando ya empezó
+  if (grp?.ai_tutor_id) {
+    const [live] = await must<{ id: string }[]>(db().from("sessions").select("id").eq("group_id", gid).eq("status", "live").limit(1));
+    if (live) return { sessionId: live.id };
+    if (grp.host_id === userId) return { sessionId: await rpc<string>("start_ai_lobby", { p_host_id: userId, p_group_id: gid }) };
+    throw new HttpError(409, "La clase empieza cuando quien la abrió la inicia. Te avisaremos.", "conflict");
+  }
+  if (grp?.tutor_id === userId && grp.status !== "live" && !["completed", "cancelled"].includes(grp.status)) {
+    const [live] = await must<{ id: string }[]>(db().from("sessions").select("id").eq("group_id", gid).eq("status", "live").limit(1));
+    if (!live) throw new HttpError(409, "Tu clase empieza cuando un alumno acepta tu llamada. Usa «Llamar a mis alumnos».", "conflict");
+  }
   const joined = await joinTutorLiveClass(userId, gid);
   if (joined) return { sessionId: joined };
   const sessionId = await rpc<string>("start_group_session", { p_profile_id: userId, p_group_id: gid });
@@ -374,6 +407,30 @@ async function joinTutorLiveClass(userId: string, groupId: string): Promise<stri
   return target.id;
 }
 
+/**
+ * El profe "llama" a su clase: los alumnos reciben el timbre (su campus ve la clase lista) y aquí se
+ * devuelve quién está conectado y si alguien ya aceptó. Si la clase estaba para más tarde, se adelanta a ahora.
+ */
+export async function callGroup(userId: string, groupId: string): Promise<GroupCall> {
+  const gid = uuidParam(groupId, "grupo");
+  const [grp] = await must<{ id: string; tutor_id: string | null; status: string; scheduled_at: string | null }[]>(
+    db().from("groups").select("id, tutor_id, status, scheduled_at").eq("id", gid).limit(1),
+  );
+  if (!grp || grp.tutor_id !== userId) throw new HttpError(404, "No encontramos esa clase.", "not_found");
+  if (["completed", "cancelled"].includes(grp.status)) throw new HttpError(409, "Esta clase ya terminó.", "conflict");
+  const [live] = await must<{ id: string }[]>(db().from("sessions").select("id").eq("group_id", gid).eq("status", "live").limit(1));
+  if (!live && (!grp.scheduled_at || new Date(grp.scheduled_at).getTime() > Date.now() + 120_000)) {
+    await must(db().from("groups").update({ scheduled_at: new Date().toISOString() }).eq("id", gid));
+  }
+  const members = await must<{ student_id: string }[]>(db().from("group_members").select("student_id").eq("group_id", gid).eq("status", "joined"));
+  const ids = members.map((m) => m.student_id);
+  const [people, online] = await Promise.all([profilesById(ids), onlineAmong(ids)]);
+  return {
+    liveSessionId: live?.id ?? null,
+    members: ids.map((id) => ({ id, name: people.get(id)?.display_name ?? "Alumno", online: online.has(id) })),
+  };
+}
+
 export async function session(userId: string, id: string) {
   const row = await sessionRow(uuidParam(id, "clase"));
   await requireParticipant(row, userId);
@@ -409,6 +466,26 @@ export async function roomToken(userId: string, id: string): Promise<RoomToken> 
       ...(guide ? { guide } : {}),
       studentId: userId,
     };
+    if (row.group_id) {
+      // Clase compartida: el agente conoce a todos por su nombre. La memoria es por alumno y aquí
+      // hablan varios, así que no se guarda ni se consulta (no se le atribuye a uno lo de otro).
+      const [grp] = await must<{ detail: string | null; host_id: string | null }[]>(
+        db().from("groups").select("detail, host_id").eq("id", row.group_id).limit(1),
+      );
+      const ids = ((await membersOf([row.group_id])).get(row.group_id) ?? []).map((m) => m.student_id);
+      const people = await profilesById(ids);
+      const students = ids
+        .map((id) => ({ id, name: people.get(id)?.display_name.split(" ")[0] ?? "" }))
+        .filter((s) => s.name)
+        .sort((a, b) => Number(b.id === grp?.host_id) - Number(a.id === grp?.host_id));
+      agent.studentName = students[0]?.name ?? firstName;
+      agent.studentId = "";
+      Object.assign(agent, { students, ...(grp?.detail ? { detail: grp.detail } : {}) });
+    } else if (row.request_id) {
+      // Clase sola con tema propio: el agente parte de lo que el alumno escribió
+      const [req] = await must<{ detail: string | null }[]>(db().from("requests").select("detail").eq("id", row.request_id).limit(1));
+      if (req?.detail) Object.assign(agent, { detail: req.detail });
+    }
   }
 
   const lk = await createRoomToken({ identity: `profile:${userId}`, name: firstName, room: row.room_name, agent });
@@ -429,6 +506,11 @@ export async function endSession(userId: string, id: string): Promise<EndResult>
   const row = await sessionRow(uuidParam(id, "clase"));
   await requireParticipant(row, userId);
   const wasLive = row.status === "live";
+  if (wasLive && row.tutor_kind === "ai" && row.group_id) {
+    // Clase IA compartida: la termina quien la abrió (si no, uno solo le cerraría la clase a todos)
+    const [grp] = await must<{ host_id: string | null }[]>(db().from("groups").select("host_id").eq("id", row.group_id).limit(1));
+    if (grp?.host_id && grp.host_id !== userId) throw new HttpError(403, "Solo quien abrió la clase puede terminarla para todos.", "forbidden");
+  }
   if (wasLive) {
     await rpc("end_session", { p_session_id: row.id });
     await logEvent(row.id, `profile:${userId}`, "completed", {});
@@ -479,6 +561,7 @@ export async function mySessions(userId: string) {
 }
 
 export async function myUpcoming(userId: string): Promise<UpcomingClass[]> {
+  touchPresence(userId); // el campus consulta esto cada pocos segundos: sirve de señal de "conectado"
   const mine = await myGroupIds(userId);
   const filters = [`tutor_id.eq.${userId}`];
   if (mine.length) filters.push(`id.in.(${mine.join(",")})`);

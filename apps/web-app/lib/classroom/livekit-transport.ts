@@ -16,7 +16,7 @@ import {
   type RemoteParticipant,
   type Room,
 } from "livekit-client";
-import type { ClassroomEvent, TutorEmote } from "@/lib/classroom/events";
+import type { ClassroomEvent, Stroke, TutorEmote } from "@/lib/classroom/events";
 import type { ClassroomTransport } from "@/lib/classroom/transport";
 
 const CLASS_TOPIC = "aulaquipu:class";
@@ -24,6 +24,8 @@ const NOTEBOOK_TOPIC = "aulaquipu:notebook";
 
 // Eventos que una persona puede mandar a las demás (lo demás lo genera el agente o la sala)
 const PEER_EVENTS = new Set<ClassroomEvent["type"]>([
+  "sync_request",
+  "class_snapshot",
   "doc_write",
   "doc_append_table",
   "graph_set",
@@ -69,6 +71,25 @@ export class LiveKitTransport implements ClassroomTransport {
         if (!msg || typeof msg !== "object") return;
         const type = (msg as { type?: unknown }).type;
         if (typeof type !== "string" || !PEER_EVENTS.has(type as ClassroomEvent["type"])) return;
+        if (type === "class_snapshot") {
+          // Estado que manda un compañero a quien entró tarde: se reconstruye con forma y topes seguros
+          const m = msg as { to?: unknown; graph?: unknown; strokes?: unknown; doc?: unknown };
+          if (typeof m.to !== "string") return;
+          const graph = (Array.isArray(m.graph) ? m.graph : [])
+            .filter((g): g is { id: string; latex: string; color?: unknown } => !!g && typeof g.id === "string" && typeof g.latex === "string")
+            .slice(0, 40)
+            .map((g) => ({ id: g.id.slice(0, 40), latex: g.latex.slice(0, 200), ...(typeof g.color === "string" && /^#[0-9a-fA-F]{6}$/.test(g.color) ? { color: g.color } : {}) }));
+          const strokes = (Array.isArray(m.strokes) ? m.strokes : []).filter((s): s is Stroke => !!s && typeof (s as Stroke).id === "string").slice(-600);
+          this.emit({
+            type: "class_snapshot",
+            actor: this.actorOf(this.participant(info.identity), info.identity),
+            to: m.to,
+            graph,
+            strokes,
+            doc: typeof m.doc === "string" ? m.doc.slice(0, 200_000) : "",
+          });
+          return;
+        }
         if (type === "quiz_ask") {
           // Tarjeta del director compartida por un compañero: se reconstruye con forma segura
           const q = msg as { id?: unknown; question?: unknown; options?: unknown };
@@ -214,6 +235,7 @@ export class LiveKitTransport implements ClassroomTransport {
         correct: msg.correct === true,
         correctIndex: typeof msg.correctIndex === "number" ? msg.correctIndex : -1,
         explanation: typeof msg.explanation === "string" ? msg.explanation : "",
+        ...(typeof msg.for === "string" ? { for: msg.for } : {}),
       });
       return;
     }

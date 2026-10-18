@@ -120,13 +120,13 @@ const SCHEMA = {
 // OpenAI) firmado con las credenciales de LiveKit que el servidor ya tiene.
 const LIVEKIT_INFERENCE_URL = "https://agent-gateway.livekit.cloud/v1";
 
-interface ModelEndpoint {
+export interface ModelEndpoint {
   url: string;
   model: string;
   token: () => Promise<string>;
 }
 
-function modelEndpoint(): ModelEndpoint | null {
+export function modelEndpoint(): ModelEndpoint | null {
   const openai = env("OPENAI_API_KEY");
   if (openai) {
     return { url: "https://api.openai.com/v1/chat/completions", model: env("OPENAI_DIRECTOR_MODEL") ?? "gpt-4.1-mini", token: async () => openai };

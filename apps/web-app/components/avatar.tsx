@@ -150,9 +150,11 @@ function spriteLayersOf(config: AvatarConfig, meta: SkinMeta | undefined, parts:
     if (m?.item) out.set(spriteSlot(m), m.item);
   };
   add(meta);
-  const headItem = headSprite(head);
-  if (headItem) out.set(figureSlot(headItem) ?? "ha", headItem);
   for (const p of parts) add(p.meta);
+  // El diseño de cabeza (pestaña Cabeza, o el que se está probando en la tienda) gana en su slot.
+  // Solo sobre una figura sprite: sin cuerpo se queda el avatar dibujado con su accesorio SVG.
+  const headItem = headSprite(head);
+  if (headItem && out.has("hh")) out.set(figureSlot(headItem) ?? "ha", headItem);
   return [...out.entries()].map(([slot, item]) => ({ slot, item }));
 }
 

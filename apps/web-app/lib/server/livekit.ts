@@ -32,6 +32,10 @@ export interface AgentContext {
   /** Guía de enseñanza del tema definida en el panel de admin (opcional, ≤ ~4000 caracteres). */
   guide?: string;
   studentId: string;
+  /** Clase compartida: todos los alumnos (el anfitrión primero), para llamarlos por su nombre. */
+  students?: { id: string; name: string }[];
+  /** Lo que el alumno o el anfitrión escribió como tema de la clase. */
+  detail?: string;
 }
 
 export async function createRoomToken(opts: {

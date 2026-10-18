@@ -260,8 +260,11 @@ export function SpriteAvatar({
             action={pose?.action}
             frame={pose?.frame}
             direction={direction}
+            // Escenario: la figura mide lo mismo que antes; el lienzo crece hacia arriba para que
+            // los pelos y gorros altos no se corten (ver VIEWS en sprite-figure)
+            view="stage"
             width={size * 1.6}
-            height={size * 2.25}
+            height={size * 3}
             className="pointer-events-none absolute bottom-0 left-1/2 max-w-none -translate-x-1/2"
           />
         ) : (

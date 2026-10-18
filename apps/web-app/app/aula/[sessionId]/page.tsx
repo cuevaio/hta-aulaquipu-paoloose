@@ -106,6 +106,10 @@ export default function ClassroomPage() {
   const finishing = useRef(false);
   const finishRef = useRef<() => Promise<void>>(async () => {});
   const docRef = useRef("");
+  // Lo que hay en pantalla, para pasárselo a quien entra tarde (clase compartida)
+  const graphItems = useRef(new Map<string, { id: string; latex: string; color?: string }>());
+  const strokesRef = useRef<Stroke[]>([]);
+  const synced = useRef(false);
   const tutorRef = useRef<SimulatedAiTutor | null>(null);
   const docSync = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Actividad breve del tutor IA (escribiendo / graficando) y hacia dónde mira
@@ -147,6 +151,17 @@ export default function ClassroomPage() {
   });
   const transport = live.transport;
   const realtime = live.mode === "livekit";
+
+  useEffect(() => {
+    strokesRef.current = strokes;
+  }, [strokes]);
+
+  // Al entrar a una clase en vivo se pide a los demás lo que ya está en pantalla (gráfico, cuaderno)
+  useEffect(() => {
+    if (!realtime || !transport || !userId) return;
+    const t = setTimeout(() => transport.publish({ type: "sync_request", actor: `profile:${userId}` }), 1500);
+    return () => clearTimeout(t);
+  }, [realtime, transport, userId]);
 
   useEffect(() => {
     if (ready && !userId) router.replace("/");
@@ -348,11 +363,33 @@ export default function ClassroomPage() {
         case "graph_set":
           dir.current.graphs.set(e.latex.replace(/\s+/g, ""), Date.now());
           desmos.current?.setExpression(e.id, e.latex, e.color, fromAi);
+          graphItems.current.set(e.id, { id: e.id, latex: e.latex, ...(e.color ? { color: e.color } : {}) });
           markBusy("graphing");
           break;
         case "graph_remove":
           desmos.current?.removeExpression(e.id);
+          graphItems.current.delete(e.id);
           markBusy("graphing");
+          break;
+        case "sync_request": {
+          // Un compañero entró tarde: se le manda lo que hay (si hay algo)
+          if (e.actor === myActor) break;
+          const graph = [...graphItems.current.values()];
+          const doc = docRef.current;
+          if (!graph.length && !strokesRef.current.length && !doc.trim()) break;
+          transport.publish({ type: "class_snapshot", actor: myActor, to: e.actor, graph, strokes: strokesRef.current.slice(-600), doc });
+          break;
+        }
+        case "class_snapshot":
+          // Se aplica la primera respuesta; el documento solo si aquí aún está vacío (el guardado manda)
+          if (e.to !== myActor || synced.current) break;
+          synced.current = true;
+          for (const g of e.graph) {
+            desmos.current?.setExpression(g.id, g.latex, g.color, false);
+            graphItems.current.set(g.id, g);
+          }
+          if (e.strokes.length) setStrokes((s) => e.strokes.reduce((acc, stroke) => applyBoardEvent(acc, { type: "board_draw", actor: e.actor, stroke }), s));
+          if (e.doc.trim() && !docRef.current.trim()) setDocDraft(e.doc);
           break;
         case "board_draw":
         case "board_clear":
@@ -391,6 +428,8 @@ export default function ClassroomPage() {
           setTool("activity");
           break;
         case "quiz_result":
+          // Clase compartida: cada alumno ve solo el veredicto de su propia respuesta
+          if (e.for && e.for !== myActor) break;
           if (e.correct) showEmote("celebrating");
           setQuiz((q) =>
             q && q.id === e.id ? { ...q, result: { correct: e.correct, correctIndex: e.correctIndex, explanation: e.explanation } } : q,
@@ -623,7 +662,13 @@ export default function ClassroomPage() {
 
   const { session, aiTutor, tutor, students, topic } = data;
   const iAmTutor = session.tutor_id === userId;
-  const myShare = session.tutor_kind === "ai" ? session.price_quipus : Math.floor(session.price_quipus / Math.max(1, students.length));
+  // Lo que paga este alumno: lo dice el servidor (su parte del grupo); si no viene, se calcula igual
+  const myShare =
+    data.myShare ??
+    (session.group_id ? Math.floor(session.price_quipus / Math.max(1, students.length)) : session.price_quipus);
+  // Clase IA compartida: solo el anfitrión la termina para todos; los demás pueden salir
+  const aiGroup = session.tutor_kind === "ai" && !!session.group_id;
+  const canEnd = !aiGroup || !data.hostId || data.hostId === userId;
   // §11.1: el tutor recibe la suma de las cuotas (floor(P/N) × N)
   const tutorEarns = myShare * students.length;
 
@@ -698,9 +743,20 @@ export default function ClassroomPage() {
           {iAmTutor ? "Ganas" : "Pagas"} <Quipus amount={iAmTutor ? tutorEarns : myShare} className="text-gold" />
           al terminar
         </span>
-        <button onClick={() => setConfirmEnd(true)} className={cn(btn.danger, btn.sm)}>
-          <PhoneOff className="size-4" /> <span className="hidden sm:inline">Terminar</span>
-        </button>
+        {canEnd ? (
+          <button onClick={() => setConfirmEnd(true)} className={cn(btn.danger, btn.sm)}>
+            <PhoneOff className="size-4" /> <span className="hidden sm:inline">Terminar</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => {
+              if (confirm(`¿Salir del aula? La clase sigue para los demás y al terminar pagas tu parte (${myShare} quipus).`)) router.push("/campus");
+            }}
+            className={cn(btn.soft, btn.sm)}
+          >
+            <PhoneOff className="size-4" /> <span className="hidden sm:inline">Salir</span>
+          </button>
+        )}
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-3 md:flex-row md:px-5">
@@ -753,6 +809,12 @@ export default function ClassroomPage() {
                 markdown={doc}
                 writer={writer}
                 onChange={editDoc}
+                assist={
+                  // Solo el profe humano de la clase: genera texto y lo revisa antes de insertarlo
+                  iAmTutor && !aiTutor && userId
+                    ? (input) => api.assistDoc(userId, session.id, input).then((r) => r.markdown)
+                    : undefined
+                }
               />
             </div>
             <div className={cn("absolute inset-0", tool !== "graph" && "invisible")}>

@@ -13,6 +13,8 @@ import {
 import * as h from "@/lib/server/handlers";
 import * as ad from "@/lib/server/admin-handlers";
 import * as dir from "@/lib/server/director";
+import * as assist from "@/lib/server/assist";
+import * as lobbies from "@/lib/server/lobbies";
 import { isAdmin, requireAdmin, requireNotSuspended } from "@/lib/server/admin";
 
 type Ctx = { user: string; body: Record<string, unknown>; params: string[]; query: URLSearchParams };
@@ -60,6 +62,13 @@ const ROUTES: Route[] = [
   r("POST", "sessions/:id/review", ({ user, params, body }) => h.review(user, params[0], body)),
   r("GET", "groups/mine", ({ user }) => h.myUpcoming(user)),
   r("POST", "groups/:id/start", ({ user, params }) => h.startGroupSession(user, params[0])),
+  r("POST", "groups/:id/call", ({ user, params }) => h.callGroup(user, params[0])),
+  r("GET", "lobbies", ({ user }) => lobbies.openLobbies(user)),
+  r("POST", "lobbies", ({ user, body }) => lobbies.createAiLobby(user, body)),
+  r("GET", "lobbies/:id", ({ user, params }) => lobbies.lobby(user, params[0])),
+  r("POST", "lobbies/:id/leave", ({ user, params }) => lobbies.leaveLobby(user, params[0])),
+  r("POST", "lobbies/:id/start", ({ user, params }) => lobbies.startLobby(user, params[0])),
+  r("POST", "sessions/:id/assist", ({ user, params, body }) => assist.assistDoc(user, params[0], body)),
   r("GET", "tutors/:id", ({ params }) => h.tutorProfile(params[0])),
   r("GET", "tutor/panel", ({ user }) => h.tutorPanel(user)),
   r("POST", "tutor/topics", ({ user, body }) => h.declareTopic(user, body)),

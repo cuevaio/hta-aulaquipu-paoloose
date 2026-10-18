@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { CalendarClock, CheckCircle2, Clock, Sparkles, Star, Users, X } from "lucide-react";
+import { CalendarClock, CheckCircle2, Clock, Hourglass, Sparkles, Star, Users, X } from "lucide-react";
 import { api, type BookingResult } from "@/lib/api";
 import type { AiTutor, GroupOption, TutorOption } from "@/lib/types";
 import { useMutation, useQuery, useSession } from "@/components/providers";
 import { AiAvatar, Avatar } from "@/components/avatar";
 import { ErrorBox, Pill, Quipus, Skeleton, btn, friendlyWhen } from "@/components/bits";
+import { NotifyPrompt } from "@/components/notify-prompt";
 import { LEVEL_FRIENDLY, subjectOf } from "@/lib/subjects";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +31,9 @@ export default function MatchPage() {
   const preferred = useSearchParams().get("tutor");
   const [confirming, setConfirming] = useState<Option | null>(null);
   const [booked, setBooked] = useState<(BookingResult & { title: string }) | null>(null);
+  // "Esperar a un profe": el pedido queda abierto (en cola) y se avisa cuando un tutor agende
+  const [waiting, setWaiting] = useState(false);
+  const feed = useQuery((u) => api.openRequestsFeed(u));
 
   if (error) return <ErrorBox message={error} />;
   if (loading && !data)
@@ -116,6 +120,44 @@ export default function MatchPage() {
 
   const subject = subjectOf(data.topic.name);
 
+  if (waiting) {
+    // Otros alumnos esperando el mismo tema: se suman a la misma clase cuando un profe la agenda
+    const others = (feed.data ?? []).filter((r) => r.request.topic_id === data.topic.id && r.request.mode === "grupo");
+    return (
+      <div className="mx-auto max-w-md space-y-4 pt-6 text-center animate-in fade-in zoom-in-95">
+        <Hourglass className="mx-auto size-16 text-primary" />
+        <h1 className="font-heading text-3xl font-semibold">Tu pedido está en cola</h1>
+        <p className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-sm font-extrabold text-primary">
+          {subject.emoji} {data.topic.name}
+        </p>
+        <p className="text-muted-foreground">
+          Los profes que enseñan este tema ya lo ven. Cuando uno agende la clase, te invitamos a unirte y te avisamos.
+        </p>
+        {others.length > 0 && (
+          <div className="flex flex-col items-center gap-2 rounded-2xl bg-secondary p-3">
+            <div className="flex -space-x-2">
+              {others.slice(0, 4).map((r) => (
+                <Avatar key={r.request.id} config={r.student.avatar_config} size={36} label={r.student.display_name} />
+              ))}
+            </div>
+            <p className="text-sm font-bold text-secondary-foreground">
+              {others.length === 1 ? "1 alumno más espera" : `${others.length} alumnos más esperan`} este tema: la clase será en grupo y el precio se reparte.
+            </p>
+          </div>
+        )}
+        <NotifyPrompt />
+        <div className="flex flex-col gap-2 pt-2">
+          <Link href="/home#clases" className={cn(btn.primary, btn.md)}>
+            Ver mis clases
+          </Link>
+          <button onClick={() => setWaiting(false)} className={cn(btn.soft, btn.md)}>
+            Ver otras opciones
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-6">
       <div>
@@ -143,6 +185,15 @@ export default function MatchPage() {
           <OptionCard o={recommended} balance={balance} highlight onPick={() => setConfirming(recommended)} />
         </section>
       )}
+
+      {/* Esperar a un profe: el pedido queda abierto y los tutores del tema lo ven */}
+      <section className="rounded-3xl bg-muted/60 p-4">
+        <p className="font-extrabold">¿Prefieres que te enseñe un compañero?</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">Deja tu pedido en cola: cuando un profe agende la clase, te invitamos y te avisamos.</p>
+        <button onClick={() => setWaiting(true)} className={cn(btn.soft, btn.md, "mt-3 w-full")}>
+          <Hourglass className="size-4" /> Esperar a un profe
+        </button>
+      </section>
 
       {rest.length > 0 && (
         <section className="space-y-3">

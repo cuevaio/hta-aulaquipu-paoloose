@@ -48,6 +48,14 @@ const LATENCY_MS = 120;
 
 let db: DbState | null = null;
 
+// Con dos pestañas abiertas (alumno y profe en una demo) cada una cargaba su copia y no veía lo del
+// otro: cuando otra pestaña guarda, se descarta la copia en memoria y se vuelve a leer.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY) db = null;
+  });
+}
+
 // Director de mentira: claves de los quizzes y contador de gráficas (solo en memoria)
 let mockGraphs = 0;
 let mockQuizCount = 0;
@@ -237,6 +245,16 @@ function normalizeTopic(s: DbState, text: string, userId: UUID): { topic: Topic;
 function splitShares(total: number, n: number) {
   // §11.1: share = floor(P / N); el residuo no se cobra a los alumnos
   return Math.max(1, Math.floor(total / Math.max(1, n)));
+}
+
+/** Modo demo: "conectado" = su campus escribió una marca hace menos de 25 s (ver use-class-alerts). */
+function seenRecently(userId: UUID): boolean {
+  try {
+    const at = Number(window.localStorage.getItem(`aq:seen:${userId}`));
+    return Number.isFinite(at) && Date.now() - at < 25_000;
+  } catch {
+    return false;
+  }
 }
 
 function activeMembers(s: DbState, groupId: UUID) {
@@ -448,7 +466,17 @@ export const mockApi: ApiClient = {
       return { request, topic, topicWasCreated: topic.proposed_by === userId, groups, tutors, aiTutors: withPromos(s, userId, aiTutors) };
     }),
 
-  listAiTutors: (userId) => read((s) => withPromos(s, userId, s.ai_tutors.filter((a) => a.active !== false))),
+  listAiTutors: (userId) =>
+    read((s) =>
+      withPromos(s, userId, s.ai_tutors.filter((a) => a.active !== false)).map((t) => ({
+        ...t,
+        topics: s.ai_tutor_topics
+          .filter((l) => l.ai_tutor_id === t.id)
+          .map((l) => s.topics.find((x) => x.id === l.topic_id))
+          .filter((x): x is Topic => !!x)
+          .sort((x, y) => x.name.localeCompare(y.name)),
+      })),
+    ),
 
   book: (userId, input: BookingInput) =>
     write((s): BookingResult => {
@@ -530,6 +558,9 @@ export const mockApi: ApiClient = {
       if (!isMember && group.tutor_id !== userId) throw new ApiError("No eres parte de esta clase.", "invalid");
       if (group.status === "completed" || group.status === "cancelled")
         throw new ApiError("Esta clase ya terminó.", "conflict");
+      // Igual que el servidor: el profe solo entra a una clase que un alumno ya abrió
+      if (group.tutor_id === userId && group.status !== "live" && !s.sessions.some((x) => x.group_id === groupId && x.status === "live"))
+        throw new ApiError("Tu clase empieza cuando un alumno acepta tu llamada. Usa «Llamar a mis alumnos».", "conflict");
       // Igual que el servidor: si el tutor ya da este tema en vivo en otro grupo, el alumno entra ahí
       const live = group.tutor_id !== userId && group.status !== "live" && isMember
         ? s.sessions.find(
@@ -549,6 +580,133 @@ export const mockApi: ApiClient = {
       }
       return { sessionId: ensureLiveGroupSession(s, group).id };
     }),
+
+  createAiLobby: (userId, { aiTutorId, text }) =>
+    write((s) => {
+      const tutor = s.ai_tutors.find((a) => a.id === aiTutorId && a.active !== false);
+      if (!tutor) throw new ApiError("Este tutor IA no está disponible ahora. Elige otro.", "conflict");
+      const clean = text.replace(/\s+/g, " ").trim();
+      if (clean.length < 3 || clean.length > 280) throw new ApiError("Escribe el tema que quieres ver (de 3 a 280 caracteres).");
+      const mine = s.groups.find((g) => g.host_id === userId && g.ai_tutor_id === aiTutorId && g.status === "forming");
+      if (mine) return { groupId: mine.id };
+      if (availableOf(s, userId) < tutor.price_quipus)
+        throw new ApiError("No te alcanzan los quipus disponibles (las clases reservadas cuentan). Enseña para ganar más.", "insufficient_funds");
+      const { topic } = normalizeTopic(s, clean, userId);
+      const group: Group = {
+        id: uid("grp"),
+        topic_id: topic.id,
+        tutor_id: null,
+        ai_tutor_id: aiTutorId,
+        total_price_quipus: tutor.price_quipus,
+        scheduled_at: now(),
+        status: "forming",
+        created_at: now(),
+        host_id: userId,
+        detail: clean,
+      };
+      s.groups.push(group);
+      s.group_members.push({ group_id: group.id, student_id: userId, share_quipus: tutor.price_quipus, status: "joined" });
+      return { groupId: group.id };
+    }),
+
+  lobby: (userId, groupId) =>
+    read((s) => {
+      const g = s.groups.find((x) => x.id === groupId && x.ai_tutor_id);
+      if (!g) throw new ApiError("No encontramos esa clase compartida.", "not_found");
+      const list = activeMembers(s, groupId);
+      const isMember = list.some((m) => m.student_id === userId);
+      if ((g.status === "live" || g.status === "completed") && !isMember) throw new ApiError("Esta clase compartida ya empezó o terminó.", "conflict");
+      return {
+        group: g,
+        topic: topicOf(s, g.topic_id),
+        aiTutor: s.ai_tutors.find((a) => a.id === g.ai_tutor_id) ?? null,
+        host: g.host_id ? profileOf(s, g.host_id) : null,
+        members: list
+          .map((m) => ({ profile: profileOf(s, m.student_id), share: m.share_quipus, isHost: m.student_id === g.host_id }))
+          .sort((a, b) => Number(b.isHost) - Number(a.isHost)),
+        isMember,
+        isHost: g.host_id === userId,
+        shareIfJoin: isMember ? (list.find((m) => m.student_id === userId)?.share_quipus ?? 0) : Math.floor(g.total_price_quipus / (list.length + 1)),
+        liveSessionId: s.sessions.find((x) => x.group_id === groupId && x.status === "live")?.id ?? null,
+      };
+    }),
+
+  leaveLobby: (userId, groupId) =>
+    write((s) => {
+      const g = s.groups.find((x) => x.id === groupId && x.ai_tutor_id);
+      if (!g) throw new ApiError("No encontramos ese grupo.", "not_found");
+      if (g.status !== "forming") throw new ApiError("Este grupo ya no acepta alumnos.", "conflict");
+      if (g.host_id === userId) {
+        activeMembers(s, groupId).forEach((m) => (m.status = "left"));
+        g.status = "cancelled";
+        return;
+      }
+      const me = activeMembers(s, groupId).find((m) => m.student_id === userId);
+      if (me) me.status = "left";
+      const rest = activeMembers(s, groupId);
+      rest.forEach((m) => (m.share_quipus = Math.floor(g.total_price_quipus / rest.length)));
+    }),
+
+  startLobby: (userId, groupId) =>
+    write((s) => {
+      const g = s.groups.find((x) => x.id === groupId && x.ai_tutor_id);
+      if (!g) throw new ApiError("No encontramos ese grupo.", "not_found");
+      if (g.host_id !== userId) throw new ApiError("Solo quien abrió la clase puede iniciarla.", "forbidden");
+      const live = s.sessions.find((x) => x.group_id === groupId && x.status === "live");
+      if (live) return { sessionId: live.id };
+      if (g.status !== "forming") throw new ApiError("Esta clase ya terminó.", "conflict");
+      return { sessionId: ensureLiveGroupSession(s, g).id };
+    }),
+
+  openLobbies: (userId) =>
+    read((s) => {
+      const since = Date.now() - 30 * 60_000;
+      return s.groups
+        .filter((g) => g.ai_tutor_id && g.status === "forming" && new Date(g.created_at).getTime() >= since)
+        .map((g) => ({ g, list: activeMembers(s, g.id) }))
+        .filter(({ list }) => list.length > 0 && list.length < 5 && !list.some((m) => m.student_id === userId))
+        .map(({ g, list }) => ({
+          groupId: g.id,
+          topic: topicOf(s, g.topic_id),
+          detail: g.detail ?? null,
+          host: g.host_id ? profileOf(s, g.host_id) : null,
+          aiTutor: s.ai_tutors.find((a) => a.id === g.ai_tutor_id) ?? null,
+          members: list.length,
+          shareIfJoin: Math.floor(g.total_price_quipus / (list.length + 1)),
+          createdAt: g.created_at,
+        }));
+    }),
+
+  callGroup: (userId, groupId) =>
+    write((s) => {
+      const group = s.groups.find((g) => g.id === groupId);
+      if (!group || group.tutor_id !== userId) throw new ApiError("No encontramos esa clase.", "not_found");
+      if (group.status === "completed" || group.status === "cancelled") throw new ApiError("Esta clase ya terminó.", "conflict");
+      const live = s.sessions.find((x) => x.group_id === groupId && x.status === "live");
+      if (!live && (!group.scheduled_at || new Date(group.scheduled_at).getTime() > Date.now() + 120_000)) group.scheduled_at = now();
+      const members = activeMembers(s, groupId).map((m) => m.student_id);
+      return {
+        liveSessionId: live?.id ?? null,
+        members: members.map((id) => ({ id, name: profileOf(s, id).display_name, online: seenRecently(id) })),
+      };
+    }),
+
+  assistDoc: async (userId, sessionId, input) => {
+    const text = await read((s) => {
+      const session = s.sessions.find((x) => x.id === sessionId);
+      if (!session || session.tutor_id !== userId) throw new ApiError("El asistente de IA es para el profe de la clase.", "forbidden");
+      return topicOf(s, session.topic_id).name;
+    });
+    const topic = text.toLowerCase();
+    const canned: Record<string, string> = {
+      explain: `## ${text}\n\nIdea principal: **${topic}** se entiende mejor con un ejemplo.\n\n1. Primero identificamos los datos.\n2. Luego aplicamos la regla paso a paso.\n3. Por último comprobamos el resultado.\n\nEjemplo: si $x=2$, entonces $x+3=5$.`,
+      exercises: `## Practiquemos ${topic}\n\n1. Ejercicio fácil con un solo paso.\n2. Ejercicio medio con dos pasos.\n3. Ejercicio difícil que combina ideas.\n\n*Respuestas:* se revisan juntos al final.`,
+      summary: `## Resumen de la clase\n\n- Vimos qué es **${topic}**.\n- Resolvimos un ejemplo paso a paso.\n- Quedó una práctica para la próxima.`,
+      improve: input.selection ? `${input.selection.trim()}\n\n*(texto ordenado por la IA de demostración)*` : "",
+      free: `## ${input.prompt ?? text}\n\nRespuesta de demostración: aquí la IA escribiría el texto que pediste.`,
+    };
+    return { markdown: canned[input.mode] ?? canned.free };
+  },
 
   session: (userId, sessionId) =>
     read((s) => {
@@ -608,7 +766,16 @@ export const mockApi: ApiClient = {
 
       let paid = 0;
       let earned = 0;
-      if (session.tutor_kind === "ai") {
+      const aiGroup = session.tutor_kind === "ai" && session.group_id ? s.groups.find((g) => g.id === session.group_id) : undefined;
+      if (aiGroup?.host_id && aiGroup.host_id !== userId) throw new ApiError("Solo quien abrió la clase puede terminarla para todos.", "forbidden");
+      if (aiGroup) {
+        // Como end_session() (migración 005): cada miembro paga su parte
+        for (const m of activeMembers(s, aiGroup.id)) {
+          if (m.share_quipus > 0) addLedger(s, { kind: "ai_session", amount: m.share_quipus, from: m.student_id, to: null, sessionId });
+          if (m.student_id === userId) paid += m.share_quipus;
+        }
+        aiGroup.status = "completed";
+      } else if (session.tutor_kind === "ai") {
         for (const studentId of session.student_ids) {
           addLedger(s, { kind: "ai_session", amount: session.price_quipus, from: studentId, to: null, sessionId });
           if (studentId === userId) paid += session.price_quipus;

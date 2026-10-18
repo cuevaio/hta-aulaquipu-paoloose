@@ -237,11 +237,17 @@ export function CampusWorld({
       })),
       ...people.map((p) => ({ id: p.id, rect: { x: p.x, y: p.y, w: 1, h: 1 }, href: p.href, prompt: p.prompt })),
       // Solo existen las puertas que tienen una clase
-      ...doors.slice(0, CLASS_DOORS.length).map((d, i) => ({ id: CLASS_DOORS[i].id, rect: CLASS_DOORS[i], href: d.href, prompt: d.prompt })),
+      // Todas las puertas se pueden usar: con clase entras; sin clase te lleva a pedir una
+      ...CLASS_DOORS.map((slot, i) => {
+        const d = doors[i];
+        return d
+          ? { id: slot.id, rect: slot, href: d.href, prompt: d.prompt }
+          : { id: slot.id, rect: slot, href: "/aprender", prompt: "Aún no tienes clase en esta puerta · pide una" };
+      }),
     ],
     [people, doors],
   );
-  const blocked = useMemo(() => makeBlocked([...people, ...doorTiles(doors.length)]), [people, doors.length]);
+  const blocked = useMemo(() => makeBlocked([...people, ...doorTiles(CLASS_DOORS.length)]), [people]);
 
   useEffect(() => {
     callbacks.current = { onOpen, onRoomChange, onNearChange, onMove, onTrailEnd };
@@ -617,31 +623,54 @@ export function CampusWorld({
           );
         })}
 
-        {/* Puertas del pasillo: solo las de tus clases */}
-        {doors.slice(0, CLASS_DOORS.length).map((d, i) => {
-          const slot = CLASS_DOORS[i];
+        {/* Puertas del pasillo: siempre están; las de tus clases tienen su cartel y la próxima "llama" */}
+        {CLASS_DOORS.map((slot, i) => {
+          const d = doors[i];
           const near = nearId === slot.id;
+          // La puerta de tu próxima clase suena como una llamada, para que la veas
+          const calling = !!d && (d.live || i === 0);
           return (
             <div
               key={slot.id}
               className={cn(
                 "absolute flex cursor-pointer flex-col items-center justify-end rounded-t-[14px] border-x-4 border-t-4 transition-shadow",
-                d.live ? "border-coral bg-[#b5704a]" : "border-[#6b432b] bg-[#9a6a44]",
+                !d ? "border-[#5a4a3e] bg-[#7d6a5c]" : d.live ? "border-coral bg-[#b5704a]" : "border-[#6b432b] bg-[#9a6a44]",
                 near && "ring-4 ring-gold",
               )}
               style={{ left: slot.x * T + 4, top: slot.y * T - T * 0.55, width: slot.w * T - 8, height: T * 1.5, zIndex: (slot.y + 1) * 10 }}
             >
-              <span className="absolute top-1/2 right-2 size-2 rounded-full bg-gold" aria-hidden />
-              <span
-                className={cn(
-                  "absolute -top-2 left-1/2 max-w-[150%] -translate-x-1/2 -translate-y-full truncate rounded-lg px-2 py-0.5 text-center text-[10px] leading-tight font-extrabold whitespace-nowrap shadow-md",
-                  near ? "bg-gold text-gold-foreground" : "bg-navy text-white",
-                )}
-              >
-                {d.title}
-                <span className="block font-semibold opacity-80">{d.subtitle}</span>
-              </span>
-              {d.live && (
+              <span className={cn("absolute top-1/2 right-2 size-2 rounded-full", d ? "bg-gold" : "bg-white/40")} aria-hidden />
+              {d ? (
+                <span
+                  className={cn(
+                    "absolute -top-2 left-1/2 max-w-[150%] -translate-x-1/2 -translate-y-full truncate rounded-lg px-2 py-0.5 text-center text-[10px] leading-tight font-extrabold whitespace-nowrap shadow-md",
+                    near ? "bg-gold text-gold-foreground" : "bg-navy text-white",
+                  )}
+                >
+                  {d.title}
+                  <span className="block font-semibold opacity-80">{d.subtitle}</span>
+                </span>
+              ) : (
+                near && (
+                  <span className="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full rounded-lg bg-white/95 px-2 py-0.5 text-center text-[10px] leading-tight font-extrabold whitespace-nowrap text-navy shadow-md">
+                    Sin clase todavía
+                    <span className="block font-semibold text-muted-foreground">Pide una en la 📚 Biblioteca</span>
+                  </span>
+                )
+              )}
+              {calling && (
+                <span
+                  className="absolute top-2 left-1/2 grid size-7 -translate-x-1/2 place-items-center rounded-full bg-gold shadow-lg ring-2 ring-white"
+                  aria-label="Tu clase te espera"
+                  title="Tu clase te espera"
+                >
+                  <span className="bell-ring text-sm leading-none" aria-hidden>
+                    🔔
+                  </span>
+                  <span className="absolute inset-0 animate-ping rounded-full bg-gold/60" aria-hidden />
+                </span>
+              )}
+              {d?.live && (
                 <span className="mb-1 flex items-center gap-1 rounded-full bg-coral px-1.5 py-px text-[9px] font-black text-white">
                   <span className="size-1.5 animate-pulse rounded-full bg-white" /> EN VIVO
                 </span>
@@ -649,15 +678,6 @@ export function CampusWorld({
             </div>
           );
         })}
-        {doors.length === 0 && (
-          <div
-            className="pointer-events-none absolute -translate-x-1/2 rounded-2xl bg-white/85 px-4 py-2 text-center text-xs font-extrabold text-navy shadow"
-            style={{ left: 13 * T, top: 18.3 * T }}
-          >
-            Aún no tienes clases 🙂
-            <span className="block font-semibold text-muted-foreground">Pide una en la 📚 Biblioteca y aparecerá aquí su puerta</span>
-          </div>
-        )}
 
         {people.map((p) => (
           <div

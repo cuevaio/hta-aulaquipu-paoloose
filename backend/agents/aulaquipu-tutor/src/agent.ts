@@ -26,7 +26,18 @@ export type ClassContext = {
   studentId: string;
   /** Id (uuid) del tema reservado, para leer su banco de imágenes. */
   topicId: string;
+  /** Clase compartida: todos los alumnos (el anfitrión primero). Vacío o uno = clase individual. */
+  students?: { id: string; name: string }[];
+  /** El tema tal como lo escribió el alumno (o el anfitrión) al reservar. */
+  detail?: string;
 };
+
+/** Nombres de una clase compartida ("Ana, Luis y Pedro"), o "" si es individual. */
+export function groupNames(c: ClassContext): string {
+  const names = (c.students ?? []).map((s) => s.name).filter(Boolean);
+  if (names.length < 2) return '';
+  return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`;
+}
 
 export const ACTION_TOPIC = 'aulaquipu:action';
 export const QUIZ_TOPIC = 'aulaquipu:quiz';
@@ -99,24 +110,30 @@ type QuizEntry = {
   correctIndex: number;
   explanation: string;
   answered: boolean;
+  /** Quiénes ya respondieron (identidad; "" en clase individual). */
+  answeredBy: Set<string>;
 };
 
 export function createQuizBook() {
   const entries = new Map<string, QuizEntry>();
   let seq = 0;
   return {
-    add(q: Omit<QuizEntry, 'answered'>): string {
+    add(q: Omit<QuizEntry, 'answered' | 'answeredBy'>): string {
       const id = `q${Date.now().toString(36)}${++seq}`;
-      entries.set(id, { ...q, answered: false });
+      entries.set(id, { ...q, answered: false, answeredBy: new Set<string>() });
       // Tope defensivo: una clase no necesita más
       if (entries.size > 50) entries.delete(entries.keys().next().value as string);
       return id;
     },
-    /** Califica la primera respuesta de cada quiz; null si no existe o ya se respondió. */
-    grade(id: string, index: number) {
+    /**
+     * Califica la primera respuesta de cada persona (`who`: su identidad; en clase individual basta
+     * con omitirla); null si el quiz no existe o esa persona ya respondió.
+     */
+    grade(id: string, index: number, who = '') {
       const e = entries.get(id);
-      if (!e || e.answered || !Number.isInteger(index) || index < 0 || index >= e.options.length)
+      if (!e || e.answeredBy.has(who) || !Number.isInteger(index) || index < 0 || index >= e.options.length)
         return null;
+      e.answeredBy.add(who);
       e.answered = true;
       return { ...e, index, correct: index === e.correctIndex };
     },
@@ -131,9 +148,9 @@ export type QuizBook = ReturnType<typeof createQuizBook>;
 export async function handleQuizAnswer(
   hooks: TutorHooks,
   book: QuizBook,
-  answer: { id: string; index: number },
+  answer: { id: string; index: number; who?: { identity: string; name: string } },
 ): Promise<string | null> {
-  const g = book.grade(answer.id, answer.index);
+  const g = book.grade(answer.id, answer.index, answer.who?.identity ?? '');
   if (!g) return null;
   const letter = (i: number) => String.fromCharCode(65 + i);
   try {
@@ -144,6 +161,8 @@ export async function handleQuizAnswer(
         correct: g.correct,
         correctIndex: g.correctIndex,
         explanation: g.explanation,
+        // Clase compartida: el veredicto es solo para quien respondió
+        ...(answer.who ? { for: answer.who.identity } : {}),
       },
       QUIZ_RESULT_TOPIC,
     );
@@ -160,9 +179,10 @@ export async function handleQuizAnswer(
     correct: g.correct,
   });
   const chosen = `${letter(g.index)}) ${g.options[g.index]}`;
+  const who = answer.who?.name || 'El alumno';
   return g.correct
-    ? `El alumno respondió la pregunta de opción múltiple con ${chosen} y es CORRECTA. Felicítalo con entusiasmo en una frase y refuerza la idea: ${g.explanation}. Luego sigue con la clase.`
-    : `El alumno respondió la pregunta de opción múltiple con ${chosen} y es INCORRECTA; la correcta era ${letter(g.correctIndex)}) ${g.options[g.correctIndex]}. Anímalo sin regañar, explica el porqué en dos frases cortas (${g.explanation}) y ofrécele otro ejemplo o un nuevo intento.`;
+    ? `${who} respondió la pregunta de opción múltiple con ${chosen} y es CORRECTA. Felicítalo con entusiasmo en una frase y refuerza la idea: ${g.explanation}. Luego sigue con la clase.`
+    : `${who} respondió la pregunta de opción múltiple con ${chosen} y es INCORRECTA; la correcta era ${letter(g.correctIndex)}) ${g.options[g.correctIndex]}. Anímalo sin regañar, explica el porqué en dos frases cortas (${g.explanation}) y ofrécele otro ejemplo o un nuevo intento.`;
 }
 
 // --- Lo que hizo el director de la web ---
@@ -392,11 +412,18 @@ const DEFAULT_CONTEXT: ClassContext = {
 };
 
 function classBrief(c: ClassContext): string {
+  const group = groupNames(c);
   const lines = [
     c.style && `- Tu estilo: ${c.style}.`,
     c.focus && `- Tu especialidad: ${c.focus}.`,
-    c.topic && `- El alumno reservó esta clase para: ${c.topic}. Empieza por ahí.`,
-    c.studentName && `- El alumno se llama ${c.studentName}.`,
+    c.topic && `- ${group ? 'Reservaron' : 'El alumno reservó'} esta clase para: ${c.topic}. Empieza por ahí.`,
+    c.detail && `- Lo pidieron con estas palabras: «${c.detail}». Tómalo como punto de partida.`,
+    group
+      ? `- Es una clase compartida con ${c.students!.length} alumnos: ${group}. Pueden hablarte varios. ` +
+        'Cuando el sistema te avise «Ahora te habla X», respóndele a X por su nombre. ' +
+        'Reparte la palabra: pregunta a cada uno por su nombre y que nadie se quede sin participar. ' +
+        'Si no sabes quién habló, pregúntale su nombre con amabilidad.'
+      : c.studentName && `- El alumno se llama ${c.studentName}.`,
   ].filter(Boolean);
   return lines.length ? `\n# Esta clase\n${lines.join('\n')}\n` : '';
 }

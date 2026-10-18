@@ -105,6 +105,8 @@ const RPC_ERRORS: Record<string, [number, string, HttpError["code"]]> = {
   tema_invalido: [400, "Elige dos temas distintos para unir.", "invalid"],
   clase_no_existe: [404, "No encontramos esa clase.", "not_found"],
   tutor_pausado: [409, "Este tutor IA está en pausa por ahora. Elige otro.", "conflict"],
+  tutor_no_disponible: [409, "Este tutor IA no está disponible ahora. Elige otro.", "conflict"],
+  no_eres_anfitrion: [403, "Solo quien abrió la clase puede iniciarla.", "forbidden"],
 };
 
 /** Códigos de Postgres/PostgREST cuando falta una tabla, función o columna (migración sin aplicar). */

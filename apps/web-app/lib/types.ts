@@ -93,6 +93,8 @@ export interface AiTutor {
   active?: boolean;
   effective_price?: number;
   promo?: AiPromoInfo | null;
+  /** Temas que enseña (sugerencias al reservar). */
+  topics?: Topic[];
 }
 
 export interface Group {
@@ -104,6 +106,10 @@ export interface Group {
   scheduled_at: string | null;
   status: GroupStatus;
   created_at: string;
+  /** Clase IA compartida: quien abrió el lobby y decide cuándo empieza (migración 005). */
+  host_id?: UUID | null;
+  /** El tema tal como lo escribió el anfitrión. */
+  detail?: string | null;
 }
 
 export interface GroupMember {
@@ -292,6 +298,10 @@ export interface SessionDetail {
   students: (Profile & { equipped: Equipped })[];
   tutorEquipped: Equipped | null;
   myReview: Review | null;
+  /** Clase IA compartida: el anfitrión es quien la termina para todos. */
+  hostId?: UUID | null;
+  /** Lo que paga este alumno (su parte en una clase de grupo). */
+  myShare?: number | null;
 }
 
 export interface LedgerLine extends LedgerEntry {

@@ -87,6 +87,50 @@ export interface UpcomingClass {
   liveSessionId: UUID | null;
 }
 
+/** Lobby de una clase IA compartida: el anfitrión decide cuándo empieza. */
+export interface LobbyDetail {
+  group: Group;
+  topic: Topic;
+  aiTutor: AiTutor | null;
+  host: Profile | null;
+  members: { profile: Profile; share: number; isHost: boolean }[];
+  isMember: boolean;
+  isHost: boolean;
+  /** Lo que paga cada uno ahora si ya estás, o lo que pagarías al unirte. */
+  shareIfJoin: number;
+  liveSessionId: UUID | null;
+}
+
+/** Invitación a un lobby abierto (para quienes están conectados). */
+export interface LobbyInvite {
+  groupId: UUID;
+  topic: Topic;
+  detail: string | null;
+  host: Profile | null;
+  aiTutor: AiTutor | null;
+  members: number;
+  shareIfJoin: number;
+  createdAt: string;
+}
+
+/** Estado de la "llamada" del profe a su clase: quién está conectado y si ya empezó. */
+export interface GroupCall {
+  liveSessionId: UUID | null;
+  members: { id: UUID; name: string; online: boolean }[];
+}
+
+export type AssistMode = "explain" | "exercises" | "summary" | "improve" | "free";
+
+export interface AssistInput {
+  mode: AssistMode;
+  /** Lo que pide el profe; opcional en los atajos. */
+  prompt?: string;
+  /** Texto seleccionado en el documento (para "mejorar"). */
+  selection?: string;
+  /** Final del documento, como contexto. */
+  doc?: string;
+}
+
 export interface EndResult {
   alreadyEnded: boolean;
   paid: number;
@@ -180,6 +224,18 @@ export interface ApiClient {
   review(userId: UUID, sessionId: UUID, stars: number, feedback: string): Promise<void>;
   mySessions(userId: UUID): Promise<SessionDetail[]>;
   myUpcoming(userId: UUID): Promise<UpcomingClass[]>;
+  /** Abre un lobby de clase IA compartida con tu tema; tú eres el anfitrión. */
+  createAiLobby(userId: UUID, input: { aiTutorId: UUID; text: string }): Promise<{ groupId: UUID }>;
+  lobby(userId: UUID, groupId: UUID): Promise<LobbyDetail>;
+  leaveLobby(userId: UUID, groupId: UUID): Promise<void>;
+  /** Solo el anfitrión: empieza la clase para todos los del lobby. */
+  startLobby(userId: UUID, groupId: UUID): Promise<{ sessionId: UUID }>;
+  /** Lobbies abiertos en los que podrías entrar (las invitaciones del campus). */
+  openLobbies(userId: UUID): Promise<LobbyInvite[]>;
+  /** El profe llama a su clase: devuelve quién está conectado y la adelanta a ahora si estaba más tarde. */
+  callGroup(userId: UUID, groupId: UUID): Promise<GroupCall>;
+  /** Asistente de IA del profe: genera texto en markdown para el documento de la clase. */
+  assistDoc(userId: UUID, sessionId: UUID, input: AssistInput): Promise<{ markdown: string }>;
 
   tutorProfile(tutorId: UUID): Promise<PublicProfile>;
   tutorPanel(userId: UUID): Promise<TutorPanel>;

@@ -5,6 +5,7 @@ import { useState, useSyncExternalStore } from "react";
 import { ArrowRight, Compass, X } from "lucide-react";
 import { AvatarBuilder } from "@/components/avatar-builder";
 import { btn } from "@/components/bits";
+import { NotifyPrompt } from "@/components/notify-prompt";
 import type { AvatarConfig } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -145,6 +146,8 @@ export function WelcomeOverlay({
 
         {last ? (
           <div className="mt-6 flex flex-col gap-2">
+            {/* Pedir el permiso aquí, con un clic del alumno, para que "tu profe está listo" llegue como aviso nativo */}
+            <NotifyPrompt label="Avísame cuando mi profe esté listo" className="mb-1" />
             <Link href="/aprender" onClick={onClose} className={cn(btn.primary, btn.lg)}>
               Quiero aprender
             </Link>

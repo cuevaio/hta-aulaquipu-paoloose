@@ -7,10 +7,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FIGURE_CENTER_X, resolveFigure, type FigureItem, type FigurePiece, type SpritesheetManifest } from "@/lib/figure";
 
-// Recuadros lógicos respecto del ancla: figura entera (gorro → zapatos) o busto (cabeza y hombros).
+// Recuadros lógicos respecto del ancla: figura entera (gorro → zapatos), busto (cabeza y hombros)
+// o escenario (figura de pie con lugar arriba para pelos, coronas y gorros altos: el más alto de las
+// librerías llega a y = -114). Los zapatos llegan a y ≈ 12 en todos.
 const VIEWS = {
-  full: { w: 64, h: 96, y: -84 },
-  bust: { w: 50, h: 50, y: -88 },
+  full: { w: 64, h: 108, y: -96 },
+  bust: { w: 54, h: 54, y: -96 },
+  stage: { w: 68, h: 128, y: -116 },
 } as const;
 
 export type FigureView = keyof typeof VIEWS;

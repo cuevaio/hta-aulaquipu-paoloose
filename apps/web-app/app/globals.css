@@ -253,3 +253,15 @@
   --color-aurum: #d9b25f;
   --color-aurum-hi: #e6c47a;
 }
+
+/* Campanita que se sacude mientras suena el timbre de "tu profe llegó" */
+@keyframes bell-ring {
+  0%, 100% { transform: rotate(0); }
+  10%, 30%, 50% { transform: rotate(-16deg); }
+  20%, 40%, 60% { transform: rotate(16deg); }
+  70% { transform: rotate(0); }
+}
+.bell-ring { animation: bell-ring 1.4s ease-in-out infinite; transform-origin: 50% 0; }
+@media (prefers-reduced-motion: reduce) {
+  .bell-ring { animation: none; }
+}

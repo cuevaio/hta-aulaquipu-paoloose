@@ -20,7 +20,9 @@ import {
   watchDelegations,
   type TutorHooks,
   freeVariables,
+  groupNames,
 } from './agent.ts';
+import { nextSpeaker, speakerNote } from './speakers.ts';
 
 function makeHooks(overrides: Partial<TutorHooks> = {}) {
   const published: Array<{ msg: Record<string, unknown>; topic: string }> = [];
@@ -197,6 +199,71 @@ describe('quiz de opción múltiple', () => {
     expect(prompt).toMatch(/INCORRECTA/);
     expect(published.find((p) => p.topic === 'aulaquipu:quiz-result')!.msg).toMatchObject({ correct: false, correctIndex: 0 });
     expect(await handleQuizAnswer(hooks, book, { id: 'nope', index: 0 })).toBeNull();
+  });
+});
+
+describe('clase compartida', () => {
+  const quiz = { question: '¿2+2?', options: ['4', '5', '6'], correctIndex: 0, explanation: 'dos más dos son cuatro' };
+
+  it('cada alumno tiene su intento y su veredicto lleva su identidad y su nombre', async () => {
+    const { hooks, published } = makeHooks();
+    const book = createQuizBook();
+    const id = book.add(quiz);
+    const ana = { identity: 'profile:ana', name: 'Ana' };
+    const luis = { identity: 'profile:luis', name: 'Luis' };
+    expect(await handleQuizAnswer(hooks, book, { id, index: 0, who: ana })).toMatch(/^Ana respondió .*CORRECTA/);
+    expect(await handleQuizAnswer(hooks, book, { id, index: 1, who: luis })).toMatch(/^Luis respondió .*INCORRECTA/);
+    // el mismo alumno no responde dos veces
+    expect(await handleQuizAnswer(hooks, book, { id, index: 0, who: ana })).toBeNull();
+    const results = published.filter((p) => p.topic === 'aulaquipu:quiz-result').map((p) => p.msg);
+    expect(results).toEqual([
+      expect.objectContaining({ correct: true, for: 'profile:ana' }),
+      expect.objectContaining({ correct: false, for: 'profile:luis' }),
+    ]);
+  });
+
+  it('groupNames arma la lista de nombres solo si hay varios alumnos', () => {
+    const base = { tutorName: 'Inti', style: '', focus: '', topic: 'células', studentName: 'Ana', guide: '', studentId: '', topicId: '' };
+    expect(groupNames({ ...base, students: [{ id: '1', name: 'Ana' }] })).toBe('');
+    expect(groupNames({ ...base, students: [{ id: '1', name: 'Ana' }, { id: '2', name: 'Luis' }, { id: '3', name: 'Pedro' }] })).toBe('Ana, Luis y Pedro');
+  });
+
+  it('las instrucciones de una clase compartida nombran a todos y explican el aviso de quién habla', () => {
+    const { hooks } = makeHooks();
+    process.env.LIVEKIT_API_KEY ??= 'test';
+    process.env.LIVEKIT_API_SECRET ??= 'test';
+    process.env.LIVEKIT_URL ??= 'wss://test.livekit.cloud';
+    const agent = createAgent(hooks, {
+      tutorName: 'Inti', style: '', focus: '', topic: 'células', studentName: 'Ana', guide: '', studentId: '', topicId: '',
+      students: [{ id: '1', name: 'Ana' }, { id: '2', name: 'Pedrito' }],
+      detail: 'la mitosis paso a paso',
+    });
+    expect(agent.instructions).toMatch(/clase compartida con 2 alumnos: Ana y Pedrito/);
+    expect(agent.instructions).toMatch(/Ahora te habla X/);
+    expect(agent.instructions).toMatch(/la mitosis paso a paso/);
+  });
+});
+
+describe('quién habla (clase compartida)', () => {
+  const ana = { identity: 'profile:ana', name: 'Ana', isAgent: false };
+  const luis = { identity: 'profile:luis', name: 'Luis', isAgent: false };
+  const tutor = { identity: 'agent-1', name: 'Inti', isAgent: true };
+
+  it('pasa a quien habla si el que se escuchaba ya calló', () => {
+    expect(nextSpeaker([luis], 'profile:ana')).toEqual(luis);
+  });
+  it('no corta a quien sigue hablando', () => {
+    expect(nextSpeaker([luis, ana], 'profile:ana')).toBeNull();
+  });
+  it('ignora al propio tutor y a quien no es alumno', () => {
+    expect(nextSpeaker([tutor], 'profile:ana')).toBeNull();
+    expect(nextSpeaker([{ identity: 'guest', name: 'x', isAgent: false }], null)).toBeNull();
+  });
+  it('sin nadie escuchado aún, toma al que más habla', () => {
+    expect(nextSpeaker([ana, luis], null)).toEqual(ana);
+  });
+  it('la nota para el modelo nombra a la persona', () => {
+    expect(speakerNote('Pedrito')).toMatch(/Ahora te habla Pedrito.*Pedrito por su nombre/);
   });
 });
 

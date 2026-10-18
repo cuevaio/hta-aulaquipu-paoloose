@@ -261,8 +261,16 @@ export async function sessionDetails(rows: SessionRow[], userId: string): Promis
     ),
   ]);
   const aiById = new Map(ais.map((a) => [a.id, a]));
+  const hosts = groupIds.length
+    ? new Map(
+        (await must<{ id: string; host_id: string | null }[]>(db().from("groups").select("id, host_id").in("id", [...new Set(groupIds)]))).map(
+          (g) => [g.id, g.host_id],
+        ),
+      )
+    : new Map<string, string | null>();
   return rows.map((r) => {
     const students = studentsBySession.get(r.id) ?? [];
+    const mine = r.group_id ? (members.get(r.group_id) ?? []).find((m) => m.student_id === userId) : undefined;
     return {
       session: toSession(r, students),
       topic: (r.topic_id && topics.get(r.topic_id)) || UNKNOWN_TOPIC,
@@ -274,6 +282,8 @@ export async function sessionDetails(rows: SessionRow[], userId: string): Promis
         .map((p) => ({ ...p, equipped: equipped.get(p.id) ?? { avatar: null, frame: null, deco: null, parts: [] } })),
       tutorEquipped: r.tutor_id ? equipped.get(r.tutor_id) ?? null : null,
       myReview: myReviews.find((x) => x.session_id === r.id) ?? null,
+      hostId: r.group_id ? hosts.get(r.group_id) ?? null : null,
+      myShare: mine ? mine.share_quipus : r.student_id === userId ? r.price_quipus : null,
     };
   });
 }

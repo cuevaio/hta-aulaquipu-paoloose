@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Check, ChevronDown, Minus, Plus, Users, X } from "lucide-react";
-import { api } from "@/lib/api";
-import type { Level, Topic } from "@/lib/types";
-import { useMutation, useQuery } from "@/components/providers";
+import { Bell, CalendarClock, Check, ChevronDown, Minus, Plus, Users, X } from "lucide-react";
+import { api, type GroupCall } from "@/lib/api";
+import type { Level, Topic, TutorPanel } from "@/lib/types";
+import { useMutation, useQuery, useSession } from "@/components/providers";
 import { Avatar } from "@/components/avatar";
 import { Card, Pill, Quipus, SectionTitle, Skeleton, btn, friendlyWhen, timeAgo } from "@/components/bits";
 import { cn } from "@/lib/utils";
@@ -93,6 +93,8 @@ export default function TutorPanelPage() {
   const [draftPrice, setDraftPrice] = useState<number | null>(null);
   const [draftAvailability, setDraftAvailability] = useState<string[] | null>(null);
   const [acceptFor, setAcceptFor] = useState<string | null>(null);
+  // Clase que el profe está llamando ahora (suena el timbre en sus alumnos)
+  const [calling, setCalling] = useState<string | null>(null);
   // Pasos abiertos/cerrados a mano; sin tocar, se abre el que aún falta
   const [manualOpen, setManualOpen] = useState<Record<number, boolean>>({});
   const [fine, setFine] = useState(false);
@@ -129,7 +131,21 @@ export default function TutorPanelPage() {
   const isOpen = (n: number) => manualOpen[n] ?? (!!saved && n === firstPending);
   const toggle = (n: number) => setManualOpen((m) => ({ ...m, [n]: !isOpen(n) }));
 
-  const slots = availability.length ? availability : ["Mañana"];
+  // "Ahora mismo" primero: si hay alumnos esperando, la clase puede empezar ya
+  const slots = ["Ahora mismo", ...(availability.length ? availability : ["Mañana"])];
+
+  // Cola de pedidos: los de grupo del mismo tema se juntan en una sola clase (acceptRequest suma hasta 5)
+  const queue = useMemo(() => {
+    const incoming = panel.data?.incoming ?? [];
+    const byTopic = new Map<string, typeof incoming>();
+    const singles: typeof incoming = [];
+    for (const item of incoming) {
+      if (item.request.mode !== "grupo") singles.push(item);
+      else byTopic.set(item.request.topic_id, [...(byTopic.get(item.request.topic_id) ?? []), item]);
+    }
+    const sortOld = (list: typeof incoming) => [...list].sort((x, y) => x.request.created_at.localeCompare(y.request.created_at));
+    return [...byTopic.values(), ...singles.map((x) => [x])].map(sortOld);
+  }, [panel.data]);
 
   const saveSettings = async () => {
     await run((u) => api.setTutorSettings(u, price, availability), "Guardado");
@@ -405,16 +421,24 @@ export default function TutorPanelPage() {
                     {g.members.length} alumno{g.members.length === 1 ? "" : "s"} · {g.status === "forming" ? "armándose" : "confirmada"}
                   </span>
                 </div>
-                <button
-                  disabled={pending || g.members.length === 0}
-                  onClick={async () => {
-                    const res = await run((u) => api.startGroupSession(u, g.id));
-                    if (res) router.push(`/aula/${res.sessionId}`);
-                  }}
-                  className={cn(btn.primary, btn.sm, "w-full")}
-                >
-                  {g.status === "live" ? "Volver al aula" : "Abrir el aula"}
-                </button>
+                {g.status === "live" ? (
+                  <button
+                    disabled={pending}
+                    onClick={async () => {
+                      const res = await run((u) => api.startGroupSession(u, g.id));
+                      if (res) router.push(`/aula/${res.sessionId}`);
+                    }}
+                    className={cn(btn.primary, btn.sm, "w-full")}
+                  >
+                    Volver al aula
+                  </button>
+                ) : calling === g.id ? (
+                  <CallPanel group={g} onStop={() => setCalling(null)} onEnter={(sessionId) => router.push(`/aula/${sessionId}`)} />
+                ) : (
+                  <button disabled={pending || g.members.length === 0} onClick={() => setCalling(g.id)} className={cn(btn.primary, btn.sm, "w-full")}>
+                    <Bell className="size-4" /> Llamar a mis alumnos
+                  </button>
+                )}
               </Card>
             ))}
           </div>
@@ -436,57 +460,166 @@ export default function TutorPanelPage() {
           </Card>
         )}
         <div className="grid grid-cols-1 gap-3 @3xl:grid-cols-2">
-          {panel.data?.incoming.map(({ request, student, topic }) => (
-            <Card key={request.id} className="space-y-3">
-              <div className="flex items-start gap-3">
-                <Avatar config={student.avatar_config} size={44} label={student.display_name} />
-                <div className="min-w-0 flex-1">
-                  <p className="font-extrabold">
-                    {student.display_name} <span className="font-semibold text-muted-foreground">· {student.grade}º</span>
-                  </p>
-                  <p className="text-sm font-bold text-primary">{topic.name}</p>
-                  <p className="text-sm text-muted-foreground">“{request.detail}”</p>
-                </div>
-                <Pill>{request.mode === "grupo" ? "Grupo" : "Individual"}</Pill>
-              </div>
-              <p className="text-xs text-muted-foreground">{timeAgo(request.created_at)}</p>
-              {acceptFor === request.id ? (
-                <div className="space-y-2 animate-in fade-in">
-                  <p className="text-sm font-bold">¿Cuándo das la clase?</p>
-                  <div className="flex flex-wrap gap-2">
-                    {slots.map((s) => (
-                      <button
-                        key={s}
-                        disabled={pending}
-                        onClick={async () => {
-                          const when = s === "Mañana" ? new Date(Date.now() + 86400_000).toISOString() : nextSlot(s);
-                          const ok = await run((u) => api.acceptRequest(u, request.id, when), "¡Clase agendada! Los alumnos ya la ven.");
-                          if (ok) setAcceptFor(null);
-                        }}
-                        className={cn(btn.mint, btn.sm)}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                    <button onClick={() => setAcceptFor(null)} className={cn(btn.ghost, btn.sm)}>
-                      Cancelar
-                    </button>
+          {queue.map((items) => {
+            // Un grupo de la cola: hasta 5 alumnos entran a la misma clase; el resto sigue esperando
+            const { request, student, topic } = items[0];
+            const joined = items.slice(0, 5);
+            const many = joined.length > 1;
+            const hasMore = items.length > joined.length;
+            return (
+              <Card key={request.id} className="space-y-3">
+                {many ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <div className="flex shrink-0 -space-x-2">
+                        {joined.map((i) => (
+                          <Avatar key={i.request.id} config={i.student.avatar_config} size={40} label={i.student.display_name} />
+                        ))}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-extrabold">
+                          {joined.length} alumnos esperan <span className="text-primary">{topic.name}</span>
+                        </p>
+                        <p className="truncate text-sm text-muted-foreground">{joined.map((i) => i.student.display_name.split(" ")[0]).join(", ")}</p>
+                      </div>
+                      <Pill>Grupo</Pill>
+                    </div>
+                    <ul className="space-y-1 text-sm text-muted-foreground">
+                      {joined.map((i) => (
+                        <li key={i.request.id} className="truncate">
+                          <b className="text-foreground">{i.student.display_name.split(" ")[0]}:</b> “{i.request.detail}”
+                        </li>
+                      ))}
+                    </ul>
+                    {hasMore && <p className="text-xs font-semibold text-muted-foreground">Quedan {items.length - joined.length} más en cola para otra clase.</p>}
                   </div>
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <button onClick={() => setAcceptFor(request.id)} className={cn(btn.mint, btn.md, "w-full")}>
-                    Aceptar · ganas <Quipus amount={price} />
-                  </button>
-                  <p className="text-center text-xs text-muted-foreground">
-                    Ese es tu precio por la clase: los alumnos del grupo se lo reparten y lo cobras al terminar.
-                  </p>
-                </div>
-              )}
-            </Card>
-          ))}
+                ) : (
+                  <div className="flex items-start gap-3">
+                    <Avatar config={student.avatar_config} size={44} label={student.display_name} />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-extrabold">
+                        {student.display_name} <span className="font-semibold text-muted-foreground">· {student.grade}º</span>
+                      </p>
+                      <p className="text-sm font-bold text-primary">{topic.name}</p>
+                      <p className="text-sm text-muted-foreground">“{request.detail}”</p>
+                    </div>
+                    <Pill>{request.mode === "grupo" ? "Grupo" : "Individual"}</Pill>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">En cola {timeAgo(request.created_at)}</p>
+                {acceptFor === request.id ? (
+                  <div className="space-y-2 animate-in fade-in">
+                    <p className="text-sm font-bold">¿Cuándo das la clase?</p>
+                    <div className="flex flex-wrap gap-2">
+                      {slots.map((s) => (
+                        <button
+                          key={s}
+                          disabled={pending}
+                          onClick={async () => {
+                            const when =
+                              s === "Ahora mismo" ? new Date().toISOString() : s === "Mañana" ? new Date(Date.now() + 86400_000).toISOString() : nextSlot(s);
+                            const now = s === "Ahora mismo";
+                            const ok = await run(
+                              (u) => api.acceptRequest(u, request.id, when),
+                              now
+                                ? "¡Listo! Estamos llamando a tus alumnos."
+                                : many
+                                  ? "¡Clase agendada! Invitamos y avisamos a tus alumnos."
+                                  : "¡Clase agendada! Avisamos a tu alumno.",
+                            );
+                            if (ok) {
+                              setAcceptFor(null);
+                              if (now) setCalling(ok.groupId);
+                            }
+                          }}
+                          className={cn(s === "Ahora mismo" ? btn.primary : btn.mint, btn.sm)}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                      <button onClick={() => setAcceptFor(null)} className={cn(btn.ghost, btn.sm)}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <button onClick={() => setAcceptFor(request.id)} className={cn(btn.mint, btn.md, "w-full")}>
+                      {many ? `Programar clase para los ${joined.length}` : "Aceptar"} · ganas <Quipus amount={price} />
+                    </button>
+                    <p className="text-center text-xs text-muted-foreground">
+                      Ese es tu precio por la clase: {many ? "los alumnos se lo reparten" : "tu alumno lo paga"} y lo cobras al terminar. Todos reciben la invitación.
+                    </p>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
         </div>
       </section>
     </div>
   );
 }
+
+/**
+ * Llamada del profe a su clase: cada 3 s pregunta quién está conectado. Suena el timbre en los
+ * alumnos conectados; la clase empieza cuando uno acepta (entonces el profe entra solo). Si nadie
+ * está conectado, el profe lo ve aquí y la clase no avanza.
+ */
+function CallPanel({ group, onStop, onEnter }: { group: TutorPanel["scheduled"][number]; onStop: () => void; onEnter: (sessionId: string) => void }) {
+  const { userId } = useSession();
+  const [call, setCall] = useState<GroupCall | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userId) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const res = await api.callGroup(userId, group.id);
+        if (!alive) return;
+        setCall(res);
+        setError(null);
+        if (res.liveSessionId) onEnter(res.liveSessionId);
+      } catch (e) {
+        if (alive) setError(e instanceof Error ? e.message : "No pudimos llamar a tus alumnos.");
+      }
+    };
+    void tick();
+    const timer = setInterval(tick, 3000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [userId, group.id, onEnter]);
+
+  const online = call?.members.filter((m) => m.online) ?? [];
+  const nobody = !!call && online.length === 0;
+  return (
+    <div className="space-y-2 rounded-2xl bg-secondary p-3 animate-in fade-in" role="status" aria-live="polite">
+      <p className="flex items-center gap-2 text-sm font-extrabold">
+        <Bell className="bell-ring size-4 text-gold" aria-hidden /> {call?.liveSessionId ? "¡Aceptaron! Entrando al aula…" : "Llamando a tus alumnos…"}
+      </p>
+      <ul className="space-y-1">
+        {(call?.members ?? group.members.map((m) => ({ id: m.id, name: m.display_name, online: false }))).map((m) => (
+          <li key={m.id} className="flex items-center justify-between gap-2 text-sm">
+            <span className="min-w-0 truncate font-bold">{m.name.split(" ")[0]}</span>
+            <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-extrabold", m.online ? "bg-mint/30 text-accent-foreground" : "bg-coral/15 text-coral")}>
+              {!call ? "…" : m.online ? "conectado · suena el timbre" : "no conectado"}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {error && <p className="text-xs font-semibold text-coral">{error}</p>}
+      <p className="text-xs text-muted-foreground">
+        {nobody
+          ? "Ningún alumno está conectado ahora, así que la clase no puede empezar. Sigue en esta pantalla: apenas alguien se conecte le suena el timbre."
+          : "La clase empieza formalmente cuando un alumno acepta. Entrarás al aula automáticamente."}
+      </p>
+      <button onClick={onStop} className={cn(btn.ghost, btn.sm)}>
+        Dejar de llamar
+      </button>
+    </div>
+  );
+}
+
