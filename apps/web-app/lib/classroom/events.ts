@@ -19,21 +19,38 @@ export interface Stroke {
 
 export type ClassroomEvent =
   | { type: "doc_write"; actor: string; markdown: string; mode: "append" | "replace" }
-  | { type: "doc_append_table"; actor: string; rows: string[][] }
+  | { type: "doc_append_table"; actor: string; rows: string[][]; title?: string }
+  /** Herramienta docWrite del agente: escribe o reemplaza una sección "## título". */
+  | { type: "doc_section"; actor: string; section: string; markdown: string }
   | { type: "graph_set"; actor: string; id: string; latex: string; color?: string }
   | { type: "graph_remove"; actor: string; id: string }
   | { type: "board_draw"; actor: string; stroke: Stroke }
   | { type: "board_clear"; actor: string; target: "board" | "notebook" }
   | { type: "ask_student"; actor: string; question: string }
   | { type: "focus_tool"; actor: string; tool: ClassroomTool }
-  | { type: "speech"; actor: string; text: string }
+  | { type: "speech"; actor: string; text: string; partial?: boolean; segment?: string }
   | { type: "speaking"; actor: string; on: boolean }
   | { type: "chat"; actor: string; name: string; text: string }
+  | { type: "notebook_image"; actor: string; url: string }
   | { type: "session_event"; actor: string; kind: string; payload: Record<string, unknown> };
 
-export function tableToMarkdown(rows: string[][]): string {
+export function tableToMarkdown(rows: string[][], title?: string): string {
   if (!rows.length) return "";
   const [head, ...body] = rows;
-  const line = (r: string[]) => `| ${r.join(" | ")} |`;
-  return ["", line(head), line(head.map(() => "---")), ...body.map(line), ""].join("\n");
+  const cell = (c: string) => String(c).replace(/\|/g, "\\|").replace(/\n/g, " ");
+  const line = (r: string[]) => `| ${head.map((_, i) => cell(r[i] ?? "")).join(" | ")} |`;
+  return ["", ...(title ? [`## ${title}`, ""] : []), line(head), line(head.map(() => "---")), ...body.map(line), ""].join("\n");
+}
+
+/** Escribe o reemplaza la sección "## {section}" del documento (contrato de docWrite del agente). */
+export function upsertSection(doc: string, section: string, markdown: string): string {
+  const title = section.trim().replace(/^#+\s*/, "");
+  const block = `## ${title}\n\n${markdown.trim()}\n`;
+  const lines = doc.split("\n");
+  const norm = (t: string) => t.trim().toLowerCase();
+  const start = lines.findIndex((l) => /^##\s+/.test(l) && norm(l.replace(/^##\s+/, "")) === norm(title));
+  if (start === -1) return `${doc.replace(/\s*$/, "")}${doc.trim() ? "\n\n" : ""}${block}`;
+  let end = lines.findIndex((l, i) => i > start && /^#{1,2}\s+/.test(l));
+  if (end === -1) end = lines.length;
+  return [...lines.slice(0, start), ...block.replace(/\n$/, "").split("\n"), "", ...lines.slice(end)].join("\n").replace(/\n{3,}/g, "\n\n");
 }

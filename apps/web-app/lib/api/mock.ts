@@ -105,14 +105,12 @@ export function balanceOf(s: DbState, id: UUID): number {
   }, 0);
 }
 
+/** Escribe en el ledger. La validación de saldo se hace antes (requireBalance), como en las RPCs. */
 function addLedger(
   s: DbState,
   entry: { kind: LedgerKind; amount: number; from: UUID | null; to: UUID | null; sessionId?: UUID | null },
 ) {
   if (entry.amount <= 0) return;
-  if (entry.from && balanceOf(s, entry.from) < entry.amount) {
-    throw new ApiError("No te alcanzan los quipus. Enseña para ganar más.", "insufficient_funds");
-  }
   const id = s.ledger.reduce((m, l) => Math.max(m, l.id), 0) + 1;
   const row: LedgerEntry = {
     id,
@@ -126,10 +124,23 @@ function addLedger(
   s.ledger.push(row);
 }
 
+/** Igual que available_balance() en la base: saldo − clases reservadas aún no cobradas. */
+export function availableOf(s: DbState, id: UUID): number {
+  const liveAi = s.sessions
+    .filter((x) => x.tutor_kind === "ai" && x.status === "live" && x.student_ids.includes(id))
+    .reduce((a, x) => a + x.price_quipus, 0);
+  const groups = s.group_members
+    .filter((m) => m.student_id === id && m.status === "joined")
+    .filter((m) => ["forming", "scheduled", "live"].includes(s.groups.find((g) => g.id === m.group_id)?.status ?? ""))
+    .reduce((a, m) => a + m.share_quipus, 0);
+  return balanceOf(s, id) - liveAi - groups;
+}
+
 function requireBalance(s: DbState, id: UUID, amount: number) {
-  if (balanceOf(s, id) < amount) {
+  const available = availableOf(s, id);
+  if (available < amount) {
     throw new ApiError(
-      `Necesitas ${amount} quipus y tienes ${balanceOf(s, id)}. Enseña para ganar más.`,
+      `Necesitas ${amount} quipus y tienes ${Math.max(0, available)} disponibles. Enseña para ganar más.`,
       "insufficient_funds",
     );
   }
@@ -289,6 +300,8 @@ export const mockApi: ApiClient = {
       return { userId: cred.profile_id };
     }),
 
+  logout: async () => {},
+
   testAccounts: () =>
     read((s) => s.credentials.map((c) => ({ dni: c.dni, password: c.password, profile: profileOf(s, c.profile_id) }))),
 
@@ -301,6 +314,7 @@ export const mockApi: ApiClient = {
       return {
         profile,
         balance: balanceOf(s, userId),
+        available: availableOf(s, userId),
         skins: s.skins.map((k) => ({ ...k, owned: owned.has(k.id), equipped: owned.get(k.id)?.equipped ?? false })),
         equipped: equippedOf(s, userId),
         badges: badgesOf(s, userId),
@@ -521,8 +535,7 @@ export const mockApi: ApiClient = {
         }
       } else {
         const members = session.group_id ? activeMembers(s, session.group_id) : [];
-        // Validamos todo antes de escribir para no dejar el ledger a medias
-        for (const m of members) requireBalance(s, m.student_id, m.share_quipus);
+        // Como end_session() en la base: la clase ocurrió, se cobra siempre (puede quedar deuda)
         for (const m of members) {
           addLedger(s, {
             kind: "session_payment",
@@ -668,7 +681,7 @@ export const mockApi: ApiClient = {
               )
               .slice(0, 5)
           : [req];
-      const eligible = batch.filter((r) => balanceOf(s, r.student_id) >= splitShares(price, batch.length));
+      const eligible = batch.filter((r) => availableOf(s, r.student_id) >= splitShares(price, batch.length));
       if (!eligible.length) throw new ApiError("Al alumno no le alcanzan los quipus para tu precio.", "insufficient_funds");
       const share = splitShares(price, eligible.length);
       const group: Group = {
@@ -712,6 +725,7 @@ export const mockApi: ApiClient = {
       if (!skin) throw new ApiError("Ese artículo no existe.", "not_found");
       // §11.4: compra idempotente por (profile_id, skin_id)
       if (s.profile_skins.some((p) => p.profile_id === userId && p.skin_id === skinId)) return;
+      requireBalance(s, userId, skin.price_quipus);
       addLedger(s, { kind: "skin_purchase", amount: skin.price_quipus, from: userId, to: null });
       s.profile_skins.push({ profile_id: userId, skin_id: skinId, equipped: false });
     }),

@@ -88,7 +88,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
     api
       .me(userId)
       .then((m) => alive && setMeState({ id: userId, me: m }))
-      .catch(() => alive && writeUser(null));
+      .catch((e: unknown) => {
+        // Solo se cierra la sesión si el servidor dice que no es válida (no por un corte de red)
+        const code = e instanceof ApiError ? e.code : null;
+        if (alive && (code === "unauthorized" || code === "not_found")) writeUser(null);
+      });
     return () => {
       alive = false;
     };

@@ -72,6 +72,7 @@ export interface RoomToken {
 export interface ApiClient {
   /** Login con DNI (8 dígitos) y contraseña. Por ahora cuentas de prueba. */
   login(dni: string, password: string): Promise<{ userId: UUID }>;
+  logout(): Promise<void>;
   testAccounts(): Promise<TestAccount[]>;
   listDemoUsers(): Promise<Profile[]>;
   me(userId: UUID): Promise<Me>;

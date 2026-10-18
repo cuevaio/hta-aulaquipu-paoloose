@@ -1,5 +1,6 @@
 import type { AvatarConfig, Equipped, SkinMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { avatarColor, avatarLook, frameOf } from "@/lib/skins";
 
 const SHAPES: Record<NonNullable<AvatarConfig["shape"]>, string> = {
   blob: "M50 10c20 0 34 14 34 36s-10 44-34 44S16 68 16 46 30 10 50 10z",
@@ -82,10 +83,11 @@ export function Avatar({
   speaking?: boolean;
   label?: string;
 }) {
-  const color = config.color ?? "#7C6BF2";
+  const look = avatarLook(equipped?.avatar?.meta);
+  const color = look.color ?? avatarColor(config);
   const shape = SHAPES[config.shape ?? "blob"];
-  const accessory = equipped?.avatar?.meta.accessory;
-  const frame = equipped?.frame?.meta.frame ?? "basico";
+  const accessory = look.accessory;
+  const frame = frameOf(equipped?.frame?.meta);
 
   return (
     <div

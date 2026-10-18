@@ -28,8 +28,8 @@ import { DesmosGraph, type DesmosHandle } from "@/components/classroom/desmos";
 import { LiveDoc } from "@/components/classroom/live-doc";
 import { Whiteboard } from "@/components/classroom/whiteboard";
 import { ParticipantCard, type Participant } from "@/components/classroom/participant-card";
-import { LocalTransport } from "@/lib/classroom/transport";
-import { tableToMarkdown, type ClassroomEvent, type ClassroomTool, type Stroke } from "@/lib/classroom/events";
+import { tableToMarkdown, upsertSection, type ClassroomEvent, type ClassroomTool, type Stroke } from "@/lib/classroom/events";
+import { useClassroomRoom } from "@/lib/classroom/use-classroom-room";
 import { SimulatedAiTutor } from "@/lib/classroom/ai-engine";
 import { scriptFor } from "@/lib/classroom/ai-scripts";
 import { cn } from "@/lib/utils";
@@ -43,6 +43,8 @@ const TOOLS: { id: ClassroomTool; label: string; icon: typeof FileText }[] = [
 
 interface ChatLine {
   id: number;
+  /** Segmento de transcripción: las actualizaciones del mismo segmento reemplazan la línea. */
+  segment?: string;
   actor: string;
   name: string;
   text: string;
@@ -68,7 +70,6 @@ export default function ClassroomPage() {
   const { data, error } = useQuery((u) => api.session(u, sessionId), [sessionId]);
   const { run, pending } = useMutation();
 
-  const transport = useMemo(() => new LocalTransport(), []);
   const desmos = useRef<DesmosHandle>(null);
   const chatId = useRef(0);
   const writerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -91,10 +92,28 @@ export default function ClassroomPage() {
   const [voice, setVoice] = useState(true);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const tutorRef = useRef<SimulatedAiTutor | null>(null);
+  const docSync = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const elapsed = useElapsed(data?.session.started_at);
   const myActor = `profile:${userId}`;
   const myName = me?.profile.display_name.split(" ")[0] ?? "Tú";
+
+  const onRoomClosed = useCallback(() => router.replace(`/resumen/${sessionId}`), [router, sessionId]);
+  const onMediaError = useCallback((m: string) => toast(m, "error"), [toast]);
+  const live = useClassroomRoom({
+    sessionId,
+    userId,
+    // Se conecta cuando ya conocemos la clase y el nombre (si no, reconectaría al cambiar)
+    enabled: !!data && !!me && data.session.status === "live",
+    isAi: data?.session.tutor_kind === "ai",
+    aiActor: data?.aiTutor ? `ai:${data.aiTutor.id}` : null,
+    myName,
+    voice,
+    onRoomClosed,
+    onMediaError,
+  });
+  const transport = live.transport;
+  const realtime = live.mode === "livekit";
 
   useEffect(() => {
     if (ready && !userId) router.replace("/");
@@ -119,11 +138,16 @@ export default function ClassroomPage() {
   }, [data]);
 
   const pushChat = useCallback((line: Omit<ChatLine, "id">) => {
-    setChat((c) => [...c.slice(-80), { ...line, id: ++chatId.current }]);
+    setChat((c) => {
+      const i = line.segment ? c.findIndex((x) => x.segment === line.segment) : -1;
+      if (i >= 0) return c.map((x, j) => (j === i ? { ...x, text: line.text } : x));
+      return [...c.slice(-80), { ...line, id: ++chatId.current }];
+    });
   }, []);
 
   // Consumidor único de eventos: aplica cada herramienta al estado del aula
   useEffect(() => {
+    if (!transport) return;
     return transport.subscribe((e: ClassroomEvent) => {
       const markWriter = () => {
         setWriter(names[e.actor] ?? "Alguien");
@@ -136,8 +160,16 @@ export default function ClassroomPage() {
           if (e.actor !== myActor) markWriter();
           break;
         case "doc_append_table":
-          setDocDraft((d) => (d ?? savedDoc) + tableToMarkdown(e.rows));
+          setDocDraft((d) => (d ?? savedDoc) + tableToMarkdown(e.rows, e.title));
           markWriter();
+          break;
+        case "doc_section":
+          setDocDraft((d) => upsertSection(d ?? savedDoc, e.section, e.markdown));
+          markWriter();
+          break;
+        case "notebook_image":
+          setNotebookImg(e.url);
+          if (e.actor !== myActor) setTool("notebook");
           break;
         case "graph_set":
           desmos.current?.setExpression(e.id, e.latex, e.color);
@@ -156,7 +188,9 @@ export default function ClassroomPage() {
           break;
         case "speech":
           setCaption({ actor: e.actor, text: e.text });
-          pushChat({ actor: e.actor, name: names[e.actor] ?? "Tutor", text: e.text, kind: "speech" });
+          // Con segmento (LiveKit) la línea se va completando; sin segmento (modo local) solo la final
+          if (e.segment || !e.partial)
+            pushChat({ actor: e.actor, name: names[e.actor] ?? "Tutor", text: e.text, kind: "speech", segment: e.segment });
           break;
         case "speaking":
           setSpeaking((s) => ({ ...s, [e.actor]: e.on }));
@@ -169,13 +203,16 @@ export default function ClassroomPage() {
           break;
         case "session_event":
           if (e.kind === "join") pushChat({ actor: e.actor, name: "", text: `${names[e.actor] ?? "Alguien"} entró al aula`, kind: "system" });
+          // Otro participante terminó la clase: todos pasan al resumen
+          if (e.kind === "completed" && e.actor !== myActor) setTimeout(onRoomClosed, 1200);
           break;
       }
     });
-  }, [transport, names, myActor, pushChat, savedDoc]);
+  }, [transport, names, myActor, pushChat, savedDoc, onRoomClosed]);
 
-  // Tutor IA simulado (reemplazable por el agent-worker que entra a la sala LiveKit)
+  // Tutor IA simulado: solo sin LiveKit. En vivo, el agent-worker entra a la sala por su cuenta.
   useEffect(() => {
+    if (!transport || transport.kind !== "local") return;
     if (!data || !docLoaded || data.session.status !== "live" || !data.aiTutor) return;
     const tutor = new SimulatedAiTutor(transport, `ai:${data.aiTutor.id}`, data.aiTutor.name);
     tutor.voice = voice;
@@ -193,6 +230,12 @@ export default function ClassroomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.session.id, docLoaded, transport]);
 
+  // Avisos de LiveKit hacia el chat
+  useEffect(() => {
+    if (!realtime || !data?.aiTutor) return;
+    pushChat({ actor: "sistema", name: "", text: `Conectado en vivo. Háblale a ${data.aiTutor.name} o escríbele por aquí.`, kind: "system" });
+  }, [realtime, data?.aiTutor, pushChat]);
+
   useEffect(() => {
     if (tutorRef.current) tutorRef.current.voice = voice;
     if (!voice && typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -209,6 +252,7 @@ export default function ClassroomPage() {
   useEffect(() => () => stream?.getTracks().forEach((t) => t.stop()), [stream]);
 
   const toggleCam = async () => {
+    if (realtime) return live.toggleCam();
     if (stream) {
       stream.getTracks().forEach((t) => t.stop());
       setStream(null);
@@ -222,6 +266,7 @@ export default function ClassroomPage() {
   };
 
   const toggleMic = async () => {
+    if (realtime) return live.toggleMic();
     if (micOn) return setMicOn(false);
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -234,8 +279,15 @@ export default function ClassroomPage() {
 
   const sendChat = (text: string) => {
     const t = text.trim();
-    if (!t) return;
+    if (!t || !transport) return;
     transport.send({ type: "chat", actor: myActor, name: myName, text: t });
+  };
+
+  // Edición del documento: se aplica al instante y se sincroniza con los demás con un respiro
+  const editDoc = (md: string) => {
+    setDocDraft(md);
+    if (docSync.current) clearTimeout(docSync.current);
+    docSync.current = setTimeout(() => transport?.publish({ type: "doc_write", actor: myActor, markdown: md, mode: "replace" }), 350);
   };
 
   const submitAnswer = (e: React.FormEvent) => {
@@ -251,8 +303,10 @@ export default function ClassroomPage() {
     await api.saveSessionDoc(userId, sessionId, doc).catch(() => {});
     tutorRef.current?.stop();
     const res = await run((u) => api.endSession(u, sessionId));
-    if (res) router.push(`/resumen/${sessionId}`);
-    else setConfirmEnd(false);
+    if (res) {
+      transport?.publish({ type: "session_event", actor: myActor, kind: "completed", payload: {} });
+      router.push(`/resumen/${sessionId}`);
+    } else setConfirmEnd(false);
   };
 
   if (error)
@@ -280,28 +334,50 @@ export default function ClassroomPage() {
   // §11.1: el tutor recibe la suma de las cuotas (floor(P/N) × N)
   const tutorEarns = myShare * students.length;
 
+  // Presencia: en vivo la da la sala LiveKit; en modo local solo estás tú (y el tutor simulado)
+  const presence = (key: string, isMe: boolean) => {
+    if (realtime) return live.media(key);
+    return { connected: isMe, micOn: isMe && micOn, video: null };
+  };
+  const agentMedia = realtime ? live.agent() : { connected: live.mode === "local", micOn: true, video: null };
+  const myMicOn = realtime ? live.media(myActor).micOn : micOn;
+  const myCamOn = realtime ? !!live.media(myActor).video : !!stream;
+
+  const tutorKey = aiTutor ? `ai:${aiTutor.id}` : `profile:${tutor?.id}`;
+  const tutorMedia = aiTutor ? agentMedia : presence(tutorKey, iAmTutor);
   const tutorP: Participant = aiTutor
-    ? { key: `ai:${aiTutor.id}`, name: aiTutor.name, role: "tutor", isMe: false, ai: aiTutor.persona, micOn: true, connected: true }
+    ? { key: tutorKey, name: aiTutor.name, role: "tutor", isMe: false, ai: aiTutor.persona, micOn: tutorMedia.micOn, connected: tutorMedia.connected }
     : {
-        key: `profile:${tutor?.id}`,
+        key: tutorKey,
         name: tutor?.display_name.split(" ")[0] ?? "Tutor",
         role: "tutor",
         isMe: iAmTutor,
         avatar: tutor?.avatar_config,
         equipped: data.tutorEquipped,
-        micOn: iAmTutor ? micOn : false,
-        connected: iAmTutor,
+        micOn: tutorMedia.micOn,
+        connected: tutorMedia.connected,
       };
-  const studentPs: Participant[] = students.map((s) => ({
-    key: `profile:${s.id}`,
-    name: s.display_name.split(" ")[0],
-    role: "student",
-    isMe: s.id === userId,
-    avatar: s.avatar_config,
-    equipped: s.equipped,
-    micOn: s.id === userId ? micOn : false,
-    connected: s.id === userId,
-  }));
+  const studentPs: (Participant & { video: ReturnType<typeof presence>["video"] })[] = students.map((s) => {
+    const key = `profile:${s.id}`;
+    const m = presence(key, s.id === userId);
+    return {
+      key,
+      name: s.display_name.split(" ")[0],
+      role: "student",
+      isMe: s.id === userId,
+      avatar: s.avatar_config,
+      equipped: s.equipped,
+      micOn: m.micOn,
+      connected: m.connected,
+      video: m.video,
+    };
+  });
+  const cardProps = (p: Participant & { video?: ReturnType<typeof presence>["video"] }) => ({
+    p,
+    speaking: !!speaking[p.key],
+    stream: p.isMe && !realtime ? stream : null,
+    videoTrack: p.video ?? null,
+  });
 
   const captionName = caption ? names[caption.actor] ?? "" : "";
 
@@ -320,6 +396,9 @@ export default function ClassroomPage() {
               <span className="size-2 animate-pulse rounded-full bg-coral" /> EN VIVO
             </span>
             {elapsed}
+            <span className="hidden text-white/40 sm:inline">
+              · {live.mode === "connecting" ? "conectando…" : realtime ? "audio y video en vivo" : "modo local"}
+            </span>
           </p>
         </div>
         <span className="hidden items-center gap-1.5 rounded-full bg-navy-2 px-3 py-1.5 text-xs font-bold sm:flex">
@@ -335,14 +414,14 @@ export default function ClassroomPage() {
         {/* Tarjetas fijas alrededor del área didáctica: tutor a la izquierda */}
         <aside className="flex gap-2 overflow-x-auto md:w-52 md:shrink-0 md:flex-col md:overflow-visible">
           <div className="w-44 shrink-0 md:w-full">
-            <ParticipantCard p={tutorP} speaking={!!speaking[tutorP.key]} large stream={tutorP.isMe ? stream : null} />
+            <ParticipantCard {...cardProps({ ...tutorP, video: tutorMedia.video })} large />
           </div>
           {studentPs.slice(0, 2).map((p) => (
-            <ParticipantCard key={p.key} p={p} speaking={!!speaking[p.key]} stream={p.isMe ? stream : null} />
+            <ParticipantCard key={p.key} {...cardProps(p)} />
           ))}
           {studentPs.slice(2).map((p) => (
             <div key={p.key} className="md:hidden">
-              <ParticipantCard p={p} speaking={!!speaking[p.key]} stream={p.isMe ? stream : null} />
+              <ParticipantCard {...cardProps(p)} />
             </div>
           ))}
         </aside>
@@ -371,7 +450,7 @@ export default function ClassroomPage() {
               <LiveDoc
                 markdown={doc}
                 writer={writer}
-                onChange={(md) => transport.send({ type: "doc_write", actor: myActor, markdown: md, mode: "replace" })}
+                onChange={editDoc}
               />
             </div>
             <div className={cn("absolute inset-0", tool !== "graph" && "invisible")}>
@@ -382,8 +461,8 @@ export default function ClassroomPage() {
                 target="board"
                 visible={tool === "board"}
                 strokes={strokes.filter((s) => s.target === "board")}
-                onStroke={(stroke) => transport.send({ type: "board_draw", actor: myActor, stroke })}
-                onClear={() => transport.send({ type: "board_clear", actor: myActor, target: "board" })}
+                onStroke={(stroke) => transport?.send({ type: "board_draw", actor: myActor, stroke })}
+                onClear={() => transport?.send({ type: "board_clear", actor: myActor, target: "board" })}
               />
             </div>
             <div className={cn("absolute inset-0", tool !== "notebook" && "invisible")}>
@@ -391,10 +470,10 @@ export default function ClassroomPage() {
                 target="notebook"
                 visible={tool === "notebook"}
                 background={notebookImg}
-                onBackground={setNotebookImg}
+                onBackground={(url) => transport?.send({ type: "notebook_image", actor: myActor, url })}
                 strokes={strokes.filter((s) => s.target === "notebook")}
-                onStroke={(stroke) => transport.send({ type: "board_draw", actor: myActor, stroke })}
-                onClear={() => transport.send({ type: "board_clear", actor: myActor, target: "notebook" })}
+                onStroke={(stroke) => transport?.send({ type: "board_draw", actor: myActor, stroke })}
+                onClear={() => transport?.send({ type: "board_clear", actor: myActor, target: "notebook" })}
               />
             </div>
 
@@ -437,7 +516,7 @@ export default function ClassroomPage() {
         {studentPs.length > 2 && (
           <aside className="hidden w-44 shrink-0 flex-col gap-2 md:flex">
             {studentPs.slice(2).map((p) => (
-              <ParticipantCard key={p.key} p={p} speaking={!!speaking[p.key]} stream={p.isMe ? stream : null} />
+              <ParticipantCard key={p.key} {...cardProps(p)} />
             ))}
           </aside>
         )}
@@ -498,8 +577,8 @@ export default function ClassroomPage() {
       {/* Controles */}
       <footer className="flex items-center justify-center gap-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {[
-          { on: micOn, onClick: toggleMic, icons: [Mic, MicOff], label: micOn ? "Silenciar micrófono" : "Activar micrófono" },
-          { on: !!stream, onClick: toggleCam, icons: [Camera, CameraOff], label: stream ? "Apagar cámara" : "Encender cámara" },
+          { on: myMicOn, onClick: toggleMic, icons: [Mic, MicOff], label: myMicOn ? "Silenciar micrófono" : "Activar micrófono" },
+          { on: myCamOn, onClick: toggleCam, icons: [Camera, CameraOff], label: myCamOn ? "Apagar cámara" : "Encender cámara" },
           ...(aiTutor
             ? [{ on: voice, onClick: () => setVoice((v) => !v), icons: [Volume2, VolumeX], label: voice ? "Silenciar voz del tutor" : "Activar voz del tutor" }]
             : []),
@@ -514,6 +593,11 @@ export default function ClassroomPage() {
             {on ? <On className="size-5" /> : <Off className="size-5" />}
           </button>
         ))}
+        {live.audioBlocked && (
+          <button onClick={() => live.startAudio()} className={cn(btn.gold, btn.md)}>
+            <Volume2 className="size-4" /> Activar audio
+          </button>
+        )}
         <button
           onClick={() => setChatOpen((c) => !c)}
           aria-label="Chat"

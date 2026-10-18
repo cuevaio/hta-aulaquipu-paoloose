@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { ClassMarkdown } from "@/components/markdown";
 import { Eye, PencilLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -60,7 +59,7 @@ export function LiveDoc({
       ) : (
         <div ref={scroller} className="markdown-body flex-1 overflow-y-auto p-5">
           {markdown.trim() ? (
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
+            <ClassMarkdown>{markdown}</ClassMarkdown>
           ) : (
             <p className="text-sm text-muted-foreground">El documento está vacío. Lo que escriban aquí lo ven todos en la clase.</p>
           )}

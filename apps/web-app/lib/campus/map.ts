@@ -132,15 +132,24 @@ export const OBJECTS: WorldObject[] = [
   o("bank-plant", "plant", 27, 24, 1, 1, { emoji: "🪴" }),
 ];
 
-/** Dónde aparecen los demás alumnos de la demo y los tutores IA. */
-export const STUDENT_SPOTS: Record<string, { x: number; y: number }> = {
-  "usr-valeria": { x: 29, y: 3 },
-  "usr-mateo": { x: 36, y: 3 },
-  "usr-camila": { x: 3, y: 3 },
-  "usr-lucia": { x: 10, y: 3 },
-  "usr-andres": { x: 8, y: 13 },
-  "usr-diego": { x: 20, y: 21 },
-};
+/** Lugares para los demás alumnos, en orden: primero la sala de tutores (para quienes enseñan). */
+export const TUTOR_SPOTS = [
+  { x: 29, y: 3 },
+  { x: 36, y: 3 },
+  { x: 33, y: 3 },
+];
+export const STUDENT_SPOTS = [
+  { x: 3, y: 3 },
+  { x: 10, y: 3 },
+  { x: 8, y: 13 },
+  { x: 20, y: 21 },
+  { x: 4, y: 7 },
+  { x: 31, y: 13 },
+  { x: 30, y: 21 },
+  { x: 6, y: 19 },
+  { x: 16, y: 10 },
+  { x: 24, y: 10 },
+];
 export const AI_SPOTS = [
   { x: 16, y: 4 },
   { x: 19, y: 4 },

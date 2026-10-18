@@ -18,7 +18,18 @@ export default function LedgerPage() {
       <div className="hero-sky rounded-[2rem] p-6 text-white">
         <p className="text-xs font-bold tracking-wider text-white/60 uppercase">Saldo actual</p>
         <div>
-          {me ? <Quipus amount={me.balance} className="text-5xl text-gold" iconClassName="size-10" /> : <Skeleton className="h-12 w-32 bg-white/10" />}
+          {me ? (
+            <>
+              <Quipus amount={me.balance} className="text-5xl text-gold" iconClassName="size-10" />
+              {me.available < me.balance && (
+                <p className="mt-1 text-xs font-bold text-white/60">
+                  {me.available} disponibles · {me.balance - me.available} reservados en clases por cobrar
+                </p>
+              )}
+            </>
+          ) : (
+            <Skeleton className="h-12 w-32 bg-white/10" />
+          )}
         </div>
         <div className="mt-5 grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-white/10 p-3">

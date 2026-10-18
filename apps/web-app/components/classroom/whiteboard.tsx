@@ -11,6 +11,27 @@ const COLORS = ["#1E1B3A", "#7C6BF2", "#2FD3A3", "#FF8A65", "#E5484D", "#FFC94D"
  * Pizarra compartida: los trazos se guardan normalizados a un cuadrado centrado (0..1)
  * para verse igual, sin deformarse, en cualquier pantalla.
  */
+/** Reduce la foto a 1600 px como máximo (JPEG): pesa poco y viaja rápido por la sala. */
+async function compressImage(file: File): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = url;
+    });
+    const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.naturalWidth * scale);
+    c.height = Math.round(img.naturalHeight * scale);
+    c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.85);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 function square(width: number, height: number) {
   const size = Math.min(width, height);
   return { size, ox: (width - size) / 2, oy: (height - size) / 2 };
@@ -145,9 +166,7 @@ export function Whiteboard({
                   alert("La foto pesa más de 8 MB. Prueba con una más liviana.");
                   return;
                 }
-                const reader = new FileReader();
-                reader.onload = () => onBackground(String(reader.result));
-                reader.readAsDataURL(f);
+                void compressImage(f).then(onBackground).catch(() => {});
               }}
             />
           </label>

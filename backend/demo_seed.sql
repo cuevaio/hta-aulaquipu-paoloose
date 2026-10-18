@@ -173,4 +173,38 @@ insert into session_events (session_id, actor, kind, payload) values
   ('40000000-0000-0000-0000-000000000007','ai:aulaquipu-tutor','join','{"name":"Quipu"}')
 on conflict do nothing;
 
+-- ============================================================
+-- WEB APP: tema de cada sesión, ajustes de tutor y cuentas de prueba
+-- ============================================================
+update sessions set topic_id = (select id from topics where name = 'fracciones')
+where id in ('40000000-0000-0000-0000-000000000004', '40000000-0000-0000-0000-000000000007')
+  and topic_id is null;
+
+update sessions s
+set topic_id = coalesce(
+  (select g.topic_id from groups g where g.id = s.group_id),
+  (select r.topic_id from requests r where r.id = s.request_id),
+  (select att.topic_id from ai_tutor_topics att join topics t on t.id = att.topic_id
+   where att.ai_tutor_id = s.ai_tutor_id order by t.created_at, t.name limit 1)
+)
+where s.topic_id is null;
+
+insert into tutor_settings (tutor_id, group_price_quipus, availability) values
+  ('10000000-0000-0000-0000-000000000001', 30, '{"Lun 16:00","Mié 16:00","Vie 15:00"}'),
+  ('10000000-0000-0000-0000-000000000002', 20, '{"Mar 17:00","Jue 17:00"}'),
+  ('10000000-0000-0000-0000-000000000003', 15, '{"Lun 18:00","Sáb 10:00"}'),
+  ('10000000-0000-0000-0000-000000000009', 24, '{"Mié 15:00","Vie 16:00"}')
+on conflict (tutor_id) do nothing;
+
+insert into tutor_settings (tutor_id)
+select distinct tutor_id from tutor_topics
+on conflict (tutor_id) do nothing;
+
+-- DNI 700000NN (NN = últimos dígitos del perfil), contraseña de prueba: aula2026
+insert into credentials (profile_id, dni, password_hash, is_test)
+select p.id, '700000' || right(p.id::text, 2), extensions.crypt('aula2026', extensions.gen_salt('bf', 8)), true
+from profiles p
+where p.id::text like '10000000-0000-0000-0000-0000000000%'
+on conflict (profile_id) do nothing;
+
 commit;

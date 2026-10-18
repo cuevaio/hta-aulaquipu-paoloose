@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { ClassMarkdown } from "@/components/markdown";
 import { Lock, PartyPopper, Star } from "lucide-react";
 import { api } from "@/lib/api";
 import { useMutation, useQuery, useSession } from "@/components/providers";
@@ -138,7 +137,7 @@ export default function SessionSummaryPage() {
         <SectionTitle>Lo que vimos</SectionTitle>
         {session.doc_markdown.trim() ? (
           <div className="markdown-body max-h-[28rem] overflow-y-auto rounded-2xl bg-muted/50 p-4">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{session.doc_markdown}</ReactMarkdown>
+            <ClassMarkdown>{session.doc_markdown}</ClassMarkdown>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">No se escribió nada en el documento de esta clase.</p>

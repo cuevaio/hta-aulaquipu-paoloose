@@ -15,6 +15,8 @@ export type SkinKind = "avatar" | "frame" | "badge" | "profile_deco";
 export interface AvatarConfig {
   color?: string;
   shape?: "blob" | "round" | "bean";
+  /** Formato de la base (demo_seed.sql): paleta con nombre. */
+  palette?: string;
 }
 
 export interface Profile {
@@ -127,6 +129,11 @@ export interface SkinMeta {
   frame?: "basico" | "dorado" | "arcoiris" | "andino";
   deco?: "andes" | "cosmos" | "selva";
   color?: string;
+  // Claves del catálogo en la base (database.sql): se traducen en lib/skins.ts
+  palette?: string;
+  border?: string;
+  bg?: string;
+  icon?: string;
 }
 
 export interface Skin {
@@ -166,6 +173,8 @@ export interface Equipped {
 export interface Me {
   profile: Profile;
   balance: number;
+  /** Saldo menos lo ya comprometido en clases reservadas que aún no se cobran. */
+  available: number;
   skins: (Skin & { owned: boolean; equipped: boolean })[];
   equipped: Equipped;
   badges: Badge[];

@@ -32,7 +32,8 @@ export default function MatchPage() {
     );
   if (!data) return null;
 
-  const balance = me?.balance ?? 0;
+  // Saldo disponible: descuenta clases ya reservadas que aún no se cobran
+  const balance = me?.available ?? 0;
 
   const bookGroup = async (g: GroupOption) => {
     const res = await run((u) => api.book(u, { kind: "group", groupId: g.group.id }), "¡Te uniste al grupo!");

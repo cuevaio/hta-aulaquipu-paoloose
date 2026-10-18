@@ -1,21 +1,21 @@
-// Implementación HTTP del ApiClient contra la API Node (§9).
-// Mientras no haya login, el usuario demo elegido viaja en la cabecera x-demo-user.
+// Implementación HTTP del ApiClient contra la API de Next.js (app/api/[...path]).
+// La identidad viaja en una cookie httpOnly firmada por el servidor tras el login;
+// el parámetro userId de cada método solo existe por compatibilidad con el mock.
 
 import type { ApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api";
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
-async function call<T>(userId: string | null, method: string, path: string, body?: unknown): Promise<T> {
+async function call<T>(_userId: string | null, method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, {
       method,
-      headers: {
-        "content-type": "application/json",
-        ...(userId ? { "x-demo-user": userId } : {}),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "content-type": "application/json" },
+      body: method === "GET" || method === "DELETE" ? undefined : JSON.stringify(body ?? {}),
     });
   } catch {
     throw new ApiError("No pudimos conectar con el servidor. Revisa tu conexión.", "network");
@@ -33,6 +33,7 @@ const q = encodeURIComponent;
 
 export const httpApi: ApiClient = {
   login: (dni, password) => call(null, "POST", "/auth/login", { dni, password }),
+  logout: () => call(null, "POST", "/auth/logout"),
   testAccounts: () => call(null, "GET", "/demo/accounts"),
   listDemoUsers: () => call(null, "GET", "/demo/users"),
   me: (u) => call(u, "GET", "/me"),
@@ -63,5 +64,7 @@ export const httpApi: ApiClient = {
   buySkin: (u, id) => call(u, "POST", `/skins/${q(id)}/buy`),
   equipSkin: (u, id, equip) => call(u, "POST", `/skins/${q(id)}/equip`, { equip }),
   ledger: (u) => call(u, "GET", "/ledger/mine"),
-  resetDemo: () => call(null, "POST", "/demo/reset"),
+  resetDemo: async () => {
+    throw new ApiError("Reiniciar la demo solo existe en modo mock.", "invalid");
+  },
 };

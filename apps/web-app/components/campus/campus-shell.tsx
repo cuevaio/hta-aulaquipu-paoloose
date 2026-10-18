@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, GraduationCap, LayoutDashboard, LogOut, School, ShoppingBag, User, Wallet, X } from "lucide-react";
 import { api, API_MODE } from "@/lib/api";
-import { AI_SPOTS, STUDENT_SPOTS, type Room } from "@/lib/campus/map";
+import { AI_SPOTS, STUDENT_SPOTS, TUTOR_SPOTS, type Room } from "@/lib/campus/map";
 import { useQuery, useSession } from "@/components/providers";
 import { Avatar } from "@/components/avatar";
 import { Quipus } from "@/components/bits";
@@ -48,24 +48,31 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
 
   const people = useMemo<CampusPerson[]>(() => {
     if (!crowd.data) return [];
-    const students: CampusPerson[] = crowd.data.others
-      .filter((p) => STUDENT_SPOTS[p.profile.id])
-      .map((p) => {
-        const first = p.profile.display_name.split(" ")[0];
-        const teaches = p.topics.length > 0;
-        return {
-          id: p.profile.id,
-          ...STUDENT_SPOTS[p.profile.id],
-          name: first,
-          caption: teaches
-            ? `Tutor · ★ ${p.stats.estrellas_promedio ? p.stats.estrellas_promedio.toFixed(1) : "nuevo"}`
-            : `${p.profile.grade}º de secundaria`,
-          href: `/tutor/${p.profile.id}`,
-          prompt: `Ver el perfil de ${first}`,
-          avatar: p.profile.avatar_config,
-          equipped: p.equipped,
-        };
-      });
+    // Quienes enseñan van a la sala de tutores; el resto se reparte por el campus
+    const teachers = crowd.data.others.filter((p) => p.topics.length > 0);
+    const learners = crowd.data.others.filter((p) => p.topics.length === 0);
+    const placed = [
+      ...teachers.slice(0, TUTOR_SPOTS.length).map((p, i) => ({ p, spot: TUTOR_SPOTS[i] })),
+      ...[...teachers.slice(TUTOR_SPOTS.length), ...learners]
+        .slice(0, STUDENT_SPOTS.length)
+        .map((p, i) => ({ p, spot: STUDENT_SPOTS[i] })),
+    ];
+    const students: CampusPerson[] = placed.map(({ p, spot }) => {
+      const first = p.profile.display_name.split(" ")[0];
+      const teaches = p.topics.length > 0;
+      return {
+        id: p.profile.id,
+        ...spot,
+        name: first,
+        caption: teaches
+          ? `Tutor · ★ ${p.stats.estrellas_promedio ? p.stats.estrellas_promedio.toFixed(1) : "nuevo"}`
+          : `${p.profile.grade}º de secundaria`,
+        href: `/tutor/${p.profile.id}`,
+        prompt: `Ver el perfil de ${first}`,
+        avatar: p.profile.avatar_config,
+        equipped: p.equipped,
+      };
+    });
     const ais: CampusPerson[] = crowd.data.ais.slice(0, AI_SPOTS.length).map((a, i) => ({
       id: a.id,
       ...AI_SPOTS[i],
@@ -150,8 +157,9 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
                 <User className="size-4" /> Mi perfil
               </Link>
               <button
-                onClick={() => {
+                onClick={async () => {
                   setMenu(false);
+                  await api.logout().catch(() => {});
                   selectUser(null);
                   router.push("/");
                 }}

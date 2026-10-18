@@ -27,7 +27,7 @@ export function AiTutorCard({
   const { me } = useSession();
   const { run, pending } = useMutation();
   const [armed, setArmed] = useState(defaultArmed);
-  const short = me ? me.balance < tutor.price_quipus : false;
+  const short = me ? me.available < tutor.price_quipus : false;
 
   const book = async () => {
     const res = await run((u) => api.book(u, { kind: "ai", aiTutorId: tutor.id, requestId }));
@@ -56,7 +56,7 @@ export function AiTutorCard({
           {!compact && <p className="text-sm text-muted-foreground">{tutor.persona.style}</p>}
           {short ? (
             <p className="rounded-2xl bg-gold/20 p-3 text-sm font-semibold text-gold-foreground">
-              Te faltan {tutor.price_quipus - (me?.balance ?? 0)} quipus.{" "}
+              Te faltan {tutor.price_quipus - (me?.available ?? 0)} quipus disponibles.{" "}
               <Link href="/ensenar" className="underline">
                 Enseña para ganar más
               </Link>

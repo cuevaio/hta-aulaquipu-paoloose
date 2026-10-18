@@ -1,5 +1,6 @@
 import type { Badge, Equipped, Profile, TutorStats } from "@/lib/types";
 import { Avatar, DECO_BG } from "@/components/avatar";
+import { decoOf } from "@/lib/skins";
 import { Stars } from "@/components/bits";
 
 export function ProfileHero({
@@ -15,7 +16,7 @@ export function ProfileHero({
   badges: Badge[];
   children?: React.ReactNode;
 }) {
-  const deco = equipped.deco?.meta.deco;
+  const deco = decoOf(equipped.deco?.meta);
   return (
     <div className="overflow-hidden rounded-[2rem] bg-card ring-1 ring-border">
       <div className="h-28 @3xl:h-36" style={{ background: deco ? DECO_BG[deco] : "linear-gradient(135deg,var(--primary),var(--mint))" }} />

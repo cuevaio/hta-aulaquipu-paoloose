@@ -30,7 +30,14 @@ export default function HomePage() {
           <p className="mt-4 text-xs font-bold tracking-wider text-white/60 uppercase">Tu billetera</p>
           <div className="mt-1">
             {me ? (
-              <Quipus amount={me.balance} className="text-5xl text-gold" iconClassName="size-10" />
+              <>
+                <Quipus amount={me.balance} className="text-5xl text-gold" iconClassName="size-10" />
+                {me.available < me.balance && (
+                  <p className="mt-1 text-xs font-bold text-white/60">
+                    {me.available} disponibles · {me.balance - me.available} reservados en clases por cobrar
+                  </p>
+                )}
+              </>
             ) : (
               <Skeleton className="h-12 w-32 bg-white/10" />
             )}

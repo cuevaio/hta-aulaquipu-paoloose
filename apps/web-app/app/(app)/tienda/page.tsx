@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import type { Equipped, Skin, SkinKind } from "@/lib/types";
 import { useMutation, useSession } from "@/components/providers";
 import { Avatar, DECO_BG } from "@/components/avatar";
+import { badgeIcon, decoOf } from "@/lib/skins";
 import { Card, Quipus, SectionTitle, Skeleton, btn } from "@/components/bits";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +14,7 @@ const TABS: { kind: SkinKind; label: string }[] = [
   { kind: "avatar", label: "Accesorios" },
   { kind: "frame", label: "Marcos" },
   { kind: "profile_deco", label: "Fondos" },
+  { kind: "badge", label: "Insignias" },
 ];
 
 const ALL_BADGES = [
@@ -40,7 +42,7 @@ export default function ShopPage() {
   if (!me) return <Skeleton className="h-96" />;
 
   const shown = withPreview(me.equipped, preview);
-  const deco = shown.deco?.meta.deco;
+  const deco = decoOf(shown.deco?.meta);
   const earned = new Set(me.badges.map((b) => b.name));
 
   return (
@@ -91,7 +93,7 @@ export default function ShopPage() {
           {me.skins
             .filter((s) => s.kind === tab)
             .map((s) => {
-              const short = !s.owned && me.balance < s.price_quipus;
+              const short = !s.owned && me.available < s.price_quipus;
               return (
                 <div
                   key={s.id}
@@ -105,9 +107,15 @@ export default function ShopPage() {
                 >
                   <div
                     className="grid h-24 w-full place-items-center rounded-2xl"
-                    style={{ background: s.meta.deco ? DECO_BG[s.meta.deco] : "var(--muted)" }}
+                    style={{ background: decoOf(s.meta) ? DECO_BG[decoOf(s.meta)!] : "var(--muted)" }}
                   >
-                    <Avatar config={me.profile.avatar_config} equipped={withPreview(me.equipped, s)} size={64} />
+                    {s.kind === "badge" ? (
+                      <span className="text-5xl" aria-hidden>
+                        {badgeIcon(s.meta)}
+                      </span>
+                    ) : (
+                      <Avatar config={me.profile.avatar_config} equipped={withPreview(me.equipped, s)} size={64} />
+                    )}
                   </div>
                   <p className="font-extrabold leading-tight">{s.name}</p>
                   {s.owned ? (
@@ -141,7 +149,7 @@ export default function ShopPage() {
 
         <Card>
           <SectionTitle>Insignias de prestigio</SectionTitle>
-          <p className="mb-3 text-sm text-muted-foreground">No se compran: se ganan con logros.</p>
+          <p className="mb-3 text-sm text-muted-foreground">Estas no se compran: se ganan con logros.</p>
           <div className="grid grid-cols-2 gap-2 @xl:grid-cols-3">
             {ALL_BADGES.map((b) => {
               const got = earned.has(b.name);

@@ -303,18 +303,18 @@ function generic(student: string, topic: string): ScriptStep[] {
   ];
 }
 
+const fold = (t: string) =>
+  t
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+/** Elige el guion por nombre de tema (funciona con los temas del mock y con los de la base). */
 export function scriptFor(topicId: string, topicName: string, studentName: string): ScriptStep[] {
-  switch (topicId) {
-    case "top-fracciones":
-      return fracciones(studentName);
-    case "top-ecuaciones":
-      return ecuaciones(studentName);
-    case "top-funciones":
-    case "top-trigonometria":
-      return funciones(studentName);
-    case "top-porcentajes":
-      return porcentajes(studentName);
-    default:
-      return generic(studentName, topicName);
-  }
+  const t = fold(`${topicId} ${topicName}`);
+  if (t.includes("fraccion")) return fracciones(studentName);
+  if (t.includes("ecuacion")) return ecuaciones(studentName);
+  if (/funcion|trigonometr|cinematica|derivada/.test(t)) return funciones(studentName);
+  if (/porcentaje|proporcion/.test(t)) return porcentajes(studentName);
+  return generic(studentName, topicName);
 }

@@ -1,7 +1,7 @@
 import { ServerOptions, cli, defineAgent, voice } from '@livekit/agents';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
-import { createAgent } from './agent.ts';
+import { type ClassContext, createAgent } from './agent.ts';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config({ path: '../.env' });
@@ -13,15 +13,35 @@ const encoder = new TextEncoder();
 
 function sessionIdFromRoom(roomName: string | undefined): string | null {
   const match = /^session-([0-9a-fA-F-]{36})$/.exec(roomName ?? '');
-  return match ? match[1] : null;
+  return match?.[1] ?? null;
+}
+
+// La web app despacha al agente con metadata JSON: tutor elegido, tema y alumno.
+function classContextFrom(metadata: string | undefined): ClassContext {
+  try {
+    const raw = JSON.parse(metadata || '{}') as Partial<ClassContext>;
+    return {
+      tutorName: typeof raw.tutorName === 'string' && raw.tutorName ? raw.tutorName : 'Quipu',
+      style: typeof raw.style === 'string' ? raw.style : '',
+      focus: typeof raw.focus === 'string' ? raw.focus : '',
+      topic: typeof raw.topic === 'string' ? raw.topic : '',
+      studentName: typeof raw.studentName === 'string' ? raw.studentName : '',
+    };
+  } catch {
+    return { tutorName: 'Quipu', style: '', focus: '', topic: '', studentName: '' };
+  }
 }
 
 export default defineAgent({
   entry: async (ctx) => {
-    const sessionId = sessionIdFromRoom(ctx.room.name);
+    // El nombre de la sala viene en el job: ctx.room.name sigue vacío hasta ctx.connect()
+    const sessionId = sessionIdFromRoom(ctx.job.room?.name ?? ctx.room.name);
+    const klass = classContextFrom(ctx.job.metadata);
 
     const publish = async (msg: Record<string, unknown>, topic: string) => {
-      await ctx.room.localParticipant.publishData(encoder.encode(JSON.stringify(msg)), {
+      const local = ctx.room.localParticipant;
+      if (!local) return;
+      await local.publishData(encoder.encode(JSON.stringify(msg)), {
         reliable: true,
         topic,
       });
@@ -30,7 +50,7 @@ export default defineAgent({
     const logEvent = async (kind: string, payload: Record<string, unknown>) => {
       if (!SUPABASE_URL || !SUPABASE_SECRET_KEY || !sessionId) return;
       try {
-        await fetch(`${SUPABASE_URL}/rest/v1/session_events`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/session_events`, {
           method: 'POST',
           headers: {
             apikey: SUPABASE_SECRET_KEY,
@@ -45,6 +65,13 @@ export default defineAgent({
             payload,
           }),
         });
+        if (!res.ok) {
+          console.warn(
+            'no se pudo registrar session_event',
+            res.status,
+            (await res.text()).slice(0, 300),
+          );
+        }
       } catch (err) {
         console.warn('no se pudo registrar session_event', err);
       }
@@ -53,16 +80,18 @@ export default defineAgent({
     const session = new voice.AgentSession({});
 
     await session.start({
-      agent: createAgent({ publish, logEvent }),
+      agent: createAgent({ publish, logEvent }, klass),
       room: ctx.room,
     });
 
     await ctx.connect();
-    await logEvent('join', { name: 'Quipu' });
+    await logEvent('join', { name: klass.tutorName });
 
+    const who = klass.studentName ? ` a ${klass.studentName}` : ' al alumno';
     session.generateReply({
-      instructions:
-        'Saluda como Quipu al alumno y pregunta qué tema quiere trabajar hoy. Sé breve y cercano.',
+      instructions: klass.topic
+        ? `Saluda como ${klass.tutorName}${who}, di que hoy trabajarán ${klass.topic} y haz tu primera pregunta de diagnóstico. Sé breve y cercano.`
+        : `Saluda como ${klass.tutorName}${who} y pregunta qué tema quiere trabajar hoy. Sé breve y cercano.`,
     });
   },
 });

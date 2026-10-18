@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import type { VideoTrack } from "livekit-client";
 import { Mic, MicOff, Sparkles } from "lucide-react";
 import type { AvatarConfig, Equipped } from "@/lib/types";
 import { AiAvatar, Avatar } from "@/components/avatar";
@@ -23,17 +24,30 @@ export function ParticipantCard({
   p,
   speaking,
   stream,
+  videoTrack,
   large,
 }: {
   p: Participant;
   speaking: boolean;
+  /** Cámara local en modo sin LiveKit. */
   stream?: MediaStream | null;
+  /** Pista de video de LiveKit (propia o remota). */
+  videoTrack?: VideoTrack | null;
   large?: boolean;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {
-    if (video.current) video.current.srcObject = stream ?? null;
-  }, [stream]);
+    const el = video.current;
+    if (!el) return;
+    if (videoTrack) {
+      videoTrack.attach(el);
+      return () => {
+        videoTrack.detach(el);
+      };
+    }
+    el.srcObject = stream ?? null;
+  }, [stream, videoTrack]);
+  const hasVideo = !!videoTrack || !!stream;
 
   return (
     <div
@@ -43,8 +57,14 @@ export function ParticipantCard({
         large ? "h-40 w-full md:h-44" : "h-28 w-36 md:h-32 md:w-full",
       )}
     >
-      {stream ? (
-        <video ref={video} autoPlay playsInline muted className="absolute inset-0 size-full scale-x-[-1] object-cover" />
+      {hasVideo ? (
+        <video
+          ref={video}
+          autoPlay
+          playsInline
+          muted
+          className={cn("absolute inset-0 size-full object-cover", p.isMe && "scale-x-[-1]")}
+        />
       ) : p.ai ? (
         <AiAvatar emoji={p.ai.emoji} color={p.ai.color} size={large ? 84 : 60} speaking={speaking} />
       ) : (
@@ -65,7 +85,9 @@ export function ParticipantCard({
         </span>
       )}
       {!p.connected && (
-        <span className="absolute top-2 right-2 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-bold text-white/80">sin conexión</span>
+        <span className="absolute top-2 right-2 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-bold text-white/80">
+          {p.ai ? "conectando…" : "sin conexión"}
+        </span>
       )}
     </div>
   );
