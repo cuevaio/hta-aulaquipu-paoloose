@@ -363,8 +363,16 @@ const NOT_RUN_GIVE_UP =
  * Si la primera respuesta de una delegación acaba sin llamadas: se registra el error y se le
  * avisa al tutor de voz para que reintente una vez y, si vuelve a pasar, lo diga sin disimular.
  */
-export function watchDelegations(session: DelegationEmitter, hooks: TutorHooks) {
-  const runs = new Map<string, { tools: number; checked: boolean }>();
+/** Cuánto esperar antes de avisar que una delegación no hizo nada (el director puede tardar en mostrarlo). */
+const NOT_RUN_GRACE_MS = 7000;
+
+export function watchDelegations(
+  session: DelegationEmitter,
+  hooks: TutorHooks,
+  lastScreenAction: () => number = () => 0,
+  schedule: (fn: () => void, ms: number) => void = (fn, ms) => void setTimeout(fn, ms),
+) {
+  const runs = new Map<string, { tools: number; checked: boolean; startedAt: number }>();
   let strikes = 0;
   type ServerEvt = {
     type?: string;
@@ -374,7 +382,7 @@ export function watchDelegations(session: DelegationEmitter, hooks: TutorHooks) 
   };
   session.on('openai_server_event_received', ((e: ServerEvt) => {
     if (e.type === 'session.delegation.created' && e.delegation?.id) {
-      runs.set(e.delegation.id, { tools: 0, checked: false });
+      runs.set(e.delegation.id, { tools: 0, checked: false, startedAt: Date.now() });
       if (runs.size > 100) runs.delete(runs.keys().next().value as string);
       return;
     }
@@ -388,14 +396,16 @@ export function watchDelegations(session: DelegationEmitter, hooks: TutorHooks) 
     } else if (!run.checked && (ev.type === 'response.completed' || ev.type === 'response.failed' || ev.type === 'response.incomplete')) {
       run.checked = true;
       if (run.tools > 0) return;
-      strikes++;
-      void hooks.logEvent('error', {
-        tool: 'delegation',
-        reason: ev.type === 'response.completed' ? 'backend_returned_without_tool_call' : ev.type,
-        attempt: strikes,
-      });
-      session.appendCommentary(strikes === 1 ? NOT_RUN_RETRY : NOT_RUN_GIVE_UP);
-      if (strikes > 1) strikes = 0;
+      const reason = ev.type === 'response.completed' ? 'backend_returned_without_tool_call' : ev.type;
+      // El gráfico, la imagen o la pregunta los suele poner el director a partir de lo que dijo el
+      // tutor, unos segundos después: solo se avisa si en ese rato no apareció nada en pantalla
+      schedule(() => {
+        if (lastScreenAction() >= run.startedAt) return;
+        strikes++;
+        void hooks.logEvent('error', { tool: 'delegation', reason, attempt: strikes });
+        session.appendCommentary(strikes === 1 ? NOT_RUN_RETRY : NOT_RUN_GIVE_UP);
+        if (strikes > 1) strikes = 0;
+      }, NOT_RUN_GRACE_MS);
     }
   }) as (e: never) => void);
 }
@@ -499,12 +509,13 @@ export function createAgent(
       5. Cierra con un resumen hablado breve.
 
       # Herramientas que llamas TÚ directamente (no las delegues)
-      - La plataforma también ejecuta por ti lo que ANUNCIES con claridad: si dices con la expresión completa "voy a graficar y igual a x al cuadrado", "te propongo una pregunta de opción múltiple sobre…" o "te muestro una imagen de la célula animal", el gráfico, la tarjeta o la imagen aparecen solos. Anuncia siempre de forma explícita (con la expresión dicha en palabras) y luego ESPERA el aviso del sistema ("la plataforma acaba de ejecutar…"): confírmalo en una frase solo entonces. Si el aviso no llega en unos segundos, di que no pudiste y llama la herramienta tú mismo como respaldo (si el gráfico ya estaba, no se duplica).
+      - La plataforma también ejecuta por ti lo que ANUNCIES con claridad: si dices con la expresión completa "voy a graficar y igual a x al cuadrado", "te propongo una pregunta de opción múltiple sobre…" o "te muestro una imagen de la célula animal", el gráfico, la tarjeta o la imagen aparecen solos. Anuncia siempre de forma explícita (con la expresión dicha en palabras) y luego ESPERA el aviso del sistema ("la plataforma acaba de ejecutar…"): confírmalo en una frase solo entonces. El aviso puede tardar varios segundos: mientras tanto sigue explicando o di "un momento". Si no llega, llama la herramienta tú mismo como respaldo, sin decir que falló (si ya estaba en pantalla, no se duplica). Solo di que no pudiste cuando una herramienta devuelva ERROR o el sistema te avise que no se ejecutó.
       - Para graficar llama TÚ graphSet con LaTeX de Desmos: "y=2x+1", "y=\\frac{1}{2}x", "(1,3)". Solo funciones de x e y con números: una fórmula con otras letras (v=d/t, F=ma, A=b·h) NO se grafica, se pide escrita en el documento. Si quieres mostrarla en el graficador, conviértela con valores concretos (distancia vs tiempo a 5 m/s: "y=5x"). Usa ids cortos ("f1", "f2") y reutiliza el id para cambiar una curva; el color es opcional (hexadecimal, p. ej. "#7C6BF2") para distinguir varias curvas. Para quitar una curva, graphRemove con su id.
       - Anuncia en futuro ("voy a graficarlo") y llama la herramienta de inmediato; cuando devuelva OK, confírmalo y explica lo que se ve. Si devuelve ERROR, dilo ("no pude graficarlo") y reintenta una vez.
       - La pantalla cambia sola al graficador cuando graficas.
       - Para una pregunta de opción múltiple llama TÚ quizAsk (2 a 4 opciones, correctIndex = posición de la correcta empezando en 0, explicación breve). El alumno la ve como tarjeta en la pestaña Actividad, que se abre sola. Léela en voz alta de forma breve y espera su respuesta: no le digas cuál es la correcta, el sistema te avisará qué eligió y si acertó.
-      - Si el alumno pide ver una imagen, un dibujo o un esquema, o el concepto es visual (células, triángulos, mapas, partes de una planta, el sistema solar…), llama TÚ showImage; nunca lo dibujes con caracteres (arte ASCII) ni lo pidas así al documento. Llama showImage con una consulta corta ("célula animal", "triángulo rectángulo", "mapa del Perú") y, si quieres, un título breve. Responde al instante y la imagen aparece en el documento en unos segundos: NO esperes; sigue hablando y explicando. Di que "va a aparecer en el documento", no que ya está a la vista; si no aparece, el sistema te avisará. Máximo ${MAX_IMAGES_PER_CLASS} por clase y solo como apoyo.
+      - El graficador es SOLO para funciones y relaciones entre x e y (rectas, parábolas, puntos). Para "visualizar", "dibujar" o "mostrar" algo que no es una función (una fracción como 1/2 o 3/4 vista como partes de un todo, figuras, objetos, procesos) usa showImage, nunca el graficador: un 1/2 se entiende con un círculo o una pizza partida en dos, no con la recta y = 1/2.
+      - Si el alumno pide ver una imagen, un dibujo o un esquema, o el concepto es visual (fracciones, células, triángulos, mapas, partes de una planta, el sistema solar…), llama TÚ showImage; nunca lo dibujes con caracteres (arte ASCII) ni lo pidas así al documento. Llama showImage con una consulta corta ("célula animal", "triángulo rectángulo", "mapa del Perú") y, si quieres, un título breve. Responde al instante y la imagen aparece en el documento en unos segundos: NO esperes; sigue hablando y explicando. Di que "va a aparecer en el documento", no que ya está a la vista; si no aparece, el sistema te avisará. Máximo ${MAX_IMAGES_PER_CLASS} por clase y solo como apoyo.
       - Para reaccionar llama TÚ emote (celebrate, think, surprised o encourage) cuando el alumno acierte, dude o te sorprenda; con moderación. Si se equivoca, anímalo.
 
       # Qué delegar
@@ -665,7 +676,7 @@ export function createAgent(
         description:
           'Muestra en el documento de la clase una imagen educativa de un concepto visual (célula, triángulo, mapa, planta…). Responde al instante y la imagen aparece en unos segundos: sigue explicando mientras tanto. Usa primero las imágenes del tema y si no hay, busca en Wikimedia Commons. Máximo 3 por clase.',
         parameters: z.object({
-          query: z.string().min(2).describe('Qué mostrar, en pocas palabras, por ejemplo "célula animal"'),
+          query: z.string().min(2).describe('Qué mostrar, en pocas palabras y en español: "célula animal", "fracción 1/2", "triángulo rectángulo"'),
           caption: z.string().optional().describe('Título breve de la imagen para el alumno'),
         }),
         execute: (args) => {

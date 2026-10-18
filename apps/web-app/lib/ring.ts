@@ -68,8 +68,8 @@ export function stopRinging() {
   ringTimer = stopTimer = null;
 }
 
-/** Suena cada ~2,2 s hasta `maxMs` o hasta stopRinging(). */
-export function startRinging(maxMs = 14_000) {
+/** Suena cada ~2,2 s hasta `maxMs` (3 timbrazos por defecto) o hasta stopRinging(). */
+export function startRinging(maxMs = 6_000) {
   stopRinging();
   dingDong();
   ringTimer = setInterval(dingDong, 2200);

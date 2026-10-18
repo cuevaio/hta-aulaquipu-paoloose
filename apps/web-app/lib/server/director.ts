@@ -83,7 +83,9 @@ const SYSTEM_PROMPT = (topic: string) =>
   `correct_index es la posición (desde 0) de la respuesta correcta en options; explanation explica en 1-2 frases por qué es la correcta. ` +
   `Solo como formato (NO copies su contenido, crea una pregunta nueva sobre lo que se está viendo): question "¿Qué organelo produce energía en la célula?", options ["La mitocondria", "El núcleo", "La membrana", "El citoplasma"], correct_index 0. ` +
   `Varía la posición de la respuesta correcta.\n` +
-  `- image: query corta (2-6 palabras) para buscar un diagrama o foto educativa, solo si la piden o el tutor la anuncia.\n` +
+  `- image: query corta (2-6 palabras, en español) para buscar un diagrama o foto educativa, solo si la piden o el tutor la anuncia. ` +
+  `Si piden "visualizar", "dibujar", "mostrar" o "ver" algo que NO es una función (una fracción como 1/2 o 3/4, partes de un todo, figuras, objetos, procesos), es image y NUNCA graph_set: ` +
+  `"ayúdame a visualizar 1/2" → image con query "fracción 1/2"; "muéstrame tres cuartos" → "fracción 3/4"; "dibuja una célula" → "célula animal". graph_set es solo para funciones o relaciones entre x e y.\n` +
   `Máximo 2 acciones. Si el pedido es ambiguo o falta información (p. ej. "grafica eso" sin expresión), no hagas nada.`;
 
 const SCHEMA = {

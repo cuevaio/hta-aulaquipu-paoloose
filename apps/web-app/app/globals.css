@@ -262,6 +262,12 @@
   70% { transform: rotate(0); }
 }
 .bell-ring { animation: bell-ring 1.4s ease-in-out infinite; transform-origin: 50% 0; }
+/* Igual, pero solo tres sacudidas: para llamar la atención sin quedarse sonando */
+.bell-ring-short { animation: bell-ring 1.4s ease-in-out 3; transform-origin: 50% 0; }
+@keyframes ping-short {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
+.ping-short { animation: ping-short 1s cubic-bezier(0, 0, 0.2, 1) 3 forwards; }
 @media (prefers-reduced-motion: reduce) {
-  .bell-ring { animation: none; }
+  .bell-ring, .bell-ring-short, .ping-short { animation: none; }
 }

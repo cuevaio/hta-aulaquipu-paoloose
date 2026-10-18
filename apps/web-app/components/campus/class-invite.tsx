@@ -21,7 +21,7 @@ export function ClassInvite({ alert, onJoin, onDismiss }: { alert: ClassAlert; o
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 font-extrabold leading-tight">
             {alert.live && <Radio className="size-4 shrink-0 text-coral" />}
-            {alert.ring && <Bell className="bell-ring size-4 shrink-0 text-gold" aria-hidden />}
+            {alert.ring && <Bell className="bell-ring-short size-4 shrink-0 text-gold" aria-hidden />}
             {alert.title}
           </p>
           <p className="text-sm text-muted-foreground">{alert.body}</p>

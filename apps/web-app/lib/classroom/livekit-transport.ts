@@ -16,7 +16,7 @@ import {
   type RemoteParticipant,
   type Room,
 } from "livekit-client";
-import type { ClassroomEvent, Stroke, TutorEmote } from "@/lib/classroom/events";
+import { normalizeTool, type ClassroomEvent, type Stroke, type TutorEmote } from "@/lib/classroom/events";
 import type { ClassroomTransport } from "@/lib/classroom/transport";
 
 const CLASS_TOPIC = "aulaquipu:class";
@@ -24,6 +24,7 @@ const NOTEBOOK_TOPIC = "aulaquipu:notebook";
 
 // Eventos que una persona puede mandar a las demás (lo demás lo genera el agente o la sala)
 const PEER_EVENTS = new Set<ClassroomEvent["type"]>([
+  "quiz_answered",
   "sync_request",
   "class_snapshot",
   "doc_write",
@@ -160,6 +161,14 @@ export class LiveKitTransport implements ClassroomTransport {
         .catch(() => {});
       return;
     }
+    if (event.type === "cursor") {
+      // Muchos por segundo: canal sin garantía (si se pierde uno, el siguiente lo corrige)
+      const body = JSON.stringify({ x: Math.round(event.x * 1000) / 1000, y: Math.round(event.y * 1000) / 1000, tool: event.tool });
+      void this.room.localParticipant
+        .publishData(new TextEncoder().encode(body), { reliable: false, topic: "aulaquipu:cursor" })
+        .catch(() => {});
+      return;
+    }
     if (event.type === "quiz_answer") {
       const body = JSON.stringify({ type: "quiz_answer", id: event.id, index: event.index });
       void this.room.localParticipant
@@ -216,6 +225,14 @@ export class LiveKitTransport implements ClassroomTransport {
         this.emit({ type: "focus_tool", actor, tool: "doc" });
         this.emit({ type: "doc_append_table", actor, rows, title: typeof msg.title === "string" ? msg.title : undefined });
       }
+      return;
+    }
+    if (topic === "aulaquipu:cursor") {
+      const x = Number(msg.x);
+      const y = Number(msg.y);
+      const tool = normalizeTool(String(msg.tool ?? ""));
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x > 1.05 || y > 1.05) return;
+      this.emit({ type: "cursor", actor, x, y, tool });
       return;
     }
     if (topic === "aulaquipu:action" && msg.type === "action" && typeof msg.label === "string") {

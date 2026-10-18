@@ -6,6 +6,7 @@ import { Mic, MicOff, Sparkles } from "lucide-react";
 import type { AvatarConfig, Equipped } from "@/lib/types";
 import { Avatar } from "@/components/avatar";
 import { AiTutorAvatar, type TutorAvatarState, type TutorGaze } from "@/components/classroom/ai-tutor-avatar";
+import { TeacherStage } from "@/components/classroom/teacher-stage";
 import { useAudioLevel } from "@/lib/classroom/use-audio-level";
 import { cn } from "@/lib/utils";
 
@@ -69,7 +70,8 @@ export function ParticipantCard({
       className={cn(
         "relative flex shrink-0 items-center justify-center overflow-hidden rounded-3xl bg-navy-2 ring-2 transition-all",
         speaking ? "ring-mint" : "ring-white/10",
-        large ? "h-40 w-full md:h-44" : "h-28 w-36 md:h-32 md:w-full",
+        // El profe IA ocupa un escenario más alto: se le ve de cuerpo entero
+        large ? (p.ai ? "h-56 w-full md:h-72" : "h-40 w-full md:h-44") : "h-28 w-36 md:h-32 md:w-full",
       )}
     >
       {hasVideo ? (
@@ -79,6 +81,14 @@ export function ParticipantCard({
           playsInline
           muted
           className={cn("absolute inset-0 size-full object-cover", p.isMe && "scale-x-[-1]")}
+        />
+      ) : p.ai && large && p.key.startsWith("ai:") ? (
+        <TeacherStage
+          id={p.key.slice("ai:".length)}
+          name={p.name}
+          color={p.ai.color}
+          state={aiState ?? (speaking ? "speaking" : "idle")}
+          level={level}
         />
       ) : p.ai ? (
         <AiTutorAvatar

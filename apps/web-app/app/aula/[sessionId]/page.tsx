@@ -28,6 +28,8 @@ import { Quipus, btn } from "@/components/bits";
 import { DesmosGraph, type DesmosHandle } from "@/components/classroom/desmos";
 import { LiveDoc } from "@/components/classroom/live-doc";
 import { ActivityPanel, type QuizCard } from "@/components/classroom/activity-panel";
+import { AiRequestBar } from "@/components/classroom/ai-request-bar";
+import { CursorLayer } from "@/components/classroom/cursor-layer";
 import { Whiteboard } from "@/components/classroom/whiteboard";
 import { ParticipantCard, type Participant } from "@/components/classroom/participant-card";
 import { applyBoardEvent, normalizeTool, tableToMarkdown, upsertSection, type ClassroomEvent, type ClassroomTool, type Stroke } from "@/lib/classroom/events";
@@ -108,6 +110,8 @@ export default function ClassroomPage() {
   const docRef = useRef("");
   // Lo que hay en pantalla, para pasárselo a quien entra tarde (clase compartida)
   const graphItems = useRef(new Map<string, { id: string; latex: string; color?: string }>());
+  // Respuestas de los alumnos a las preguntas del director (las ve el profe), por id de pregunta
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, { actor: string; name: string; correct: boolean }[]>>({});
   const strokesRef = useRef<Stroke[]>([]);
   const synced = useRef(false);
   const tutorRef = useRef<SimulatedAiTutor | null>(null);
@@ -427,6 +431,12 @@ export default function ClassroomPage() {
           // La actividad se abre sola para que el alumno la vea
           setTool("activity");
           break;
+        case "quiz_answered":
+          setQuizAnswers((m) => ({
+            ...m,
+            [e.id]: [...(m[e.id] ?? []).filter((a) => a.actor !== e.actor), { actor: e.actor, name: names[e.actor] ?? "Alumno", correct: e.correct }],
+          }));
+          break;
         case "quiz_result":
           // Clase compartida: cada alumno ve solo el veredicto de su propia respuesta
           if (e.for && e.for !== myActor) break;
@@ -573,8 +583,10 @@ export default function ClassroomPage() {
       api
         .answerQuiz(userId ?? "", sessionId, id, index)
         .then((v) => {
-          transport.send({ type: "quiz_result", actor, id, correct: v.correct, correctIndex: v.correctIndex, explanation: v.explanation });
+          // El veredicto es solo para quien respondió; al profe le llega quién respondió y si acertó
+          transport.send({ type: "quiz_result", actor, id, correct: v.correct, correctIndex: v.correctIndex, explanation: v.explanation, for: myActor });
           transport.send({ type: "emote", actor, kind: v.correct ? "celebrate" : "encourage" });
+          transport.publish({ type: "quiz_answered", actor: myActor, id, correct: v.correct });
         })
         .catch((err) => {
           console.warn("[director] no se pudo calificar", err instanceof Error ? err.message : err);
@@ -669,6 +681,26 @@ export default function ClassroomPage() {
   // Clase IA compartida: solo el anfitrión la termina para todos; los demás pueden salir
   const aiGroup = session.tutor_kind === "ai" && !!session.group_id;
   const canEnd = !aiGroup || !data.hostId || data.hostId === userId;
+
+  // Herramientas con IA del alumno tutor (clase con profe humano): gráfico y pregunta. Usan el
+  // director, que valida todo en el servidor (gráficos solo en x e y; la clave del quiz no sale de ahí).
+  const tutorAi = iAmTutor && !aiTutor && !!userId;
+  const askAi = async (text: string, want: "graph" | "quiz"): Promise<string | null> => {
+    if (!userId) return "Tu sesión expiró. Vuelve a entrar.";
+    try {
+      const res = await api.director(userId, sessionId, { source: "tutor", text: text.slice(0, 500) });
+      const actions = res.actions.filter((a) => (want === "graph" ? a.type === "graph_set" || a.type === "graph_clear" : a.type === "quiz"));
+      if (!actions.length) {
+        return want === "graph"
+          ? "La IA no encontró un gráfico para eso. Descríbelo con números (p. ej. «la recta y = 2x + 1»); las fórmulas con letras van en el documento."
+          : "La IA no pudo armar la pregunta. Prueba con otro tema o más detalle.";
+      }
+      applyDirectorActions(actions);
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : "La IA no respondió. Intenta de nuevo.";
+    }
+  };
   // §11.1: el tutor recibe la suma de las cuotas (floor(P/N) × N)
   const tutorEarns = myShare * students.length;
 
@@ -761,8 +793,9 @@ export default function ClassroomPage() {
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-3 md:flex-row md:px-5">
         {/* Tarjetas fijas alrededor del área didáctica: tutor a la izquierda */}
-        <aside className="flex gap-2 overflow-x-auto md:w-52 md:shrink-0 md:flex-col md:overflow-visible">
-          <div className="w-44 shrink-0 md:w-full">
+        <aside className={cn("flex gap-2 overflow-x-auto md:shrink-0 md:flex-col md:overflow-visible", aiTutor ? "md:w-64" : "md:w-52")}>
+          {/* Con tutor IA su tarjeta es un escenario más grande (el profe de cuerpo entero) */}
+          <div className={cn("shrink-0 md:w-full", aiTutor ? "w-52" : "w-44")}>
             <ParticipantCard
               {...cardProps({ ...tutorP, video: tutorMedia.video })}
               large
@@ -819,6 +852,14 @@ export default function ClassroomPage() {
             </div>
             <div className={cn("absolute inset-0", tool !== "graph" && "invisible")}>
               <DesmosGraph ref={desmos} visible={tool === "graph"} />
+              {tutorAi && (
+                <AiRequestBar
+                  placeholder="Pídele un gráfico a la IA: «parábola con vértice en (2, 3)»"
+                  label="Graficar"
+                  onSubmit={(t) => askAi(`Voy a graficar en Desmos: ${t}`, "graph")}
+                  className="absolute bottom-3 left-1/2 z-20 w-[min(34rem,calc(100%-1.5rem))] -translate-x-1/2"
+                />
+              )}
             </div>
             <div className={cn("absolute inset-0", tool !== "notebook" && "invisible")}>
               <Whiteboard
@@ -834,8 +875,28 @@ export default function ClassroomPage() {
               />
             </div>
             <div className={cn("absolute inset-0", tool !== "activity" && "invisible")}>
-              <ActivityPanel quiz={quiz} tutorName={aiTutor?.name ?? "tu tutor"} onPick={pickOption} onDismiss={() => setQuiz(null)} />
+              <ActivityPanel
+                quiz={quiz}
+                tutorName={aiTutor?.name ?? tutor?.display_name.split(" ")[0] ?? "tu tutor"}
+                onPick={pickOption}
+                onDismiss={() => setQuiz(null)}
+                asTutor={tutorAi}
+                answers={quiz ? quizAnswers[quiz.id] ?? [] : []}
+                students={students.length}
+              >
+                {tutorAi && (
+                  <AiRequestBar
+                    placeholder={`Tema de la pregunta (vacío = ${topic.name})`}
+                    label="Generar pregunta"
+                    optional
+                    onSubmit={(t) => askAi(`Te propongo una pregunta de opción múltiple sobre ${t || topic.name}`, "quiz")}
+                  />
+                )}
+              </ActivityPanel>
             </div>
+
+            {/* Cursores en vivo de los demás (y el envío del tuyo) */}
+            <CursorLayer transport={transport} myActor={myActor} tool={tool} names={names} />
 
             {actionChip && (
               <p

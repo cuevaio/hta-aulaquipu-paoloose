@@ -664,10 +664,10 @@ export function CampusWorld({
                   aria-label="Tu clase te espera"
                   title="Tu clase te espera"
                 >
-                  <span className="bell-ring text-sm leading-none" aria-hidden>
+                  <span className="bell-ring-short text-sm leading-none" aria-hidden>
                     🔔
                   </span>
-                  <span className="absolute inset-0 animate-ping rounded-full bg-gold/60" aria-hidden />
+                  <span className="ping-short absolute inset-0 rounded-full bg-gold/60" aria-hidden />
                 </span>
               )}
               {d?.live && (

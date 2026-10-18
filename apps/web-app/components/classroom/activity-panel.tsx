@@ -21,12 +21,68 @@ export function ActivityPanel({
   tutorName,
   onPick,
   onDismiss,
+  asTutor = false,
+  answers = [],
+  students = 0,
+  children,
 }: {
   quiz: QuizCard | null;
   tutorName: string;
   onPick: (index: number) => void;
   onDismiss: () => void;
+  /** El profe ve la pregunta sin responderla, y las respuestas de sus alumnos al llegar. */
+  asTutor?: boolean;
+  answers?: { actor: string; name: string; correct: boolean }[];
+  students?: number;
+  /** Herramientas del profe (p. ej. generar una pregunta con IA), arriba del contenido. */
+  children?: React.ReactNode;
 }) {
+  if (asTutor) {
+    return (
+      <div className="flex size-full flex-col gap-3 overflow-y-auto p-4">
+        {children}
+        {!quiz ? (
+          <p className="m-auto max-w-xs text-center text-sm font-semibold text-muted-foreground">
+            Genera una pregunta con IA: les llega a todos tus alumnos como tarjeta y la plataforma la califica.
+          </p>
+        ) : (
+          <div className="mx-auto w-full max-w-xl space-y-3 rounded-3xl bg-navy p-4 text-white shadow-2xl ring-4 ring-gold/60">
+            <p className="text-xs font-bold text-gold">Tu pregunta · la ven tus alumnos</p>
+            <p className="font-heading text-lg font-semibold">{quiz.question}</p>
+            <ol className="space-y-1.5">
+              {quiz.options.map((opt, i) => (
+                <li key={i} className="flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-2.5 text-sm font-bold">
+                  <span className="grid size-6 shrink-0 place-items-center rounded-full bg-black/20 text-xs font-extrabold">{String.fromCharCode(65 + i)}</span>
+                  {opt}
+                </li>
+              ))}
+            </ol>
+            <div className="rounded-2xl bg-white/10 p-3" aria-live="polite">
+              <p className="text-xs font-extrabold text-white/70">
+                Respuestas: {answers.length}
+                {students ? ` de ${students}` : ""}
+              </p>
+              {answers.length === 0 ? (
+                <p className="mt-1 animate-pulse text-sm font-semibold text-white/70">Esperando a que respondan…</p>
+              ) : (
+                <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                  {answers.map((a) => (
+                    <li key={a.actor} className={cn("flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold", a.correct ? "bg-mint text-navy" : "bg-coral text-white")}>
+                      {a.correct ? <Check className="size-3.5" /> : <X className="size-3.5" />} {a.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <button type="button" onClick={onDismiss} className={cn(btn.soft, btn.sm, "w-full text-navy")}>
+              Cerrar la pregunta
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (!quiz) {
     return (
       <div className="grid size-full place-items-center p-6 text-center">

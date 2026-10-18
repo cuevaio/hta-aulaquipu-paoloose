@@ -190,22 +190,39 @@ export function AiTutorCard({
   );
 }
 
-/** Perfil del profe IA: su figura de cuerpo entero (se mueve como en el campus), estilo y temas. */
+/** Lo que el profe te dice al presentarse: quién es, cómo enseña y qué temas domina. */
+function introOf(tutor: AiTutor): string {
+  const p = tutor.persona;
+  const topics = (tutor.topics ?? []).slice(0, 3).map((t) => t.name.toLowerCase());
+  const list = topics.length > 1 ? `${topics.slice(0, -1).join(", ")} y ${topics[topics.length - 1]}` : topics[0];
+  return [
+    `¡Hola! Soy ${tutor.name} 👋`,
+    p.tagline && `${p.tagline.replace(/\.$/, "")}.`,
+    p.focus && `Mi especialidad es ${p.focus.replace(/\.$/, "")}.`,
+    p.style && `Mi estilo: ${p.style.replace(/\.$/, "")}.`,
+    list && `Te puedo ayudar con ${list}.`,
+    "Cuéntame qué quieres aprender y empezamos.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** Perfil del profe IA: su figura de cuerpo entero (se mueve como en el campus) y un globo donde se presenta. */
 function TeacherProfile({ tutor }: { tutor: AiTutor }) {
   const pose = useTeacherPose(tutor.id);
   return (
     <div
-      className="flex items-end gap-4 overflow-hidden rounded-2xl p-3"
+      className="flex items-end gap-3 overflow-hidden rounded-2xl p-3"
       style={{ background: `linear-gradient(135deg, ${tutor.persona.color}33, transparent)` }}
     >
       {/* La figura de pie es más alta que su caja: el relleno le deja lugar y el recorte evita tapar la cabecera */}
       <div className="shrink-0 pt-28">
         <Avatar config={teacherAvatar(tutor.id, tutor.persona.color)} pose={pose} size={64} bare label={`${tutor.name}, tutor IA`} />
       </div>
-      <div className="min-w-0 flex-1 space-y-1 pb-1">
-        <p className="text-xs font-extrabold tracking-wide text-muted-foreground uppercase">Así enseña</p>
-        <p className="text-sm">{tutor.persona.style}</p>
-        {tutor.persona.focus && <p className="text-xs text-muted-foreground">Especialidad: {tutor.persona.focus}</p>}
+      <div className="relative mb-12 min-w-0 flex-1 rounded-2xl rounded-bl-sm bg-card px-3.5 py-2.5 text-sm leading-snug font-semibold shadow-md ring-1 ring-black/5">
+        {/* Colita del globo apuntando al profe */}
+        <span aria-hidden className="absolute bottom-0 -left-2 size-3 bg-card [clip-path:polygon(100%_0,100%_100%,0_100%)]" />
+        {introOf(tutor)}
       </div>
     </div>
   );

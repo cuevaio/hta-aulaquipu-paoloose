@@ -14,7 +14,7 @@ import {
 } from './agent.ts';
 import { fetchTopicImages } from './images.ts';
 import { memoryScope, recallBrief, remember } from './memory.ts';
-import { nextSpeaker, speakerNote } from './speakers.ts';
+import { SpeakerSwitcher, speakerNote } from './speakers.ts';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config({ path: '../../.env' });
@@ -69,6 +69,10 @@ export default defineAgent({
       `[tutor] sesión ${sessionId ?? '?'}: guía del tema ${klass.guide ? `aplicada (${klass.guide.length} caracteres)` : 'no definida'}`,
     );
 
+    // Última vez que algo apareció en pantalla (herramienta del agente o acción del director):
+    // así el vigilante de delegaciones no avisa "no se ejecutó" de algo que sí salió
+    let lastScreenAction = 0;
+    const SCREEN_TOPICS = new Set(['aulaquipu:graph', 'aulaquipu:doc', 'aulaquipu:quiz', 'aulaquipu:action']);
     const publish = async (msg: Record<string, unknown>, topic: string) => {
       const local = ctx.room.localParticipant;
       // Falla en voz alta: si no sale, la herramienta debe devolver ERROR y no un falso "OK"
@@ -77,6 +81,7 @@ export default defineAgent({
         reliable: true,
         topic,
       });
+      if (SCREEN_TOPICS.has(topic)) lastScreenAction = Date.now();
     };
 
     const logEvent = async (kind: string, payload: Record<string, unknown>) => {
@@ -155,18 +160,22 @@ export default defineAgent({
       }
     };
     if (group) {
+      const switcher = new SpeakerSwitcher({
+        linked: () => session._roomIO?.linkedParticipant?.identity ?? null,
+        agentSpeaking: () => session.agentState === 'speaking',
+        onSwitch: (s) => void listenTo(s.identity, s.name),
+      });
       ctx.room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
         const self = ctx.room.localParticipant?.identity;
-        const pick = nextSpeaker(
+        switcher.update(
           speakers.map((p) => ({
             identity: p.identity,
             name: p.name || '',
             isAgent: p.identity === self || ('kind' in p && p.kind === ParticipantKind.AGENT),
           })),
-          session._roomIO?.linkedParticipant?.identity ?? null,
         );
-        if (pick) void listenTo(pick.identity, pick.name);
       });
+      ctx.addShutdownCallback(async () => switcher.dispose());
       // Si se va la persona que se escuchaba, se pasa a otro alumno que siga en la sala
       ctx.room.on(RoomEvent.ParticipantDisconnected, (gone) => {
         if (session._roomIO?.linkedParticipant && session._roomIO.linkedParticipant.identity !== gone.identity) return;
@@ -179,7 +188,7 @@ export default defineAgent({
 
     // Si el modelo de respaldo termina sin llamar herramientas, se registra y el tutor lo dice
     try {
-      watchDelegations(agent.duplexSession as unknown as Parameters<typeof watchDelegations>[0], hooks);
+      watchDelegations(agent.duplexSession as unknown as Parameters<typeof watchDelegations>[0], hooks, () => lastScreenAction);
     } catch (err) {
       console.warn('no se pudo vigilar la delegación', err);
     }
@@ -205,6 +214,24 @@ export default defineAgent({
     };
     let wrappingUp = false;
 
+    const QUIZ_BATCH_MS = 3500;
+    let quizBatch: string[] = [];
+    let quizTimer: ReturnType<typeof setTimeout> | null = null;
+    const queueQuizReaction = (prompt: string) => {
+      quizBatch.push(prompt);
+      quizTimer ??= setTimeout(() => {
+        const batch = quizBatch;
+        quizBatch = [];
+        quizTimer = null;
+        session.generateReply({
+          instructions:
+            batch.length === 1
+              ? batch[0]!
+              : `Varios alumnos respondieron la pregunta. ${batch.join(' ')} Reacciona a todos en UNA sola intervención breve: nómbralos, felicita a quienes acertaron, anima a quienes no y explica la respuesta correcta una sola vez.`,
+        });
+      }, QUIZ_BATCH_MS);
+    };
+
     // Mensajes del alumno al agente: respuestas a las tarjetas de quiz y cierre de clase
     ctx.room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
       if (!participant || participant.kind === ParticipantKind.AGENT) return;
@@ -219,8 +246,11 @@ export default defineAgent({
         // Quién respondió: cada alumno tiene su propio intento y su propio veredicto
         const who = { identity: participant.identity, name: participant.name || '' };
         void handleQuizAnswer(hooks, quizzes, { id: msg.id, index: msg.index, who }).then((prompt) => {
-          // El tutor de voz reacciona: felicita o anima y explica
-          if (prompt) session.generateReply({ instructions: prompt });
+          if (!prompt) return;
+          // Clase compartida: las respuestas que llegan juntas se comentan en una sola intervención
+          // (una por alumno hacía esperar y se pisaban)
+          if (group) return queueQuizReaction(prompt);
+          session.generateReply({ instructions: prompt });
         });
       } else if (topic === 'aulaquipu:control' && msg.type === 'director_done') {
         // La web ya graficó / preguntó / mostró algo: el tutor lo confirma sin inventar nada

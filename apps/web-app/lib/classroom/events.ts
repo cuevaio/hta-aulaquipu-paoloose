@@ -54,6 +54,10 @@ export type ClassroomEvent =
   /** Veredicto del agente para una tarjeta. */
   /** `for`: identidad de quien respondió (clase compartida: cada uno ve solo su veredicto). */
   | { type: "quiz_result"; actor: string; id: string; correct: boolean; correctIndex: number; explanation: string; for?: string }
+  /** Un alumno respondió una pregunta del director: le llega al profe para ver quién acertó. */
+  | { type: "quiz_answered"; actor: string; id: string; correct: boolean }
+  /** Cursor en vivo sobre el área de trabajo (x, y de 0 a 1; -1 = salió). Va por canal rápido, sin garantía. */
+  | { type: "cursor"; actor: string; x: number; y: number; tool: ClassroomTool | null }
   /** Alguien entró tarde (o recargó): pide a los demás lo que ya está en pantalla. */
   | { type: "sync_request"; actor: string }
   /** Respuesta a sync_request: gráfico, cuaderno y documento actuales, para `to`. */

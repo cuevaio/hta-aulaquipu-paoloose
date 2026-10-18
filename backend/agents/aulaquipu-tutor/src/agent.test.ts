@@ -22,7 +22,7 @@ import {
   freeVariables,
   groupNames,
 } from './agent.ts';
-import { nextSpeaker, speakerNote } from './speakers.ts';
+import { SpeakerSwitcher, nextSpeaker, speakerNote } from './speakers.ts';
 
 function makeHooks(overrides: Partial<TutorHooks> = {}) {
   const published: Array<{ msg: Record<string, unknown>; topic: string }> = [];
@@ -110,19 +110,24 @@ describe('gráficos desde la capa de voz', () => {
 });
 
 describe('vigilancia de la delegación', () => {
-  function setup() {
+  function setup(lastScreenAction = () => 0) {
     const { hooks, events } = makeHooks();
     let listener: (e: Record<string, unknown>) => void = () => {};
     const appendCommentary = vi.fn();
+    // El aviso espera unos segundos (el director puede tardar): aquí se ejecuta al llamar flush()
+    const pending: Array<() => void> = [];
     watchDelegations(
       {
         on: (_event, cb) => void (listener = cb as unknown as typeof listener),
         appendCommentary,
       },
       hooks,
+      lastScreenAction,
+      (fn) => void pending.push(fn),
     );
     const emit = (e: Record<string, unknown>) => listener(e);
-    return { events, appendCommentary, emit };
+    const flush = () => pending.splice(0).forEach((fn) => fn());
+    return { events, appendCommentary, emit, flush };
   }
   const created = { type: 'session.delegation.created', delegation: { id: 'd1' } };
   const done = (type: string, extra = {}) => ({ type: 'response.event', delegation_id: 'd1', event: { type, ...extra } });
@@ -131,6 +136,8 @@ describe('vigilancia de la delegación', () => {
     const t = setup();
     t.emit(created);
     t.emit(done('response.completed'));
+    expect(t.appendCommentary).not.toHaveBeenCalled(); // aún no: se espera al director
+    t.flush();
     expect(t.events[0]).toMatchObject({ kind: 'error', payload: { tool: 'delegation', attempt: 1 } });
     expect(t.appendCommentary).toHaveBeenCalledOnce();
     expect(t.appendCommentary.mock.calls[0][0]).toMatch(/NO se ejecutó/);
@@ -141,6 +148,16 @@ describe('vigilancia de la delegación', () => {
     t.emit(created);
     t.emit(done('response.output_item.done', { item: { type: 'function_call' } }));
     t.emit(done('response.completed'));
+    t.flush();
+    expect(t.events).toHaveLength(0);
+    expect(t.appendCommentary).not.toHaveBeenCalled();
+  });
+
+  it('no dice que falló si en ese rato algo apareció en pantalla (lo hizo el director)', () => {
+    const t = setup(() => Date.now() + 1000);
+    t.emit(created);
+    t.emit(done('response.completed'));
+    t.flush();
     expect(t.events).toHaveLength(0);
     expect(t.appendCommentary).not.toHaveBeenCalled();
   });
@@ -150,6 +167,7 @@ describe('vigilancia de la delegación', () => {
     for (const id of ['d1', 'd2']) {
       t.emit({ type: 'session.delegation.created', delegation: { id } });
       t.emit({ type: 'response.event', delegation_id: id, event: { type: 'response.completed' } });
+      t.flush();
     }
     expect(t.appendCommentary.mock.calls[0][0]).toMatch(/vuelve a delegar/);
     expect(t.appendCommentary.mock.calls[1][0]).toMatch(/no pudiste hacerlo/);
@@ -241,6 +259,73 @@ describe('clase compartida', () => {
     expect(agent.instructions).toMatch(/clase compartida con 2 alumnos: Ana y Pedrito/);
     expect(agent.instructions).toMatch(/Ahora te habla X/);
     expect(agent.instructions).toMatch(/la mitosis paso a paso/);
+  });
+});
+
+describe('cambio de quién se escucha, con calma', () => {
+  const ana = { identity: 'profile:ana', name: 'Ana', isAgent: false };
+  const luis = { identity: 'profile:luis', name: 'Luis', isAgent: false };
+  function setup(opts: { linked?: string | null; speaking?: boolean } = {}) {
+    let now = 10_000;
+    let linked = opts.linked ?? 'profile:ana';
+    let speaking = opts.speaking ?? false;
+    const timers: Array<{ at: number; fn: () => void }> = [];
+    const switched: string[] = [];
+    const sw = new SpeakerSwitcher({
+      linked: () => linked,
+      agentSpeaking: () => speaking,
+      onSwitch: (s) => {
+        switched.push(s.name);
+        linked = s.identity;
+      },
+      now: () => now,
+      schedule: (fn, ms) => timers.push({ at: now + ms, fn }),
+      cancel: (h) => void timers.splice(timers.indexOf(h as never), 1),
+    });
+    const advance = (ms: number) => {
+      now += ms;
+      for (let t = timers.find((x) => x.at <= now); t; t = timers.find((x) => x.at <= now)) {
+        timers.splice(timers.indexOf(t), 1);
+        t.fn();
+      }
+    };
+    return { sw, advance, switched, setSpeaking: (v: boolean) => (speaking = v) };
+  }
+
+  it('espera a que el nuevo siga hablando antes de cambiar', () => {
+    const t = setup();
+    t.sw.update([luis]);
+    t.advance(300);
+    expect(t.switched).toEqual([]);
+    t.advance(400);
+    expect(t.switched).toEqual(['Luis']);
+  });
+  it('un ruido corto no cambia nada', () => {
+    const t = setup();
+    t.sw.update([luis]);
+    t.advance(200);
+    t.sw.update([]);
+    t.advance(1000);
+    expect(t.switched).toEqual([]);
+  });
+  it('no cambia mientras el tutor habla; cambia cuando termina', () => {
+    const t = setup({ speaking: true });
+    t.sw.update([luis]);
+    t.advance(2000);
+    expect(t.switched).toEqual([]);
+    t.setSpeaking(false);
+    t.advance(500);
+    expect(t.switched).toEqual(['Luis']);
+  });
+  it('no cambia dos veces seguidas en menos de 2,5 s', () => {
+    const t = setup();
+    t.sw.update([luis]);
+    t.advance(700);
+    t.sw.update([ana]);
+    t.advance(700);
+    expect(t.switched).toEqual(['Luis']);
+    t.advance(2000);
+    expect(t.switched).toEqual(['Luis', 'Ana']);
   });
 });
 
