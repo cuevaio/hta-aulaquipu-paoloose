@@ -25,10 +25,11 @@ export type RoomMode = "connecting" | "local" | "livekit";
 export interface ParticipantMedia {
   connected: boolean;
   micOn: boolean;
+  camOn: boolean;
   video: VideoTrack | null;
 }
 
-const OFFLINE: ParticipantMedia = { connected: false, micOn: false, video: null };
+const OFFLINE: ParticipantMedia = { connected: false, micOn: false, camOn: false, video: null };
 
 export function useClassroomRoom(opts: {
   sessionId: string;
@@ -48,6 +49,8 @@ export function useClassroomRoom(opts: {
     room: null,
   });
   const [, setTick] = useState(0);
+  const [pending, setPending] = useState({ mic: false, cam: false });
+  const pendingRef = useRef({ mic: false, cam: false });
   const callbacks = useRef({ onRoomClosed: opts.onRoomClosed, onMediaError: opts.onMediaError });
 
   useEffect(() => {
@@ -95,6 +98,8 @@ export function useClassroomRoom(opts: {
         .on(RoomEvent.TrackUnmuted, bump)
         .on(RoomEvent.LocalTrackPublished, bump)
         .on(RoomEvent.LocalTrackUnpublished, bump)
+        .on(RoomEvent.MediaDevicesError, bump)
+        .on(RoomEvent.ParticipantPermissionsChanged, bump)
         .on(RoomEvent.AudioPlaybackStatusChanged, bump)
         .on(RoomEvent.Reconnected, bump)
         .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
@@ -145,14 +150,30 @@ export function useClassroomRoom(opts: {
       for (const pub of p.audioTrackPublications.values()) (pub.track as RemoteAudioTrack | undefined)?.setVolume(voice ? 1 : 0);
   });
 
-  const mediaOf = (p: Participant | undefined): ParticipantMedia =>
-    p
-      ? {
-          connected: true,
-          micOn: p.isMicrophoneEnabled,
-          video: (p.getTrackPublication(Track.Source.Camera)?.videoTrack as VideoTrack | undefined) ?? null,
-        }
-      : OFFLINE;
+  // Una cámara apagada queda silenciada (la publicación sigue con su track), así que la
+  // fuente de verdad es "publicada y no silenciada", no solo la existencia del track.
+  const mediaOf = (p: Participant | undefined): ParticipantMedia => {
+    if (!p) return OFFLINE;
+    const cam = p.getTrackPublication(Track.Source.Camera);
+    const video = cam && !cam.isMuted ? ((cam.videoTrack as VideoTrack | undefined) ?? null) : null;
+    return { connected: true, micOn: p.isMicrophoneEnabled, camOn: !!video, video };
+  };
+
+  const toggle = async (kind: "mic" | "cam", message: string) => {
+    if (!room || pendingRef.current[kind]) return;
+    pendingRef.current[kind] = true;
+    setPending({ ...pendingRef.current });
+    try {
+      const lp = room.localParticipant;
+      if (kind === "mic") await lp.setMicrophoneEnabled(!lp.isMicrophoneEnabled);
+      else await lp.setCameraEnabled(!lp.isCameraEnabled);
+    } catch {
+      callbacks.current.onMediaError(message);
+    } finally {
+      pendingRef.current[kind] = false;
+      setPending({ ...pendingRef.current });
+    }
+  };
 
   return {
     mode: conn.mode,
@@ -170,19 +191,9 @@ export function useClassroomRoom(opts: {
     },
     audioBlocked: !!room && !room.canPlaybackAudio,
     startAudio: () => room?.startAudio(),
-    async toggleMic() {
-      if (!room) return;
-      const on = room.localParticipant.isMicrophoneEnabled;
-      await room.localParticipant.setMicrophoneEnabled(!on).catch(() => callbacks.current.onMediaError("No pudimos acceder a tu micrófono."));
-      setTick((t) => t + 1);
-    },
-    async toggleCam() {
-      if (!room) return;
-      const on = room.localParticipant.isCameraEnabled;
-      await room.localParticipant.setCameraEnabled(!on).catch(() =>
-        callbacks.current.onMediaError("No pudimos acceder a tu cámara. Revisa los permisos del navegador."),
-      );
-      setTick((t) => t + 1);
-    },
+    micPending: pending.mic,
+    camPending: pending.cam,
+    toggleMic: () => toggle("mic", "No pudimos acceder a tu micrófono."),
+    toggleCam: () => toggle("cam", "No pudimos acceder a tu cámara. Revisa los permisos del navegador."),
   };
 }

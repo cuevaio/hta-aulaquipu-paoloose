@@ -370,11 +370,11 @@ export default function ClassroomPage() {
   // Presencia: en vivo la da la sala LiveKit; en modo local solo estás tú (y el tutor simulado)
   const presence = (key: string, isMe: boolean) => {
     if (realtime) return live.media(key);
-    return { connected: isMe, micOn: isMe && micOn, video: null };
+    return { connected: isMe, micOn: isMe && micOn, camOn: isMe && !!stream, video: null };
   };
-  const agentMedia = realtime ? live.agent() : { connected: live.mode === "local", micOn: true, video: null };
+  const agentMedia = realtime ? live.agent() : { connected: live.mode === "local", micOn: true, camOn: false, video: null };
   const myMicOn = realtime ? live.media(myActor).micOn : micOn;
-  const myCamOn = realtime ? !!live.media(myActor).video : !!stream;
+  const myCamOn = realtime ? live.media(myActor).camOn : !!stream;
 
   const tutorKey = aiTutor ? `ai:${aiTutor.id}` : `profile:${tutor?.id}`;
   const tutorMedia = aiTutor ? agentMedia : presence(tutorKey, iAmTutor);
@@ -616,18 +616,19 @@ export default function ClassroomPage() {
       {/* Controles */}
       <footer className="flex items-center justify-center gap-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {[
-          { on: myMicOn, onClick: toggleMic, icons: [Mic, MicOff], label: myMicOn ? "Silenciar micrófono" : "Activar micrófono" },
-          { on: myCamOn, onClick: toggleCam, icons: [Camera, CameraOff], label: myCamOn ? "Apagar cámara" : "Encender cámara" },
+          { pending: realtime && live.micPending, on: myMicOn, onClick: toggleMic, icons: [Mic, MicOff], label: myMicOn ? "Silenciar micrófono" : "Activar micrófono" },
+          { pending: realtime && live.camPending, on: myCamOn, onClick: toggleCam, icons: [Camera, CameraOff], label: myCamOn ? "Apagar cámara" : "Encender cámara" },
           ...(aiTutor
             ? [{ on: voice, onClick: () => setVoice((v) => !v), icons: [Volume2, VolumeX], label: voice ? "Silenciar voz del tutor" : "Activar voz del tutor" }]
             : []),
-        ].map(({ on, onClick, icons: [On, Off], label }) => (
+        ].map(({ pending, on, onClick, icons: [On, Off], label }) => (
           <button
             key={label}
             onClick={onClick}
+            disabled={pending}
             aria-label={label}
             title={label}
-            className={cn("grid size-12 place-items-center rounded-2xl transition-colors", on ? "bg-navy-3 text-white" : "bg-coral/90 text-white")}
+            className={cn("grid size-12 place-items-center rounded-2xl transition-colors disabled:opacity-60", on ? "bg-navy-3 text-white" : "bg-coral/90 text-white")}
           >
             {on ? <On className="size-5" /> : <Off className="size-5" />}
           </button>
