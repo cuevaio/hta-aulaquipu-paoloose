@@ -65,4 +65,4 @@
 - T15 done: no programmatic push to /campus exists in the end flow (aula only navigates to /resumen via finishClass, onRoomClosed and the status effect). Only /campus sources: CampusShell panel backdrop button, its X and Escape. Most likely cause (NOT reproduced): a stray click (e.g. second click of a double click on 'Terminar') lands on the full-screen backdrop of the freshly mounted resumen panel and closes it. Fix: aula funnels all three exits through one guarded goToSummary (router.replace /resumen/<id>), and the shell backdrop ignores clicks during the first 800 ms after a panel opens. Checks: web tsc 0, eslint clean, /aula/x /resumen/x 200.
 
 ## Next step
-- T8 browser validation with the real agent (orchestrator; restart the agent worker first).
+- Restart the agent worker, then re-run the T8 browser validation on the Round 2 changes (T10-T15): graph and quiz from the voice layer, Actividad/Cuaderno tabs, non-blocking images, memory (needs ATOMICMEMORY_* in .env.local), end -> /resumen.
