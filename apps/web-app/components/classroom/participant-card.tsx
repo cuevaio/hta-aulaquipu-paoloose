@@ -4,7 +4,9 @@ import { useEffect, useRef } from "react";
 import type { VideoTrack } from "livekit-client";
 import { Mic, MicOff, Sparkles } from "lucide-react";
 import type { AvatarConfig, Equipped } from "@/lib/types";
-import { AiAvatar, Avatar } from "@/components/avatar";
+import { Avatar } from "@/components/avatar";
+import { AiTutorAvatar, type TutorAvatarState, type TutorGaze } from "@/components/classroom/ai-tutor-avatar";
+import { useAudioLevel } from "@/lib/classroom/use-audio-level";
 import { cn } from "@/lib/utils";
 
 export interface Participant {
@@ -26,6 +28,10 @@ export function ParticipantCard({
   stream,
   videoTrack,
   large,
+  aiState,
+  aiLevel = 0,
+  aiGaze,
+  audioStream,
 }: {
   p: Participant;
   speaking: boolean;
@@ -34,7 +40,16 @@ export function ParticipantCard({
   /** Pista de video de LiveKit (propia o remota). */
   videoTrack?: VideoTrack | null;
   large?: boolean;
+  /** Estado del avatar del tutor IA (derivado de los eventos del aula) */
+  aiState?: TutorAvatarState;
+  /** Nivel de voz 0..1 (sintético hoy) */
+  aiLevel?: number;
+  aiGaze?: TutorGaze;
+  /** Futuro: pista de audio del agente LiveKit; si llega, reemplaza a `aiLevel` */
+  audioStream?: MediaStream | null;
 }) {
+  const streamLevel = useAudioLevel(audioStream ?? null);
+  const level = audioStream ? streamLevel : aiLevel;
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     const el = video.current;
@@ -66,7 +81,13 @@ export function ParticipantCard({
           className={cn("absolute inset-0 size-full object-cover", p.isMe && "scale-x-[-1]")}
         />
       ) : p.ai ? (
-        <AiAvatar emoji={p.ai.emoji} color={p.ai.color} size={large ? 84 : 60} speaking={speaking} />
+        <AiTutorAvatar
+          persona={{ emoji: p.ai.emoji, color: p.ai.color, name: p.name }}
+          state={aiState ?? (speaking ? "speaking" : "idle")}
+          level={level}
+          gaze={aiGaze}
+          size={large ? 112 : 80}
+        />
       ) : (
         <Avatar config={p.avatar ?? {}} equipped={p.equipped} size={large ? 84 : 60} speaking={speaking} label={p.name} className={cn(!p.connected && "opacity-50 grayscale")} />
       )}

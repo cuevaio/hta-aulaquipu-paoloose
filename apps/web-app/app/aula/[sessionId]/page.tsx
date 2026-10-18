@@ -32,6 +32,8 @@ import { tableToMarkdown, upsertSection, type ClassroomEvent, type ClassroomTool
 import { useClassroomRoom } from "@/lib/classroom/use-classroom-room";
 import { SimulatedAiTutor } from "@/lib/classroom/ai-engine";
 import { scriptFor } from "@/lib/classroom/ai-scripts";
+import { useSyntheticLevel } from "@/lib/classroom/use-audio-level";
+import type { TutorAvatarState, TutorGaze } from "@/components/classroom/ai-tutor-avatar";
 import { cn } from "@/lib/utils";
 
 const TOOLS: { id: ClassroomTool; label: string; icon: typeof FileText }[] = [
@@ -93,9 +95,14 @@ export default function ClassroomPage() {
   const [confirmEnd, setConfirmEnd] = useState(false);
   const tutorRef = useRef<SimulatedAiTutor | null>(null);
   const docSync = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Actividad breve del tutor IA (escribiendo / graficando) y hacia dónde mira
+  const [tutorBusy, setTutorBusy] = useState<"writing" | "graphing" | null>(null);
+  const [tutorGaze, setTutorGaze] = useState<TutorGaze>("center");
+  const busyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const elapsed = useElapsed(data?.session.started_at);
   const myActor = `profile:${userId}`;
+  const aiKey = data?.aiTutor ? `ai:${data.aiTutor.id}` : null;
   const myName = me?.profile.display_name.split(" ")[0] ?? "Tú";
 
   const onRoomClosed = useCallback(() => router.replace(`/resumen/${sessionId}`), [router, sessionId]);
@@ -149,6 +156,13 @@ export default function ClassroomPage() {
   useEffect(() => {
     if (!transport) return;
     return transport.subscribe((e: ClassroomEvent) => {
+      const fromAi = !!aiKey && e.actor === aiKey;
+      const markBusy = (kind: "writing" | "graphing") => {
+        if (!fromAi) return;
+        setTutorBusy(kind);
+        if (busyTimer.current) clearTimeout(busyTimer.current);
+        busyTimer.current = setTimeout(() => setTutorBusy(null), 1500);
+      };
       const markWriter = () => {
         setWriter(names[e.actor] ?? "Alguien");
         if (writerTimer.current) clearTimeout(writerTimer.current);
@@ -158,14 +172,17 @@ export default function ClassroomPage() {
         case "doc_write":
           setDocDraft((d) => (e.mode === "append" ? (d ?? savedDoc) + e.markdown : e.markdown));
           if (e.actor !== myActor) markWriter();
+          markBusy("writing");
           break;
         case "doc_append_table":
           setDocDraft((d) => (d ?? savedDoc) + tableToMarkdown(e.rows, e.title));
           markWriter();
+          markBusy("writing");
           break;
         case "doc_section":
           setDocDraft((d) => upsertSection(d ?? savedDoc, e.section, e.markdown));
           markWriter();
+          markBusy("writing");
           break;
         case "notebook_image":
           setNotebookImg(e.url);
@@ -173,9 +190,11 @@ export default function ClassroomPage() {
           break;
         case "graph_set":
           desmos.current?.setExpression(e.id, e.latex, e.color);
+          markBusy("graphing");
           break;
         case "graph_remove":
           desmos.current?.removeExpression(e.id);
+          markBusy("graphing");
           break;
         case "board_draw":
           setStrokes((s) => [...s, e.stroke]);
@@ -185,6 +204,7 @@ export default function ClassroomPage() {
           break;
         case "focus_tool":
           setTool(e.tool);
+          if (fromAi) setTutorGaze(e.tool === "doc" ? "left" : e.tool === "graph" ? "right" : "down");
           break;
         case "speech":
           setCaption({ actor: e.actor, text: e.text });
@@ -208,7 +228,20 @@ export default function ClassroomPage() {
           break;
       }
     });
-  }, [transport, names, myActor, pushChat, savedDoc, onRoomClosed]);
+  }, [transport, names, myActor, pushChat, savedDoc, onRoomClosed, aiKey]);
+
+  useEffect(
+    () => () => {
+      if (busyTimer.current) clearTimeout(busyTimer.current);
+    },
+    [],
+  );
+
+  // Nivel de voz del tutor IA: sintético en ambos modos (con LiveKit, `speaking` llega de ActiveSpeakersChanged).
+  // Siguiente paso: exponer la pista de audio del agente y pasarla como `audioStream` en ParticipantCard.
+  const aiSpeaking = !!aiKey && !!speaking[aiKey];
+  const aiLevel = useSyntheticLevel(aiSpeaking);
+  const aiState: TutorAvatarState = tutorBusy ?? (aiSpeaking ? "speaking" : question ? "listening" : "idle");
 
   // Tutor IA simulado: solo sin LiveKit. En vivo, el agent-worker entra a la sala por su cuenta.
   useEffect(() => {
@@ -414,7 +447,13 @@ export default function ClassroomPage() {
         {/* Tarjetas fijas alrededor del área didáctica: tutor a la izquierda */}
         <aside className="flex gap-2 overflow-x-auto md:w-52 md:shrink-0 md:flex-col md:overflow-visible">
           <div className="w-44 shrink-0 md:w-full">
-            <ParticipantCard {...cardProps({ ...tutorP, video: tutorMedia.video })} large />
+            <ParticipantCard
+              {...cardProps({ ...tutorP, video: tutorMedia.video })}
+              large
+              aiState={aiState}
+              aiLevel={aiLevel}
+              aiGaze={tutorGaze}
+            />
           </div>
           {studentPs.slice(0, 2).map((p) => (
             <ParticipantCard key={p.key} {...cardProps(p)} />
