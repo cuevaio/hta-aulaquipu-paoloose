@@ -17,7 +17,14 @@ insert into profiles (id, username, display_name, grade, school, avatar_config) 
   ('10000000-0000-0000-0000-000000000007','ana1','Ana Villanueva',1,'I.E. José Faustino Sánchez Carrión','{}'),
   ('10000000-0000-0000-0000-000000000008','joaquin3','Joaquín Medina',3,'I.E. Santa María','{}'),
   ('10000000-0000-0000-0000-000000000009','renata4','Renata Salazar',4,'I.E. Santa María','{}'),
-  ('10000000-0000-0000-0000-000000000010','lucas5','Lucas Paredes',5,'I.E. Nuestra Señora de Guadalupe','{}')
+  ('10000000-0000-0000-0000-000000000010','lucas5','Lucas Paredes',5,'I.E. Nuestra Señora de Guadalupe','{}'),
+  -- Cuentas del equipo y de invitados para probar en vivo (DNI 70000011–70000016)
+  ('10000000-0000-0000-0000-000000000011','fernando','Fernando',5,'I.E. Santa María','{}'),
+  ('10000000-0000-0000-0000-000000000012','jhoan','Jhoan',5,'I.E. Santa María','{}'),
+  ('10000000-0000-0000-0000-000000000013','paolo','Paolo',5,'I.E. Santa María','{}'),
+  ('10000000-0000-0000-0000-000000000014','jordan','Jordan',5,'I.E. Santa María','{}'),
+  ('10000000-0000-0000-0000-000000000015','invitado1','Invitado Uno',5,'I.E. Santa María','{}'),
+  ('10000000-0000-0000-0000-000000000016','invitado2','Invitado Dos',5,'I.E. Santa María','{}')
 on conflict (id) do nothing;
 
 insert into quipus_ledger (to_profile, amount, kind)
