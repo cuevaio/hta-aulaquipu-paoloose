@@ -12,6 +12,8 @@ const LABEL: Record<string, string> = {
   "promotion.create": "Creó una promoción",
   "promotion.update": "Editó una promoción",
   "promotion.delete": "Eliminó una promoción",
+  "guide.save": "Guardó una guía de enseñanza IA",
+  "guide.delete": "Quitó una guía de enseñanza IA",
 };
 
 function summary(payload: Record<string, unknown>) {

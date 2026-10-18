@@ -1,6 +1,7 @@
 // Panel de administración (solo servidor): quién es admin, quién está suspendido y la auditoría.
 // Las rutas admin/* exigen sesión + admin en route.ts; nada depende de que la UI oculte botones.
 
+import { guideToAgentText, type TopicGuide } from "@/lib/admin-types";
 import { db, env, HttpError, isMissingSchema } from "@/lib/server/core";
 
 const CACHE_MS = 15_000;
@@ -87,4 +88,19 @@ export async function audit(adminId: string, action: string, target: string | nu
     console.error("[api] no se pudo escribir la auditoría", action, error.code, error.message);
     throw new HttpError(500, "La acción se aplicó, pero no se pudo registrar en la auditoría.");
   }
+}
+
+/** Guía del tema para el agente. Cualquier fallo (p. ej. migración sin aplicar) = sin guía: la clase sigue. */
+export async function agentGuideFor(topicId: string | null): Promise<string | null> {
+  if (!topicId) return null;
+  const { data, error } = await db()
+    .from("ai_guides")
+    .select("objectives, steps, common_mistakes, checks")
+    .eq("topic_id", topicId)
+    .limit(1);
+  if (error) {
+    if (!isMissingSchema(error)) console.warn("[api] no se pudo leer la guía del tema", error.code, error.message);
+    return null;
+  }
+  return guideToAgentText(data?.[0] as TopicGuide | undefined);
 }

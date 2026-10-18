@@ -5,7 +5,8 @@ import type { AdminApi } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
 import type { DbState } from "@/lib/api/seed";
 import type { AdminMetrics } from "@/lib/admin-types";
-import type { AuditRow } from "@/lib/admin-types";
+import type { AdminGuide, AuditRow, TopicGuide } from "@/lib/admin-types";
+import { GUIDE_FIELD_MAX } from "@/lib/admin-types";
 import type { LedgerKind, UUID } from "@/lib/types";
 
 export interface MockHelpers {
@@ -24,6 +25,21 @@ export const isMockAdmin = (s: DbState, userId: UUID) => s.admins.includes(userI
 
 function requireAdmin(s: DbState, userId: UUID) {
   if (!isMockAdmin(s, userId)) throw new ApiError("Solo administradores.", "forbidden");
+}
+
+function guideView(s: DbState, topicId: UUID): AdminGuide {
+  const topic = s.topics.find((t) => t.id === topicId);
+  if (!topic) throw new ApiError("Ese tema no existe.", "not_found");
+  const g = s.ai_guides.find((x) => x.topic_id === topicId);
+  return {
+    topic_id: topicId,
+    name: topic.name,
+    objectives: g?.objectives ?? "",
+    steps: g?.steps ?? "",
+    common_mistakes: g?.common_mistakes ?? "",
+    checks: g?.checks ?? "",
+    updated_at: g?.updated_at ?? null,
+  };
 }
 
 export function buildMockAdmin(h: MockHelpers): AdminApi {
@@ -279,6 +295,51 @@ export function buildMockAdmin(h: MockHelpers): AdminApi {
         if (i < 0) throw new ApiError("Esa promoción no existe.", "not_found");
         audit(s, u, "promotion.delete", id, { ai_tutor_id: s.ai_promotions[i].ai_tutor_id, percent_off: s.ai_promotions[i].percent_off });
         s.ai_promotions.splice(i, 1);
+      }),
+
+    guides: (u) =>
+      h.read((s) => {
+        requireAdmin(s, u);
+        return s.topics
+          .filter((t) => t.status === "active")
+          .map((t) => {
+            const g = s.ai_guides.find((x) => x.topic_id === t.id);
+            return { topic_id: t.id, name: t.name, has_guide: !!g, updated_at: g?.updated_at ?? null };
+          })
+          .sort((a, b) => a.name.localeCompare(b.name, "es"));
+      }),
+
+    guide: (u, topicId) =>
+      h.read((s) => {
+        requireAdmin(s, u);
+        return guideView(s, topicId);
+      }),
+
+    saveGuide: (u, topicId, input) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const topic = s.topics.find((t) => t.id === topicId);
+        if (!topic) throw new ApiError("Ese tema no existe.", "not_found");
+        const clean = {} as TopicGuide;
+        for (const f of ["objectives", "steps", "common_mistakes", "checks"] as const) {
+          clean[f] = (input[f] ?? "").trim();
+          if (clean[f].length > GUIDE_FIELD_MAX) throw new ApiError(`Cada campo admite hasta ${GUIDE_FIELD_MAX} caracteres.`);
+        }
+        if (!Object.values(clean).some(Boolean)) throw new ApiError("Escribe al menos un campo de la guía.");
+        const row = s.ai_guides.find((g) => g.topic_id === topicId);
+        audit(s, u, "guide.save", topicId, { topic: topic.name, created: !row, chars: Object.values(clean).reduce((n, v) => n + v.length, 0) });
+        if (row) Object.assign(row, clean, { updated_at: h.now() });
+        else s.ai_guides.push({ topic_id: topicId, ...clean, updated_at: h.now() });
+        return guideView(s, topicId);
+      }),
+
+    deleteGuide: (u, topicId) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const topic = s.topics.find((t) => t.id === topicId);
+        if (!topic) throw new ApiError("Ese tema no existe.", "not_found");
+        audit(s, u, "guide.delete", topicId, { topic: topic.name });
+        s.ai_guides = s.ai_guides.filter((g) => g.topic_id !== topicId);
       }),
   };
 }

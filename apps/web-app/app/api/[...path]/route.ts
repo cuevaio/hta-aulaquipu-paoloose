@@ -84,6 +84,10 @@ const ROUTES: Route[] = [
   a("POST", "admin/promotions", ({ user, body }) => ad.createPromotion(user, body)),
   a("PUT", "admin/promotions/:id", ({ user, params, body }) => ad.updatePromotion(user, params[0], body)),
   a("DELETE", "admin/promotions/:id", ({ user, params }) => ad.deletePromotion(user, params[0])),
+  a("GET", "admin/guides", () => ad.guideList()),
+  a("GET", "admin/guides/:topicId", ({ params }) => ad.guideOf(params[0])),
+  a("PUT", "admin/guides/:topicId", ({ user, params, body }) => ad.saveGuide(user, params[0], body)),
+  a("DELETE", "admin/guides/:topicId", ({ user, params }) => ad.deleteGuide(user, params[0])),
 ];
 
 function find(method: string, segments: string[]): { route: Route; params: string[] } | null {

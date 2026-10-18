@@ -24,7 +24,7 @@ import {
   type TopicRow,
 } from "@/lib/server/data";
 import { applyPromos } from "@/lib/server/promos";
-import { isAdmin, requireNotSuspended } from "@/lib/server/admin";
+import { agentGuideFor, isAdmin, requireNotSuspended } from "@/lib/server/admin";
 import { normalizeTopic } from "@/lib/server/topics";
 import { closeRoom, createCampusToken, createRoomToken } from "@/lib/server/livekit";
 import type {
@@ -343,6 +343,7 @@ export async function roomToken(userId: string, id: string): Promise<RoomToken> 
     const [tutor] = await aiTutors([row.ai_tutor_id]);
     const topic = await topicOf(row.topic_id);
     const persona = await must<{ persona: Record<string, string> }[]>(db().from("ai_tutors").select("persona").eq("id", row.ai_tutor_id));
+    const guide = await agentGuideFor(row.topic_id);
     agent = {
       sessionId: row.id,
       tutorName: tutor?.name ?? "Quipu",
@@ -350,6 +351,7 @@ export async function roomToken(userId: string, id: string): Promise<RoomToken> 
       focus: persona[0]?.persona?.focus ?? "",
       topic: topic.id ? topic.name.toLowerCase() : "",
       studentName: firstName,
+      ...(guide ? { guide } : {}),
     };
   }
 

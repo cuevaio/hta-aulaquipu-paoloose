@@ -96,3 +96,44 @@ export interface AiPromotion {
 }
 
 export type PromotionInput = Omit<AiPromotion, "id" | "created_at">;
+
+// ---------- guías de enseñanza IA ----------
+
+export const GUIDE_FIELD_MAX = 1500;
+
+export interface TopicGuide {
+  objectives: string;
+  steps: string;
+  common_mistakes: string;
+  checks: string;
+}
+
+export interface AdminGuideTopic {
+  topic_id: UUID;
+  name: string;
+  has_guide: boolean;
+  updated_at: string | null;
+}
+
+export interface AdminGuide extends TopicGuide {
+  topic_id: UUID;
+  name: string;
+  updated_at: string | null;
+}
+
+/** Texto de la guía que viaja al agente (≤ ~4000 caracteres), o null si el tema no tiene guía. */
+export function guideToAgentText(g: TopicGuide | null | undefined): string | null {
+  if (!g) return null;
+  const parts: [string, string][] = [
+    ["Objetivos", g.objectives],
+    ["Pasos", g.steps],
+    ["Errores comunes", g.common_mistakes],
+    ["Comprobaciones", g.checks],
+  ];
+  const text = parts
+    .map(([title, body]) => [title, body.trim().slice(0, GUIDE_FIELD_MAX)] as const)
+    .filter(([, body]) => body)
+    .map(([title, body]) => `${title}:\n${body}`)
+    .join("\n\n");
+  return text ? text.slice(0, 4000) : null;
+}

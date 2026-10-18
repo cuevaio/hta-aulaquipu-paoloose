@@ -1,14 +1,17 @@
 // Endpoints del panel de administración (/api/admin/*). route.ts ya exigió sesión + admin;
 // cada mutación llama a audit() (o lo hace la función SQL, como admin_grant).
 
-import { db, must, rpc } from "@/lib/server/core";
-import { HttpError } from "@/lib/server/core";
+import { db, HttpError, must, rpc } from "@/lib/server/core";
 import { audit } from "@/lib/server/admin";
 import { profilesById } from "@/lib/server/data";
 import { toAi } from "@/lib/server/data";
 import { str, uuidParam, type Body } from "@/lib/server/handlers";
+import { GUIDE_FIELD_MAX } from "@/lib/admin-types";
 import type {
   AdminAiTutor,
+  AdminGuide,
+  AdminGuideTopic,
+  TopicGuide,
   AdminMetrics,
   AdminUser,
   AiPromotion,
@@ -184,4 +187,64 @@ export async function deletePromotion(adminId: string, id: string) {
   const rows = await must<AiPromotion[]>(db().from("ai_promotions").delete().eq("id", promoId).select("*"));
   if (!rows.length) throw new HttpError(404, "Esa promoción no existe.", "not_found");
   await audit(adminId, "promotion.delete", promoId, { ai_tutor_id: rows[0].ai_tutor_id, percent_off: rows[0].percent_off });
+}
+
+// ---------- guías de enseñanza IA ----------
+
+const GUIDE_FIELDS = ["objectives", "steps", "common_mistakes", "checks"] as const;
+
+interface GuideRow extends TopicGuide {
+  topic_id: string;
+  updated_at: string;
+}
+
+export async function guideList(): Promise<AdminGuideTopic[]> {
+  const topics = await must<{ id: string; name: string }[]>(
+    db().from("topics").select("id, name").eq("status", "active").order("name").limit(500),
+  );
+  const guides = await must<{ topic_id: string; updated_at: string }[]>(db().from("ai_guides").select("topic_id, updated_at"));
+  const byTopic = new Map(guides.map((g) => [g.topic_id, g.updated_at]));
+  return topics.map((t) => ({ topic_id: t.id, name: t.name, has_guide: byTopic.has(t.id), updated_at: byTopic.get(t.id) ?? null }));
+}
+
+export async function guideOf(topicId: string): Promise<AdminGuide> {
+  const id = uuidParam(topicId, "tema");
+  const [topic] = await must<{ id: string; name: string }[]>(db().from("topics").select("id, name").eq("id", id).limit(1));
+  if (!topic) throw new HttpError(404, "Ese tema no existe.", "not_found");
+  const [row] = await must<GuideRow[]>(db().from("ai_guides").select("*").eq("topic_id", id).limit(1));
+  return {
+    topic_id: id,
+    name: topic.name,
+    objectives: row?.objectives ?? "",
+    steps: row?.steps ?? "",
+    common_mistakes: row?.common_mistakes ?? "",
+    checks: row?.checks ?? "",
+    updated_at: row?.updated_at ?? null,
+  };
+}
+
+export async function saveGuide(adminId: string, topicId: string, body: Body): Promise<AdminGuide> {
+  const before = await guideOf(topicId);
+  const input = {} as TopicGuide;
+  for (const f of GUIDE_FIELDS) {
+    const v = typeof body[f] === "string" ? (body[f] as string).trim() : "";
+    if (v.length > GUIDE_FIELD_MAX) throw new HttpError(400, `Cada campo admite hasta ${GUIDE_FIELD_MAX} caracteres.`);
+    input[f] = v;
+  }
+  if (!GUIDE_FIELDS.some((f) => input[f])) throw new HttpError(400, "Escribe al menos un campo de la guía.");
+  await must(
+    db().from("ai_guides").upsert({ topic_id: before.topic_id, ...input, updated_by: adminId, updated_at: new Date().toISOString() }),
+  );
+  await audit(adminId, "guide.save", before.topic_id, {
+    topic: before.name,
+    created: !before.updated_at,
+    chars: GUIDE_FIELDS.reduce((n, f) => n + input[f].length, 0),
+  });
+  return guideOf(before.topic_id);
+}
+
+export async function deleteGuide(adminId: string, topicId: string) {
+  const before = await guideOf(topicId);
+  await must(db().from("ai_guides").delete().eq("topic_id", before.topic_id));
+  await audit(adminId, "guide.delete", before.topic_id, { topic: before.name });
 }

@@ -5,6 +5,8 @@
 
 import type {
   AdminAiTutor,
+  AdminGuide,
+  AdminGuideTopic,
   AdminMetrics,
   AdminUser,
   AiPromotion,
@@ -14,6 +16,7 @@ import type {
   CreditsInput,
   CreditsResult,
   PromotionInput,
+  TopicGuide,
 } from "@/lib/admin-types";
 import type {
   AiTutor,
@@ -96,6 +99,10 @@ export interface AdminApi {
   /** id = null crea; con id edita. */
   savePromotion(userId: UUID, id: UUID | null, input: PromotionInput): Promise<AiPromotion>;
   deletePromotion(userId: UUID, id: UUID): Promise<void>;
+  guides(userId: UUID): Promise<AdminGuideTopic[]>;
+  guide(userId: UUID, topicId: UUID): Promise<AdminGuide>;
+  saveGuide(userId: UUID, topicId: UUID, input: TopicGuide): Promise<AdminGuide>;
+  deleteGuide(userId: UUID, topicId: UUID): Promise<void>;
 }
 
 export interface ApiClient {

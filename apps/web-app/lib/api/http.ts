@@ -45,6 +45,10 @@ const admin: AdminApi = {
   savePromotion: (u, id, input) =>
     id ? call(u, "PUT", `/admin/promotions/${q(id)}`, input) : call(u, "POST", "/admin/promotions", input),
   deletePromotion: (u, id) => call(u, "DELETE", `/admin/promotions/${q(id)}`),
+  guides: (u) => call(u, "GET", "/admin/guides"),
+  guide: (u, topicId) => call(u, "GET", `/admin/guides/${q(topicId)}`),
+  saveGuide: (u, topicId, input) => call(u, "PUT", `/admin/guides/${q(topicId)}`, input),
+  deleteGuide: (u, topicId) => call(u, "DELETE", `/admin/guides/${q(topicId)}`),
 };
 
 export const httpApi: ApiClient = {
