@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, FlaskConical, IdCard, Lock, RotateCcw } from "lucide-react";
 import { api, ApiError, API_MODE, type TestAccount } from "@/lib/api";
@@ -210,6 +211,15 @@ export default function LoginPage() {
               ))}
             </div>
           </div>
+
+          <nav aria-label="Más información" className="flex justify-center gap-4 text-sm font-bold text-muted-foreground">
+            <Link href="/info" className="hover:text-foreground hover:underline">
+              Sobre AulaQuipu
+            </Link>
+            <Link href="/presentacion" className="hover:text-foreground hover:underline">
+              Presentación
+            </Link>
+          </nav>
         </div>
       </section>
     </div>
