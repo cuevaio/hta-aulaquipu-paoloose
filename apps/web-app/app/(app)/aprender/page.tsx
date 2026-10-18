@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Clock, User, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import type { RequestMode } from "@/lib/types";
@@ -35,14 +35,18 @@ const SLOTS = ["Lo antes posible", "Hoy en la tarde", "Mañana", "Este fin de se
 export default function NewRequestPage() {
   const router = useRouter();
   const { run, pending } = useMutation();
-  const [text, setText] = useState("");
+  // Desde el perfil de un tutor llegan ?tema=<nombre>&tutor=<id>: se precarga el pedido
+  const params = useSearchParams();
+  const tema = params.get("tema")?.slice(0, 80);
+  const tutorId = params.get("tutor");
+  const [text, setText] = useState(() => (tema ? `Quiero aprender ${tema}` : ""));
   const [mode, setMode] = useState<RequestMode>("grupo");
   const [when, setWhen] = useState(SLOTS[0]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const res = await run((u) => api.createRequest(u, { text, mode, preferredAt: slot(when) }));
-    if (res) router.push(`/match/${res.requestId}`);
+    if (res) router.push(`/match/${res.requestId}${tutorId ? `?tutor=${encodeURIComponent(tutorId)}` : ""}`);
   };
 
   return (

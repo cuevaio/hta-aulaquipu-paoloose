@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { CalendarClock, CheckCircle2, Sparkles, Users, Wand2 } from "lucide-react";
 import { api, type BookingResult } from "@/lib/api";
@@ -18,7 +18,9 @@ export default function MatchPage() {
   const { me } = useSession();
   const { data, error, loading } = useQuery((u) => api.match(u, requestId), [requestId]);
   const { run, pending } = useMutation();
-  const [armed, setArmed] = useState<string | null>(null);
+  // Si venimos del perfil de un tutor (?tutor=<id>), esa opción llega destacada y abierta
+  const preferred = useSearchParams().get("tutor");
+  const [armedState, setArmed] = useState<string | null | undefined>(undefined);
   const [booked, setBooked] = useState<(BookingResult & { title: string }) | null>(null);
 
   if (error) return <ErrorBox message={error} />;
@@ -31,6 +33,10 @@ export default function MatchPage() {
       </div>
     );
   if (!data) return null;
+
+  const preferredTutor = preferred ? data.tutors.find((t) => t.profile.id === preferred) : undefined;
+  const tutors = preferredTutor ? [preferredTutor, ...data.tutors.filter((t) => t !== preferredTutor)] : data.tutors;
+  const armed = armedState === undefined ? (preferredTutor ? `t-${preferredTutor.profile.id}` : null) : armedState;
 
   // Saldo disponible: descuenta clases ya reservadas que aún no se cobran
   const balance = me?.available ?? 0;
@@ -141,8 +147,13 @@ export default function MatchPage() {
       {data.tutors.length > 0 && (
         <section>
           <SectionTitle>Tutores alumnos recomendados</SectionTitle>
+          {preferred && !preferredTutor && (
+            <p className="mb-3 rounded-2xl bg-secondary p-3 text-sm font-semibold text-secondary-foreground">
+              El tutor que elegiste no está disponible para este tema ahora. Estas son otras opciones.
+            </p>
+          )}
           <div className="grid grid-cols-1 gap-3 @3xl:grid-cols-2">
-            {data.tutors.map((t, i) => {
+            {tutors.map((t, i) => {
               const key = `t-${t.profile.id}`;
               const short = balance < t.group_price_quipus;
               return (
@@ -152,7 +163,11 @@ export default function MatchPage() {
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-2 font-extrabold">
                         {t.profile.display_name}
-                        {i === 0 && <Pill className="bg-mint/30 text-accent-foreground">Top</Pill>}
+                        {t === preferredTutor ? (
+                          <Pill className="bg-primary/15 text-primary">Tu elección</Pill>
+                        ) : (
+                          i === 0 && !preferredTutor && <Pill className="bg-mint/30 text-accent-foreground">Top</Pill>
+                        )}
                       </p>
                       <p className="text-xs font-semibold text-muted-foreground">
                         {t.profile.grade}º · {t.profile.school} · {LEVEL_LABEL[t.level]}

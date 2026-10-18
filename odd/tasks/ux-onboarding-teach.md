@@ -33,7 +33,7 @@
 - [x] T1 — Naming/navigation: consistent terms, remove "(demo)", "Tutores IA" in bar, Aulas IA hotspot (6).
 - [x] T2 — Campus welcome overlay + mission hint + mobile movement hint (1, 2).
 - [x] T3 — Teach panel: checklist order + progress, actionable empty state with demand + add-topic, earnings copy, price chips, schedule blocks (3, 4, 5, 8, 9).
-- [ ] T4 — Tutor profile "Pedirle una clase" CTA with prefilled request (7).
+- [x] T4 — Tutor profile "Pedirle una clase" CTA with prefilled request (7).
 - [ ] T5 — Self-registration: migration + RPC, API route, mock, sign-up UI with onboarding questions; keep test panel (10).
 
 ## Acceptance criteria
@@ -47,6 +47,7 @@
 - T1 done: tsc clean, eslint clean, /campus /ensenar /aprender /tutores-ia /home 200. Bar now 7 items (compact on mobile), Aulas IA board -> /tutores-ia, 'Tablero' = /home, '(demo)' removed.
 - T2 done: tsc clean, eslint clean (components/campus), /campus /ensenar /aprender /home 200. Welcome overlay + '?' button, mission card (myRequests+tutorPanel+myUpcoming all empty), mobile movement hint; flags in localStorage per user via useSyncExternalStore. UI not browser-verified.
 - T3 done (commit follows T2 182461c): tsc clean, eslint clean, /ensenar 200. Earnings semantics verified in backend/migrations/001_web_app.sql (accept_request: group total_price = tutor price; members pay floor(price/n); end_session pays tutor the sum of shares). Price step counted 'listo' when settings were saved (has schedule) or price != 20 (no explicit saved flag exists). UI not browser-verified.
+- T4 done (after T3 18a5be1): tsc clean, eslint clean, /tutor/x /aprender?tema&tutor /campus /ensenar /tutores-ia /home 200. CTA per topic -> /aprender?tema&tutor -> /match/<id>?tutor= (tutor sorted first, 'Tu elección', card pre-armed). Not browser-verified.
 
 ## Next step
-- T4.
+- T5 (registration), done by someone else.
