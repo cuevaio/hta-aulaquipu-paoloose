@@ -6,7 +6,10 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, FlaskConical, IdCard, Lock, RotateCcw } from "lucide-react";
 import { api, ApiError, API_MODE, type TestAccount } from "@/lib/api";
 import { useSession, useToast } from "@/components/providers";
-import { Avatar, AiAvatar } from "@/components/avatar";
+import { Avatar } from "@/components/avatar";
+import { GuideSprite } from "@/components/campus/guide-dialog";
+import { furniSrc, type FurniId } from "@/lib/campus/furni";
+import { KILLA } from "@/lib/campus/guides";
 import { Logo } from "@/components/logo";
 import { QuipuIcon, btn } from "@/components/bits";
 import { resetWelcome } from "@/components/campus/welcome";
@@ -21,10 +24,34 @@ const withSlots = (id: string, color: string, extra: Record<string, string>): Av
 };
 
 const HERO_FIGURES = [
-  { id: "Valeria", config: withSlots("usr-valeria", "#7C6BF2", { ha: "hat_U_camocap" }), pose: { action: "wav", frame: 0 }, direction: 2, className: "bottom-[38%] left-[26%]", delay: "0s" },
-  { id: "Diego", config: withSlots("usr-diego", "#ED5C50", { ca: "acc_chest_U_backpack" }), pose: { action: "std", frame: 0 }, direction: 3, className: "bottom-[34%] right-[24%]", delay: ".5s" },
-  { id: "Camila", config: withSlots("usr-camila", "#E7B027", { ea: "acc_eye_U_brownglasses" }), pose: { action: "spk", frame: 0 }, direction: 2, className: "right-[12%] bottom-16", delay: ".2s" },
+  { id: "Valeria", config: withSlots("usr-valeria", "#7C6BF2", { ha: "hat_U_camocap" }), pose: { action: "wav", frame: 0 }, direction: 2, className: "top-[16%] left-[22%]", delay: "0s" },
+  { id: "Diego", config: withSlots("usr-diego", "#ED5C50", { ca: "acc_chest_U_backpack" }), pose: { action: "std", frame: 0 }, direction: 3, className: "top-[20%] right-[16%]", delay: ".5s" },
+  { id: "Camila", config: withSlots("usr-camila", "#E7B027", { ea: "acc_eye_U_brownglasses" }), pose: { action: "spk", frame: 0 }, direction: 2, className: "bottom-[10%] left-[40%]", delay: ".2s" },
 ] as const;
+
+// Pisos del campus (components/campus/world.tsx FLOOR_COLORS): ajedrezado de dos tonos
+const FLOORS = {
+  b: ["#ecd2ae", "#e5c8a1"],
+  q: ["#fff0c4", "#fbe7b0"],
+  i: ["#e3ddff", "#d9d2fb"],
+} as const;
+
+function Room({ floor, label, className, children }: { floor: readonly [string, string]; label: string; className?: string; children?: React.ReactNode }) {
+  return (
+    <div
+      className={cn("relative overflow-hidden rounded-xl shadow-[inset_0_6px_0_rgba(43,37,80,.35)]", className)}
+      style={{ backgroundColor: floor[0], backgroundImage: `repeating-conic-gradient(${floor[1]} 0 25%, transparent 0 50%)`, backgroundSize: "28px 28px" }}
+    >
+      <span className="absolute top-1.5 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#15142c]/85 px-2 py-0.5 text-[10px] font-extrabold whitespace-nowrap text-cream">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function Furni({ id, className }: { id: FurniId; className: string }) {
+  // eslint-disable-next-line @next/next/no-img-element -- sprite pixel art, sin optimizar
+  return <img src={furniSrc(id)} alt="" className={cn("absolute w-auto [image-rendering:pixelated]", className)} />;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -80,18 +107,30 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <div className="relative mx-auto mt-2 h-64 w-full max-w-md sm:h-72" aria-hidden>
-          <div className="room-floor absolute inset-0 rounded-[2rem] ring-4 ring-white/10" />
-          <div className="absolute top-4 left-4 rounded-xl bg-[#ecd2ae] px-3 py-2 text-xs font-extrabold text-navy shadow-[inset_0_-4px_0_#c9a57a]">📚 Biblioteca</div>
-          <div className="absolute top-4 right-4 rounded-xl bg-[#f3e3b8] px-3 py-2 text-xs font-extrabold text-navy shadow-[inset_0_-4px_0_#d9b25f]">🎓 Sala de profesores</div>
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-xl bg-[#e3ddff] px-3 py-2 text-xs font-extrabold whitespace-nowrap text-navy shadow-[inset_0_-4px_0_#c1b8f0]">✨ Laboratorio IA</div>
+        {/* Un pedacito del campus de verdad: mismos pisos, muros y muebles que el mapa */}
+        <div className="relative mx-auto mt-2 aspect-[4/3] w-full max-w-md overflow-hidden rounded-[1.75rem] bg-[#2b2550] p-2 shadow-2xl ring-1 ring-white/10" aria-hidden>
+          <div className="grid h-full grid-cols-2 grid-rows-[1fr_1.1fr] gap-2">
+            <Room floor={FLOORS.b} label="Biblioteca">
+              <Furni id="uni_bookshelf" className="top-2 right-3 h-[58%]" />
+              <Furni id="ducket_c25_plantpot" className="bottom-2 left-2 h-[36%]" />
+            </Room>
+            <Room floor={FLOORS.q} label="Sala de profesores">
+              <Furni id="school_chalkboard" className="top-3 left-3 h-[44%]" />
+            </Room>
+            <Room floor={FLOORS.i} label="Laboratorio IA" className="col-span-2">
+              <Furni id="school_c22_table" className="right-[30%] bottom-3 h-[34%]" />
+              <Furni id="nft_h26_jungleplant1" className="right-2 bottom-2 h-[52%]" />
+            </Room>
+          </div>
           {HERO_FIGURES.map((f) => (
             <div key={f.id} className={cn("float absolute", f.className)} style={{ animationDelay: f.delay }}>
               <Avatar config={f.config} size={48} bare pose={f.pose} direction={f.direction} label={f.id} />
             </div>
           ))}
-          <div className="float absolute bottom-16 left-[14%] [animation-delay:1s]">
-            <AiAvatar emoji="🦙" color="#7C6BF2" size={46} />
+          {/* Tutora IA: Killa, la llama del campus */}
+          <div className="float absolute bottom-[9%] left-[13%] flex flex-col items-center [animation-delay:1s]">
+            <GuideSprite guide={KILLA} box={64} />
+            <span className="-mt-1 rounded-full bg-[#15142c] px-2 py-0.5 text-[10px] font-black text-aurum ring-1 ring-aurum/60">IA · Killa</span>
           </div>
         </div>
       </section>
