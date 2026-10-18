@@ -39,6 +39,17 @@ export const EMOTES = ['celebrate', 'think', 'surprised', 'encourage'] as const;
 export type EmoteKind = (typeof EMOTES)[number];
 
 // LaTeX de Desmos a algo legible para el chip del chat ("y=\frac{1}{2}x" -> "y = 1/2x")
+// Desmos solo grafica en x e y: "v=d/t" o "F=ma" dejan letras sin definir y no dibujan nada útil
+// (misma regla que freeVariables en apps/web-app/lib/director.ts)
+export function freeVariables(latex: string): string[] {
+  const letters =
+    latex
+      .replace(/\\[A-Za-z]+/g, ' ')
+      .replace(/\b(sin|cos|tan|ln|log|sqrt|abs)\b/g, ' ')
+      .match(/[A-Za-z]/g) ?? [];
+  return [...new Set(letters.filter((c) => !'xye'.includes(c)))];
+}
+
 function prettyLatex(latex: string): string {
   return latex
     .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2')
@@ -419,6 +430,9 @@ export function backendInstructions(c: ClassContext, memoryBrief: string): strin
         Escribe las fórmulas en LaTeX entre signos de dólar: $\\frac{1}{2}+\\frac{1}{3}$ en línea y $$...$$ para destacarlas.
         Reusa el mismo título para corregir o ampliar una sección.
       - Comparaciones o datos ordenados: llama docAppendTable.
+      - Fórmulas con letras (v=d/t, F=ma): escríbelas en el documento en LaTeX con qué significa cada letra y un ejemplo con números.
+      - Nunca dibujes con caracteres (arte ASCII, diagramas hechos con | / _ - o bloques de código): las imágenes las muestra el tutor con showImage.
+        Si te piden una imagen o un dibujo, escribe solo la explicación en texto y responde que la imagen la mostrará el tutor.
       - Memoria de clases: llama memoryRecall cuando necesites saber qué trabajó o le costó al alumno
         antes, y memorySave con hechos duraderos de su progreso (qué domina, qué le cuesta, acuerdos)
         durante la clase y al cerrarla.
@@ -459,11 +473,11 @@ export function createAgent(
 
       # Herramientas que llamas TÚ directamente (no las delegues)
       - La plataforma también ejecuta por ti lo que ANUNCIES con claridad: si dices con la expresión completa "voy a graficar y igual a x al cuadrado", "te propongo una pregunta de opción múltiple sobre…" o "te muestro una imagen de la célula animal", el gráfico, la tarjeta o la imagen aparecen solos. Anuncia siempre de forma explícita (con la expresión dicha en palabras) y luego ESPERA el aviso del sistema ("la plataforma acaba de ejecutar…"): confírmalo en una frase solo entonces. Si el aviso no llega en unos segundos, di que no pudiste y llama la herramienta tú mismo como respaldo (si el gráfico ya estaba, no se duplica).
-      - Para graficar llama TÚ graphSet con LaTeX de Desmos: "y=2x+1", "y=\\frac{1}{2}x", "(1,3)". Usa ids cortos ("f1", "f2") y reutiliza el id para cambiar una curva; el color es opcional (hexadecimal, p. ej. "#7C6BF2") para distinguir varias curvas. Para quitar una curva, graphRemove con su id.
+      - Para graficar llama TÚ graphSet con LaTeX de Desmos: "y=2x+1", "y=\\frac{1}{2}x", "(1,3)". Solo funciones de x e y con números: una fórmula con otras letras (v=d/t, F=ma, A=b·h) NO se grafica, se pide escrita en el documento. Si quieres mostrarla en el graficador, conviértela con valores concretos (distancia vs tiempo a 5 m/s: "y=5x"). Usa ids cortos ("f1", "f2") y reutiliza el id para cambiar una curva; el color es opcional (hexadecimal, p. ej. "#7C6BF2") para distinguir varias curvas. Para quitar una curva, graphRemove con su id.
       - Anuncia en futuro ("voy a graficarlo") y llama la herramienta de inmediato; cuando devuelva OK, confírmalo y explica lo que se ve. Si devuelve ERROR, dilo ("no pude graficarlo") y reintenta una vez.
       - La pantalla cambia sola al graficador cuando graficas.
       - Para una pregunta de opción múltiple llama TÚ quizAsk (2 a 4 opciones, correctIndex = posición de la correcta empezando en 0, explicación breve). El alumno la ve como tarjeta en la pestaña Actividad, que se abre sola. Léela en voz alta de forma breve y espera su respuesta: no le digas cuál es la correcta, el sistema te avisará qué eligió y si acertó.
-      - Para un concepto visual (células, triángulos, mapas, partes de una planta, el sistema solar…) llama TÚ showImage con una consulta corta ("célula animal", "triángulo rectángulo", "mapa del Perú") y, si quieres, un título breve. Responde al instante y la imagen aparece en el documento en unos segundos: NO esperes; sigue hablando y explicando. Di que "va a aparecer en el documento", no que ya está a la vista; si no aparece, el sistema te avisará. Máximo ${MAX_IMAGES_PER_CLASS} por clase y solo como apoyo.
+      - Si el alumno pide ver una imagen, un dibujo o un esquema, o el concepto es visual (células, triángulos, mapas, partes de una planta, el sistema solar…), llama TÚ showImage; nunca lo dibujes con caracteres (arte ASCII) ni lo pidas así al documento. Llama showImage con una consulta corta ("célula animal", "triángulo rectángulo", "mapa del Perú") y, si quieres, un título breve. Responde al instante y la imagen aparece en el documento en unos segundos: NO esperes; sigue hablando y explicando. Di que "va a aparecer en el documento", no que ya está a la vista; si no aparece, el sistema te avisará. Máximo ${MAX_IMAGES_PER_CLASS} por clase y solo como apoyo.
       - Para reaccionar llama TÚ emote (celebrate, think, surprised o encourage) cuando el alumno acierte, dude o te sorprenda; con moderación. Si se equivoca, anímalo.
 
       # Qué delegar
@@ -553,15 +567,24 @@ export function createAgent(
             .optional()
             .describe('Color opcional en hexadecimal, por ejemplo "#7C6BF2"'),
         }),
-        execute: ({ id, latex, color }) =>
-          runAction(hooks, {
+        execute: async ({ id, latex, color }) => {
+          const free = freeVariables(latex);
+          if (free.length) {
+            await hooks.logEvent('error', { tool: 'graphSet', message: 'variables sin definir', latex });
+            return (
+              `ERROR: no se graficó "${latex}": Desmos solo grafica funciones de x e y y aquí quedan letras sin definir (${free.join(', ')}). ` +
+              'Si es una fórmula (como v=d/t), pide que se escriba en el documento. Si quieres graficarla, conviértela a x e y con números (por ejemplo y=5x).'
+            );
+          }
+          return runAction(hooks, {
             tool: 'graphSet',
             label: `Graficado ${prettyLatex(latex)}`,
             msg: { type: 'graph_op', op: 'set', id, latex, color },
             topic: 'aulaquipu:graph',
             log: { id, latex, color },
             ok: `OK: curva ${id} dibujada en el graficador.`,
-          }),
+          });
+        },
       }),
       tool({
         name: 'graphRemove',
