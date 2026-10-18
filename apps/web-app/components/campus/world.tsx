@@ -23,6 +23,7 @@ import {
 } from "@/lib/campus/map";
 import { BUBBLE_MS } from "@/lib/campus/chat-rules";
 import { cn } from "@/lib/utils";
+import { FURNI_SIZE, furniScale, furniSrc, type FurniId } from "@/lib/campus/furni";
 import type { CampusPeer, PeerPosition } from "@/lib/campus/use-campus-presence";
 
 export interface CampusPerson {
@@ -36,8 +37,8 @@ export interface CampusPerson {
   avatar?: AvatarConfig;
   equipped?: Equipped | null;
   ai?: { emoji: string; color: string };
-  /** Guía del colegio: habla con globos en vez de abrir una pantalla. */
-  guide?: { emoji: string; color: string };
+  /** Mascota guía: se dibuja con su sprite y abre una conversación en vez de una pantalla. */
+  guide?: { sprite: FurniId; scale: number };
 }
 
 /** Una clase del alumno puesta en una puerta del pasillo. */
@@ -150,6 +151,7 @@ export function CampusWorld({
   onOpen,
   onRoomChange,
   onNearChange,
+  onTrailEnd,
   interactRef,
   goToRef,
   bubbleRef,
@@ -165,10 +167,15 @@ export function CampusWorld({
   onOpen: (href: string) => void;
   onRoomChange: (room: Room | null) => void;
   onNearChange: (target: Interactable | null) => void;
+  /** Termina un camino guiado: `arrived` si llegó, `false` si el alumno tomó el control. */
+  onTrailEnd?: (arrived: boolean) => void;
   /** El HUD llama a esto para interactuar con lo que está cerca (botón en móvil). */
   interactRef: React.RefObject<(() => void) | null>;
-  /** Camina solo hasta un objetivo (p. ej. "door-0") y lo abre al llegar. */
-  goToRef: React.RefObject<((targetId: string) => void) | null>;
+  /**
+   * Camina solo hasta un objetivo (p. ej. "door-0") y lo abre al llegar. Con `trail` dibuja el camino
+   * en el piso (guías). `null` detiene la caminata.
+   */
+  goToRef: React.RefObject<((targetId: string | null, opts?: { trail?: boolean }) => void) | null>;
   /** El chat llama a esto para mostrar un globo sobre alguien ("me" = el jugador). */
   bubbleRef: React.RefObject<((id: string, text: string) => void) | null>;
 }) {
@@ -184,7 +191,11 @@ export function CampusWorld({
   const keys = useRef(new Set<string>());
   const path = useRef<{ x: number; y: number }[]>([]);
   const pending = useRef<Interactable | null>(null);
-  const callbacks = useRef({ onOpen, onRoomChange, onNearChange, onMove });
+  const callbacks = useRef({ onOpen, onRoomChange, onNearChange, onMove, onTrailEnd });
+  // Camino guiado: huellas por casilla (se apagan al pisarlas) y el objetivo marcado
+  const [trail, setTrail] = useState<{ cells: { x: number; y: number; angle: number }[]; goal: Interactable["rect"] } | null>(null);
+  const trailEls = useRef<(HTMLDivElement | null)[]>([]);
+  const trailStep = useRef(-1); // -1 = sin camino guiado
   const facing = useRef(DEFAULT_DIRECTION);
   // Elementos y posición dibujada de cada persona conectada (se interpola hacia la recibida)
   const peerEls = useRef(new Map<string, HTMLDivElement>());
@@ -229,8 +240,8 @@ export function CampusWorld({
   const blocked = useMemo(() => makeBlocked([...people, ...doorTiles(doors.length)]), [people, doors.length]);
 
   useEffect(() => {
-    callbacks.current = { onOpen, onRoomChange, onNearChange, onMove };
-  }, [onOpen, onRoomChange, onNearChange, onMove]);
+    callbacks.current = { onOpen, onRoomChange, onNearChange, onMove, onTrailEnd };
+  }, [onOpen, onRoomChange, onNearChange, onMove, onTrailEnd]);
 
   useEffect(() => {
     const onResize = () => setT(tileFor(window.innerWidth));
@@ -273,12 +284,25 @@ export function CampusWorld({
       return best;
     };
 
+    const endTrail = (arrived: boolean) => {
+      if (trailStep.current < 0) return;
+      trailStep.current = -1;
+      setTrail(null);
+      callbacks.current.onTrailEnd?.(arrived);
+    };
+
     interactRef.current = () => {
       const t = nearest();
       if (t) callbacks.current.onOpen(t.href);
     };
 
-    goToRef.current = (targetId) => {
+    goToRef.current = (targetId, opts) => {
+      endTrail(false);
+      if (targetId === null) {
+        path.current = [];
+        pending.current = null;
+        return;
+      }
       const t = targets.find((x) => x.id === targetId);
       if (!t) return;
       if (distToRect(pos.current.x, pos.current.y, t.rect) <= REACH) {
@@ -289,6 +313,16 @@ export function CampusWorld({
       if (found) {
         path.current = found;
         pending.current = t;
+        if (opts?.trail) {
+          // Cada huella apunta a la siguiente casilla; la última, al objetivo
+          const goal = { x: t.rect.x + t.rect.w / 2, y: t.rect.y + t.rect.h / 2 };
+          const cells = found.map((c, i) => {
+            const next = found[i + 1] ?? goal;
+            return { ...c, angle: (Math.atan2(next.y - c.y, next.x - c.x) * 180) / Math.PI };
+          });
+          trailStep.current = 0;
+          setTrail({ cells, goal: t.rect });
+        }
       }
     };
 
@@ -308,6 +342,7 @@ export function CampusWorld({
       if (vx || vy) {
         path.current = [];
         pending.current = null;
+        endTrail(false);
         const len = Math.hypot(vx, vy);
         const nx = p.x + (vx / len) * SPEED * dt;
         const ny = p.y + (vy / len) * SPEED * dt;
@@ -324,9 +359,11 @@ export function CampusWorld({
           p.x = wp.x;
           p.y = wp.y;
           path.current.shift();
+          if (trailStep.current >= 0) trailEls.current[trailStep.current++]?.classList.add("passed");
           if (!path.current.length && pending.current) {
             const t = pending.current;
             pending.current = null;
+            endTrail(true);
             callbacks.current.onOpen(t.href);
           }
         } else {
@@ -445,6 +482,7 @@ export function CampusWorld({
       ? findPath(blocked, pos.current, (x, y) => distToRect(x + 0.5, y + 0.5, hit.rect) <= REACH)
       : findPath(blocked, pos.current, (x, y) => Math.abs(x - tx) + Math.abs(y - ty) <= (blocked[ty]?.[tx] ? 1 : 0));
     if (found) {
+      goToRef.current?.(null);
       path.current = found;
       pending.current = hit ?? null;
     }
@@ -476,6 +514,41 @@ export function CampusWorld({
           </div>
         ))}
 
+        {/* Camino guiado: huellas en el piso hasta el objetivo */}
+        {trail && (
+          <>
+            {trail.cells.map((c, i) => (
+              <div
+                key={`${c.x}-${c.y}-${i}`}
+                ref={(el) => {
+                  trailEls.current[i] = el;
+                }}
+                className="trail-step pointer-events-none absolute grid place-items-center"
+                style={{ left: (c.x - 0.5) * T, top: (c.y - 0.5) * T, width: T, height: T, zIndex: 2, animationDelay: `${i * 35}ms` }}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="drop-shadow-[0_1px_1px_rgb(0_0_0/0.25)]"
+                  style={{ width: T * 0.34, height: T * 0.34, transform: `rotate(${c.angle}deg)` }}
+                  aria-hidden
+                >
+                  <path d="M9 6l6 6-6 6" fill="none" stroke="oklch(0.72 0.16 75)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            ))}
+            <div
+              className="trail-goal pointer-events-none absolute rounded-2xl ring-4 ring-gold"
+              style={{
+                left: trail.goal.x * T - 4,
+                top: trail.goal.y * T - 4,
+                width: trail.goal.w * T + 8,
+                height: trail.goal.h * T + 8,
+                zIndex: 3,
+              }}
+            />
+          </>
+        )}
+
         {OBJECTS.map((o) => {
           const big = BIG_EMOJI.has(o.kind);
           const near = nearId === o.id;
@@ -484,9 +557,9 @@ export function CampusWorld({
               key={o.id}
               className={cn(
                 "absolute grid place-items-center rounded-[10px] transition-shadow",
-                OBJECT_STYLE[o.kind],
+                !o.sprites && OBJECT_STYLE[o.kind],
                 o.href && "cursor-pointer",
-                near && "ring-4 ring-gold",
+                near && !o.sprites && "ring-4 ring-gold",
               )}
               style={{
                 left: o.x * T + 2,
@@ -496,7 +569,28 @@ export function CampusWorld({
                 zIndex: o.kind === "rug" ? 1 : (o.y + o.h) * 10,
               }}
             >
-              {o.emoji && (
+              {o.sprites && (
+                // Pixel art apoyado en el piso del objeto: puede sobresalir hacia arriba (estantes, árboles)
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-around">
+                  {o.sprites.map((id, i) => {
+                    const [w, h] = FURNI_SIZE[id];
+                    const k = furniScale(T, o.scale);
+                    return (
+                      // eslint-disable-next-line @next/next/no-img-element -- sprites diminutos, sin optimizar
+                      <img
+                        key={i}
+                        src={furniSrc(id)}
+                        alt=""
+                        draggable={false}
+                        width={Math.round(w * k)}
+                        height={Math.round(h * k)}
+                        className={cn("max-w-none [image-rendering:pixelated]", near && "drop-shadow-[0_0_6px_var(--color-gold)]")}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+              {o.emoji && !o.sprites && (
                 <span style={{ fontSize: big ? T * (o.kind === "fountain" ? 1.5 : 0.95) : T * 0.5 }} className={cn(big && "-translate-y-1 drop-shadow")}>
                   {o.kind === "shelf" || o.kind === "desk" ? o.emoji.repeat(Math.max(1, o.w - 1)) : o.emoji}
                 </span>
@@ -576,13 +670,17 @@ export function CampusWorld({
             )}
             <div className={cn("float", nearId === p.id && "rounded-xl ring-4 ring-gold")}>
               {p.guide ? (
-                <div
-                  role="img"
-                  aria-label={p.name}
-                  className="grid place-items-center rounded-full ring-2 ring-white/80"
-                  style={{ width: T * 0.95, height: T * 0.95, background: `radial-gradient(circle at 30% 30%, ${p.guide.color}, ${p.guide.color}aa)` }}
-                >
-                  <span style={{ fontSize: T * 0.95 * 0.5 }}>{p.guide.emoji}</span>
+                <div role="img" aria-label={p.name} className="relative flex items-end justify-center" style={{ width: T * 0.95, height: T * 0.95 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- sprite diminuto, sin optimizar */}
+                  <img
+                    src={furniSrc(p.guide.sprite)}
+                    alt=""
+                    draggable={false}
+                    width={Math.round(FURNI_SIZE[p.guide.sprite][0] * furniScale(T, p.guide.scale))}
+                    height={Math.round(FURNI_SIZE[p.guide.sprite][1] * furniScale(T, p.guide.scale))}
+                    className="max-w-none [image-rendering:pixelated]"
+                  />
+                  <span className="absolute -top-2 -right-2 grid size-5 place-items-center rounded-full bg-gold text-[11px] shadow ring-2 ring-white">💬</span>
                 </div>
               ) : p.ai ? (
                 <AiAvatar emoji={p.ai.emoji} color={p.ai.color} size={T * 0.95} />

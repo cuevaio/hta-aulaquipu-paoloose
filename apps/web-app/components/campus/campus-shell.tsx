@@ -5,7 +5,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, GraduationCap, LayoutDashboard, HelpCircle, LogOut, ShieldCheck, Shirt, User, X } from "lucide-react";
 import { api, API_MODE } from "@/lib/api";
-import { AI_SPOTS, CLASS_DOORS, GUIDES, type Room } from "@/lib/campus/map";
+import { AI_SPOTS, CLASS_DOORS, type Room } from "@/lib/campus/map";
+import { GUIDES, guideById, type Guide, type GuideTopic } from "@/lib/campus/guides";
+import { GuideDialog, GuideSprite } from "@/components/campus/guide-dialog";
 import { useQuery, useSession, useToast } from "@/components/providers";
 import { Avatar } from "@/components/avatar";
 import { Quipus, friendlyWhen } from "@/components/bits";
@@ -33,11 +35,25 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const panelOpen = pathname !== "/campus";
   const interactRef = useRef<(() => void) | null>(null);
-  const goToRef = useRef<((targetId: string) => void) | null>(null);
+  const goToRef = useRef<((targetId: string | null, opts?: { trail?: boolean }) => void) | null>(null);
   const bubbleRef = useRef<((id: string, text: string) => void) | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [banner, setBanner] = useState<Room | null>(null);
   const [near, setNear] = useState<Interactable | null>(null);
+  const [guideId, setGuideId] = useState<string | null>(null);
+  const guide = guideId ? guideById(guideId) : undefined;
+  // Mascota llevándote a un lugar (se muestra arriba mientras sigues las huellas)
+  const [guiding, setGuiding] = useState<{ guide: Guide; topic: GuideTopic } | null>(null);
+  const onTrailEnd = useCallback(() => setGuiding(null), []);
+  // Las mascotas saludan la primera vez que pasas cerca
+  const greeted = useRef(new Set<string>());
+  const onNearChange = useCallback((t: Interactable | null) => {
+    setNear(t);
+    if (t && guideById(t.id) && !greeted.current.has(t.id)) {
+      greeted.current.add(t.id);
+      bubbleRef.current?.(t.id, "¡Hola! 👋 Háblame si necesitas ayuda");
+    }
+  }, []);
   const [menu, setMenu] = useState(false);
   const presence = useCampusPresence(ready && me ? userId : null);
   const showBubble = useCallback(
@@ -135,10 +151,10 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         x: g.x,
         y: g.y,
         name: g.name,
-        caption: `${g.role} · habla conmigo`,
+        caption: `${g.species} · habla conmigo`,
         href: `guide:${g.id}`,
         prompt: `Hablar con ${g.name}`,
-        guide: { emoji: g.emoji, color: g.color },
+        guide: { sprite: g.sprite, scale: g.scale },
       })),
     [],
   );
@@ -170,16 +186,11 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   );
 
   const toastMsg = useToast();
-  const tipIndex = useRef(new Map<string, number>());
   const open = useCallback(
     async (href: string) => {
-      // Guía: cada vez que le hablas dice el siguiente consejo
+      // Mascota guía: abre la conversación
       if (href.startsWith("guide:")) {
-        const g = GUIDES.find((x) => x.id === href.slice("guide:".length));
-        if (!g) return;
-        const i = tipIndex.current.get(g.id) ?? 0;
-        tipIndex.current.set(g.id, (i + 1) % g.tips.length);
-        bubbleRef.current?.(g.id, g.tips[i]);
+        setGuideId(href.slice("guide:".length));
         return;
       }
       // Puerta de una clase agendada: se abre el aula (la sesión se crea si aún no existe)
@@ -255,7 +266,8 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         doors={doors}
         onOpen={open}
         onRoomChange={onRoomChange}
-        onNearChange={setNear}
+        onNearChange={onNearChange}
+        onTrailEnd={onTrailEnd}
         interactRef={interactRef}
         goToRef={goToRef}
         bubbleRef={bubbleRef}
@@ -412,7 +424,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Acción disponible cerca */}
-      {near && !panelOpen && (
+      {near && !panelOpen && !guide && (
         <div className="absolute inset-x-0 bottom-24 z-[55] flex justify-center px-4">
           <button
             onClick={() => interactRef.current?.()}
@@ -456,6 +468,42 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         </p>
       )}
 
+      {guide && !welcome && (
+        <GuideDialog
+          guide={guide}
+          onClose={() => setGuideId(null)}
+          onPick={(topic) => {
+            setGuideId(null);
+            if (!topic.go) return;
+            goToRef.current?.(topic.go.target, { trail: true });
+            setGuiding({ guide, topic });
+          }}
+        />
+      )}
+      {guiding && !panelOpen && (
+        <div className="pointer-events-none absolute inset-x-0 top-[4.5rem] z-[56] flex justify-center px-3">
+          <div className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl bg-card/95 p-2 pr-3 shadow-xl ring-2 ring-gold backdrop-blur animate-in fade-in slide-in-from-top-2">
+            <div className="grid size-12 shrink-0 place-items-end justify-center rounded-xl bg-secondary pb-0.5">
+              <GuideSprite guide={guiding.guide} box={42} />
+            </div>
+            <div className="min-w-0 flex-1 text-sm leading-snug">
+              <p className="font-extrabold">
+                👣 Sigue las huellas hasta {guiding.topic.go?.place}
+              </p>
+              <p className="text-xs text-muted-foreground">{guiding.topic.say}</p>
+            </div>
+            <button
+              onClick={() => {
+                goToRef.current?.(null);
+                setGuiding(null);
+              }}
+              className="shrink-0 rounded-full px-2 py-1 text-xs font-bold text-muted-foreground hover:bg-muted"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
       {welcome && (
         <WelcomeOverlay balance={me.balance} avatar={me.profile.avatar_config} firstVisit={welcomeSeen === false} onClose={closeWelcome} />
       )}
