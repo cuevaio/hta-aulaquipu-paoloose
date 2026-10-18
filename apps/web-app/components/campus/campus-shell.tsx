@@ -271,7 +271,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
                   : "Solo tú por ahora"
               }
             >
-              <span className="size-2 rounded-full bg-mint" />
+              <span className="size-2 rounded-full bg-success" />
               {presence.peers.length + 1} en línea
             </span>
           )}

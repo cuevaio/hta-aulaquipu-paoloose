@@ -42,6 +42,8 @@
   --color-gold: var(--gold);
   --color-gold-foreground: var(--gold-foreground);
   --color-mint: var(--mint);
+  --color-mint-deep: var(--mint-deep);
+  --color-success: var(--success);
   --color-coral: var(--coral);
   --color-navy: var(--navy);
   --color-navy-2: var(--navy-2);
@@ -69,28 +71,31 @@
   --secondary-foreground: oklch(0.3 0.08 282);
   --muted: oklch(0.95 0.015 290);
   --muted-foreground: oklch(0.5 0.04 280);
-  --accent: oklch(0.8 0.14 170);
-  --accent-foreground: oklch(0.25 0.06 180);
+  --accent: #d9b25f;
+  --accent-foreground: #3a2a05;
   --destructive: oklch(0.6 0.21 22);
   --border: oklch(0.91 0.02 290);
   --input: oklch(0.91 0.02 290);
   --ring: oklch(0.6 0.18 282);
   --gold: oklch(0.84 0.15 85);
   --gold-foreground: oklch(0.35 0.08 70);
-  --mint: oklch(0.8 0.14 170);
+  /* Acento de marca: dorado (familia aurum de /info). mint-deep para bordes/barras sobre fondos claros; success = verde semántico */
+  --mint: #d9b25f;
+  --mint-deep: #8a6a1f;
+  --success: #4caf73;
   --coral: oklch(0.72 0.16 25);
   --navy: oklch(0.24 0.06 280);
   --navy-2: oklch(0.3 0.07 280);
   --navy-3: oklch(0.37 0.07 280);
   --chart-1: oklch(0.52 0.2 282);
-  --chart-2: oklch(0.8 0.14 170);
+  --chart-2: #d9b25f;
   --chart-3: oklch(0.84 0.15 85);
   --chart-4: oklch(0.72 0.16 25);
   --chart-5: oklch(0.65 0.15 240);
   --radius: 0.875rem;
   --sidebar: oklch(0.24 0.06 280);
   --sidebar-foreground: oklch(0.95 0.01 290);
-  --sidebar-primary: oklch(0.8 0.14 170);
+  --sidebar-primary: #d9b25f;
   --sidebar-primary-foreground: oklch(0.2 0.05 280);
   --sidebar-accent: oklch(0.3 0.07 280);
   --sidebar-accent-foreground: oklch(0.98 0 0);
@@ -121,14 +126,14 @@
 
 .hero-sky {
   background:
-    radial-gradient(60% 80% at 80% 0%, oklch(0.8 0.14 170 / 35%), transparent 60%),
-    radial-gradient(50% 70% at 0% 100%, oklch(0.84 0.15 85 / 30%), transparent 60%),
+    radial-gradient(60% 80% at 80% 0%, oklch(0.77 0.1 85 / 32%), transparent 60%),
+    radial-gradient(50% 70% at 0% 100%, oklch(0.6 0.2 282 / 35%), transparent 60%),
     linear-gradient(180deg, oklch(0.3 0.1 282), oklch(0.24 0.06 280));
 }
 
 @keyframes speak-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 oklch(0.8 0.14 170 / 70%); }
-  50% { box-shadow: 0 0 0 6px oklch(0.8 0.14 170 / 0%); }
+  0%, 100% { box-shadow: 0 0 0 0 oklch(0.77 0.1 85 / 70%); }
+  50% { box-shadow: 0 0 0 6px oklch(0.77 0.1 85 / 0%); }
 }
 .speaking { animation: speak-pulse 1.2s ease-in-out infinite; }
 

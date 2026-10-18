@@ -28,8 +28,8 @@ export default function AdminSummaryPage() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="inline-flex items-center gap-2 text-xs font-bold tracking-wider text-white/70 uppercase">
             <span className="relative flex size-2.5">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-mint opacity-70" />
-              <span className="relative inline-flex size-2.5 rounded-full bg-mint" />
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-70" />
+              <span className="relative inline-flex size-2.5 rounded-full bg-success" />
             </span>
             Tracción en vivo
           </p>

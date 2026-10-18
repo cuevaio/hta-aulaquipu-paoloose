@@ -88,7 +88,7 @@ export default function BankPage() {
       </div>
 
       {/* Tarjeta estudiante */}
-      <div className="relative aspect-[1.6/1] w-full max-w-sm overflow-hidden rounded-[1.5rem] bg-[linear-gradient(135deg,#2b2550_0%,#5b4bdb_55%,#2fd3a3_130%)] p-5 text-white shadow-[0_18px_40px_-12px_rgba(43,37,80,0.6)]">
+      <div className="relative aspect-[1.6/1] w-full max-w-sm overflow-hidden rounded-[1.5rem] bg-[linear-gradient(135deg,#2b2550_0%,#5b4bdb_55%,#d9b25f_130%)] p-5 text-white shadow-[0_18px_40px_-12px_rgba(43,37,80,0.6)]">
         <div className="absolute -top-16 -right-16 size-48 rounded-full bg-white/10" aria-hidden />
         <div className="absolute -bottom-20 -left-10 size-56 rounded-full bg-white/5" aria-hidden />
         <div className="relative flex h-full flex-col justify-between">

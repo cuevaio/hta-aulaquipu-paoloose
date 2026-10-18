@@ -79,7 +79,7 @@ const btnBase =
 
 export const btn = {
   primary: cn(btnBase, "bg-primary text-primary-foreground shadow-[0_3px_0_0_oklch(0.4_0.2_282)] hover:brightness-110"),
-  mint: cn(btnBase, "bg-mint text-accent-foreground shadow-[0_3px_0_0_oklch(0.62_0.13_170)] hover:brightness-105"),
+  mint: cn(btnBase, "bg-mint text-accent-foreground shadow-[0_3px_0_0_var(--mint-deep)] hover:brightness-105"),
   gold: cn(btnBase, "bg-gold text-gold-foreground shadow-[0_3px_0_0_oklch(0.7_0.15_80)] hover:brightness-105"),
   soft: cn(btnBase, "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--primary)_10%)]"),
   ghost: cn(btnBase, "text-muted-foreground hover:bg-muted hover:text-foreground"),

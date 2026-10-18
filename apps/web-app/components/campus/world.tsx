@@ -125,7 +125,7 @@ const OBJECT_STYLE: Partial<Record<WorldObject["kind"], string>> = {
   bench: "bg-[#b9895c] shadow-[inset_0_-5px_0_#946a43]",
   mirror: "bg-[#c9ecff] ring-4 ring-[#d4a676] shadow-[inset_0_-5px_0_#a8d8f5]",
   desk: "bg-[#e0bd92] shadow-[inset_0_-5px_0_#c49e70]",
-  counter: "bg-mint shadow-[inset_0_-6px_0_oklch(0.62_0.13_170)]",
+  counter: "bg-mint shadow-[inset_0_-6px_0_var(--mint-deep)]",
   display: "bg-white ring-2 ring-[#2b2550]/10 shadow-[inset_0_-4px_0_#ece7fa]",
   vault: "bg-[#6b7088] shadow-[inset_0_-6px_0_#50546a]",
   locker: "bg-[#7ea6d6] shadow-[inset_0_-6px_0_#5b84b8] ring-1 ring-[#5b84b8]/40",
@@ -715,7 +715,7 @@ export function CampusWorld({
               <WalkingAvatar id={peer.id} config={peer.avatar} equipped={peer.equipped} size={T * 0.95} label={peer.name} />
             </div>
             <span className="mt-0.5 flex items-center gap-1 rounded-full bg-navy/85 px-1.5 py-px text-[10px] font-bold whitespace-nowrap text-white">
-              <span className="size-1.5 rounded-full bg-mint" />
+              <span className="size-1.5 rounded-full bg-success" />
               {peer.name}
             </span>
           </div>

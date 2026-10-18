@@ -93,7 +93,7 @@ export function ParticipantCard({
       )}
       <div className="absolute inset-x-2 bottom-2 flex items-center gap-1.5">
         <span className="flex min-w-0 items-center gap-1 rounded-full bg-black/45 px-2 py-0.5 text-[11px] font-bold text-white backdrop-blur">
-          {p.micOn ? <Mic className="size-3 text-mint" /> : <MicOff className="size-3 text-coral" />}
+          {p.micOn ? <Mic className="size-3 text-success" /> : <MicOff className="size-3 text-coral" />}
           <span className="truncate">
             {p.name}
             {p.isMe && " (tú)"}

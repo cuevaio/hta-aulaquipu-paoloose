@@ -85,7 +85,7 @@ export function ActivityPanel({
         </div>
         {r ? (
           <div className="mt-3">
-            <p className={cn("font-heading text-lg font-semibold", r.correct ? "text-mint" : "text-coral")}>
+            <p className={cn("font-heading text-lg font-semibold", r.correct ? "text-success" : "text-coral")}>
               {r.correct ? "¡Correcto!" : "Casi, esta vez no."}
             </p>
             {r.explanation && <p className="mt-1 text-sm font-semibold text-white/80">{r.explanation}</p>}

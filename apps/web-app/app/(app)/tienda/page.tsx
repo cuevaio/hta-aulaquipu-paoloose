@@ -108,7 +108,7 @@ export default function ShopPage() {
                   onFocus={() => setPreview(s)}
                   className={cn(
                     "flex flex-col items-center gap-2 rounded-3xl bg-card p-4 text-center ring-1 ring-border transition-all hover:-translate-y-0.5 hover:shadow-md",
-                    s.equipped && "ring-2 ring-mint",
+                    s.equipped && "ring-2 ring-mint-deep",
                   )}
                 >
                   <div

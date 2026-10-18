@@ -63,7 +63,7 @@ export function BarRow({ label, value, max, suffix, tone = "primary" }: { label:
       </div>
       <div className="h-2.5 overflow-hidden rounded-full bg-muted" role="presentation">
         <div
-          className={cn("h-full rounded-full", tone === "primary" && "bg-primary", tone === "mint" && "bg-mint", tone === "coral" && "bg-coral", tone === "gold" && "bg-gold")}
+          className={cn("h-full rounded-full", tone === "primary" && "bg-primary", tone === "mint" && "bg-mint-deep", tone === "coral" && "bg-coral", tone === "gold" && "bg-gold")}
           style={{ width: `${pct}%` }}
         />
       </div>

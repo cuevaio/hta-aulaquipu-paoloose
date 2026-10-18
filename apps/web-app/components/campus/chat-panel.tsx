@@ -47,7 +47,7 @@ export function ChatPanel({ chat }: { chat: Chat }) {
         className="absolute right-3 bottom-24 z-[56] flex items-center gap-2 rounded-2xl bg-navy/90 px-4 py-3 text-sm font-bold text-white shadow-xl backdrop-blur hover:bg-navy"
       >
         <MessageCircle className="size-5" /> Chat
-        {enabled && online && <span className="size-2 rounded-full bg-mint" aria-label="activado" />}
+        {enabled && online && <span className="size-2 rounded-full bg-success" aria-label="activado" />}
       </button>
     );
 

@@ -63,7 +63,7 @@ export default function HomePage() {
           </Link>
           <Link
             href="/ensenar"
-            className="group flex flex-col justify-between gap-6 rounded-[2rem] bg-mint p-6 text-accent-foreground shadow-[0_4px_0_0_oklch(0.62_0.13_170)] transition-transform hover:-translate-y-1"
+            className="group flex flex-col justify-between gap-6 rounded-[2rem] bg-mint p-6 text-accent-foreground shadow-[0_4px_0_0_var(--mint-deep)] transition-transform hover:-translate-y-1"
           >
             <span className="grid size-12 place-items-center rounded-2xl bg-white/30">
               <GraduationCap className="size-6" />

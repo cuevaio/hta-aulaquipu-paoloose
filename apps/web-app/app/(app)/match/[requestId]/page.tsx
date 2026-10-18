@@ -93,7 +93,7 @@ export default function MatchPage() {
   if (booked) {
     return (
       <div className="mx-auto max-w-md pt-6 text-center animate-in fade-in zoom-in-95">
-        <CheckCircle2 className="mx-auto size-16 text-mint" />
+        <CheckCircle2 className="mx-auto size-16 text-success" />
         <h1 className="mt-4 font-heading text-3xl font-semibold">¡Clase reservada! 🎉</h1>
         <p className="mt-1 text-lg font-bold">{booked.title}</p>
         <p className="mt-2 flex items-center justify-center gap-1.5 text-muted-foreground">
