@@ -12,6 +12,8 @@ export type ClassContext = {
   focus: string;
   topic: string;
   studentName: string;
+  /** Guía del tema definida por la plataforma (admin). Vacía si el tema no tiene guía. */
+  guide: string;
 };
 
 const DEFAULT_CONTEXT: ClassContext = {
@@ -20,6 +22,7 @@ const DEFAULT_CONTEXT: ClassContext = {
   focus: '',
   topic: '',
   studentName: '',
+  guide: '',
 };
 
 function classBrief(c: ClassContext): string {
@@ -30,6 +33,17 @@ function classBrief(c: ClassContext): string {
     c.studentName && `- El alumno se llama ${c.studentName}.`,
   ].filter(Boolean);
   return lines.length ? `\n# Esta clase\n${lines.join('\n')}\n` : '';
+}
+
+// Guía por tema que define la plataforma: manda sobre el plan de clase genérico.
+function guideBrief(c: ClassContext): string {
+  if (!c.guide) return '';
+  return (
+    '\n# Guía del tema definida por la plataforma\n' +
+    'Sigue estos objetivos y pasos; vigila estos errores comunes; verifica con estas preguntas. ' +
+    'Úsala como columna vertebral de la clase, adaptando el ritmo al alumno, sin leerla en voz alta.\n\n' +
+    `${c.guide}\n`
+  );
 }
 
 // Instrucciones del modelo de razonamiento al que GPT-Live delega el trabajo. El modelo de voz
@@ -51,7 +65,11 @@ function backendInstructions(c: ClassContext): string {
         El color es opcional (hexadecimal, por ejemplo "#7C6BF2"): úsalo para distinguir varias curvas.
       - Puedes llamar varias herramientas seguidas.
       - Responde al tutor con una sola frase corta que pueda decir en voz alta, sin markdown.
-    ` + (c.topic ? `\nEl tema de la clase es: ${c.topic}.` : '')
+    ` +
+    (c.topic ? `\nEl tema de la clase es: ${c.topic}.` : '') +
+    (c.guide
+      ? `\nGuía del tema (escribe en el documento los pasos y ejercicios siguiendo esta guía):\n${c.guide}`
+      : '')
   );
 }
 
@@ -84,7 +102,9 @@ export function createAgent(hooks: TutorHooks, context: ClassContext = DEFAULT_C
       - Si el alumno se atasca, reexplica por otro camino con otro ejemplo concreto; nunca lo derivas con nadie más.
       - Temas de secundaria: matemática, comunicación, ciencias, historia, inglés. Si el pedido es de otro nivel, redirige amablemente.
       - Anima al alumno: reconocer el progreso es parte del trabajo.
-    ` + classBrief(context),
+    ` +
+      classBrief(context) +
+      guideBrief(context),
     llm: new inference.DuplexModel({
       model: 'openai/gpt-live-1',
       voice: 'marin',

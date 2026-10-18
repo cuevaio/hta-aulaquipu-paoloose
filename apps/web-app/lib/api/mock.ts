@@ -12,8 +12,12 @@ import type {
   UpcomingClass,
 } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
+import { buildMockAdmin, check, isMockAdmin } from "@/lib/api/mock-admin";
+import { parseReportText } from "@/lib/admin-validate";
+import { aiPrice, priceWithPromos } from "@/lib/pricing";
 import { buildSeed, SEED_VERSION, TOPIC_KEYWORDS, type DbState } from "@/lib/api/seed";
 import type {
+  AiTutor,
   Badge,
   Equipped,
   Group,
@@ -108,7 +112,7 @@ export function balanceOf(s: DbState, id: UUID): number {
 /** Escribe en el ledger. La validación de saldo se hace antes (requireBalance), como en las RPCs. */
 function addLedger(
   s: DbState,
-  entry: { kind: LedgerKind; amount: number; from: UUID | null; to: UUID | null; sessionId?: UUID | null },
+  entry: { kind: LedgerKind; amount: number; from: UUID | null; to: UUID | null; sessionId?: UUID | null; note?: string },
 ) {
   if (entry.amount <= 0) return;
   const id = s.ledger.reduce((m, l) => Math.max(m, l.id), 0) + 1;
@@ -120,6 +124,7 @@ function addLedger(
     amount: entry.amount,
     kind: entry.kind,
     created_at: now(),
+    ...(entry.note ? { note: entry.note } : {}),
   };
   s.ledger.push(row);
 }
@@ -259,6 +264,10 @@ function describeLedger(s: DbState, l: LedgerEntry, me: UUID): string {
       return "Compra en la tienda";
     case "refund":
       return `Devolución por clase cancelada${topic ? ` (${topic})` : ""}`;
+    case "grant":
+      return `Regalo de AulaQuipu${l.note ? `: ${l.note}` : ""}`;
+    case "adjust":
+      return `Ajuste de AulaQuipu${l.note ? `: ${l.note}` : ""}`;
   }
 }
 
@@ -290,13 +299,29 @@ function ensureLiveGroupSession(s: DbState, group: Group): Session {
 
 // ---------- cliente ----------
 
+/** Precio efectivo de las clases IA para un alumno (promociones vigentes del mock). */
+function withPromos(s: DbState, userId: UUID | undefined, ais: AiTutor[]): AiTutor[] {
+  const first = !!userId && !s.sessions.some((x) => x.tutor_kind === "ai" && x.status !== "cancelled" && x.student_ids.includes(userId));
+  return ais.map((a) => priceWithPromos(a, s.ai_promotions, first));
+}
+
+/** Tienda: los artículos ocultos por un admin solo los ven quienes ya los tienen. */
+function shopSkins(s: DbState, owned: Map<string, { equipped: boolean }>) {
+  return s.skins
+    .filter((k) => k.active !== false || owned.has(k.id))
+    .map((k) => ({ ...k, owned: owned.has(k.id), equipped: owned.get(k.id)?.equipped ?? false }));
+}
+
 export const mockApi: ApiClient = {
+  admin: buildMockAdmin({ read, write, balanceOf, addLedger, uid, now }),
+
   login: (dni, password) =>
     read((s) => {
       const clean = dni.trim();
       if (!/^\d{8}$/.test(clean)) throw new ApiError("El DNI tiene 8 dígitos.", "invalid");
       const cred = s.credentials.find((c) => c.dni === clean && c.password === password);
       if (!cred) throw new ApiError("DNI o contraseña incorrectos.", "unauthorized");
+      if (profileOf(s, cred.profile_id).suspended_at) throw new ApiError("Tu cuenta está suspendida.", "suspended");
       return { userId: cred.profile_id };
     }),
 
@@ -315,10 +340,11 @@ export const mockApi: ApiClient = {
         profile,
         balance: balanceOf(s, userId),
         available: availableOf(s, userId),
-        skins: s.skins.map((k) => ({ ...k, owned: owned.has(k.id), equipped: owned.get(k.id)?.equipped ?? false })),
+        skins: shopSkins(s, owned),
         equipped: equippedOf(s, userId),
         badges: badgesOf(s, userId),
         stats: statsOf(s, userId),
+        is_admin: isMockAdmin(s, userId),
       };
     }),
 
@@ -404,19 +430,24 @@ export const mockApi: ApiClient = {
         );
 
       const aiIds = new Set(s.ai_tutor_topics.filter((x) => x.topic_id === topic.id).map((x) => x.ai_tutor_id));
-      const aiTutors = aiIds.size ? s.ai_tutors.filter((a) => aiIds.has(a.id)) : s.ai_tutors;
+      // Los de este tema primero; si no hay (o están en pausa), los demás activos
+      const live = s.ai_tutors.filter((a) => a.active !== false);
+      const assigned = live.filter((a) => aiIds.has(a.id));
+      const aiTutors = assigned.length ? assigned : live;
 
-      return { request, topic, topicWasCreated: topic.proposed_by === userId, groups, tutors, aiTutors };
+      return { request, topic, topicWasCreated: topic.proposed_by === userId, groups, tutors, aiTutors: withPromos(s, userId, aiTutors) };
     }),
 
-  listAiTutors: () => read((s) => s.ai_tutors),
+  listAiTutors: (userId) => read((s) => withPromos(s, userId, s.ai_tutors.filter((a) => a.active !== false))),
 
   book: (userId, input: BookingInput) =>
     write((s): BookingResult => {
       if (input.kind === "ai") {
         const ai = s.ai_tutors.find((a) => a.id === input.aiTutorId);
         if (!ai) throw new ApiError("Tutor IA no encontrado", "not_found");
-        requireBalance(s, userId, ai.price_quipus);
+        if (ai.active === false) throw new ApiError("Este tutor IA está en pausa por ahora. Elige otro.", "conflict");
+        const price = aiPrice(withPromos(s, userId, [ai])[0]);
+        requireBalance(s, userId, price);
         const request = input.requestId ? s.requests.find((r) => r.id === input.requestId) : null;
         const topicId =
           request?.topic_id ?? s.ai_tutor_topics.find((x) => x.ai_tutor_id === ai.id)?.topic_id ?? s.topics[0].id;
@@ -430,7 +461,7 @@ export const mockApi: ApiClient = {
           tutor_id: null,
           ai_tutor_id: ai.id,
           room_name: `session-${id}`,
-          price_quipus: ai.price_quipus,
+          price_quipus: price,
           status: "live",
           started_at: now(),
           ended_at: null,
@@ -716,7 +747,7 @@ export const mockApi: ApiClient = {
   skins: (userId) =>
     read((s) => {
       const owned = new Map(s.profile_skins.filter((p) => p.profile_id === userId).map((p) => [p.skin_id, p]));
-      return s.skins.map((k) => ({ ...k, owned: owned.has(k.id), equipped: owned.get(k.id)?.equipped ?? false }));
+      return shopSkins(s, owned);
     }),
 
   buySkin: (userId, skinId) =>
@@ -725,6 +756,7 @@ export const mockApi: ApiClient = {
       if (!skin) throw new ApiError("Ese artículo no existe.", "not_found");
       // §11.4: compra idempotente por (profile_id, skin_id)
       if (s.profile_skins.some((p) => p.profile_id === userId && p.skin_id === skinId)) return;
+      if (skin.active === false) throw new ApiError("Ese artículo no existe.", "not_found");
       requireBalance(s, userId, skin.price_quipus);
       addLedger(s, { kind: "skin_purchase", amount: skin.price_quipus, from: userId, to: null });
       s.profile_skins.push({ profile_id: userId, skin_id: skinId, equipped: false });
@@ -756,6 +788,26 @@ export const mockApi: ApiClient = {
     ),
 
   // En modo demo no hay sala compartida: cada navegador está solo
+  activeAnnouncements: () =>
+    read((s) => {
+      const t = Date.now();
+      return s.announcements
+        .filter((a) => a.active && Date.parse(a.starts_at) <= t && (!a.ends_at || Date.parse(a.ends_at) > t))
+        .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+        .slice(0, 3)
+        .map((a) => ({ id: a.id, text: a.text }));
+    }),
+
+  reportChat: (userId, reportedId, text) =>
+    write((s) => {
+      const clean = check(parseReportText(text));
+      if (reportedId === userId) throw new ApiError("No puedes reportarte a ti mismo.");
+      profileOf(s, reportedId);
+      const recent = s.chat_reports.filter((r) => r.reporter_id === userId && Date.now() - Date.parse(r.created_at) < 3600_000);
+      if (recent.length >= 8) throw new ApiError("Enviaste varios reportes seguidos. Espera un rato.", "forbidden");
+      s.chat_reports.push({ id: uid("rep"), reporter_id: userId, reported_id: reportedId, text: clean, created_at: now(), resolved_at: null });
+    }),
+
   campusToken: async () => null,
 
   resetDemo: async () => {

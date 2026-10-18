@@ -3,33 +3,17 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  BookOpen,
-  GraduationCap,
-  LayoutDashboard,
-  HelpCircle,
-  LogOut,
-  User,
-  X,
-} from "lucide-react";
+import { BookOpen, GraduationCap, LayoutDashboard, HelpCircle, LogOut, ShieldCheck, User, X } from "lucide-react";
 import { api, API_MODE } from "@/lib/api";
 import { AI_SPOTS, CLASS_DOORS, GUIDES, type Room } from "@/lib/campus/map";
 import { useQuery, useSession, useToast } from "@/components/providers";
 import { Avatar } from "@/components/avatar";
 import { Quipus, friendlyWhen } from "@/components/bits";
+import { aiPrice } from "@/lib/pricing";
 import { Logo } from "@/components/logo";
-import {
-  MissionCard,
-  WelcomeOverlay,
-  useFlag,
-  writeFlag,
-} from "@/components/campus/welcome";
-import {
-  CampusWorld,
-  type CampusPerson,
-  type ClassDoor,
-  type Interactable,
-} from "@/components/campus/world";
+import { MissionCard, WelcomeOverlay, useFlag, writeFlag } from "@/components/campus/welcome";
+import { CampusWorld, type CampusPerson, type ClassDoor, type Interactable } from "@/components/campus/world";
+import { AnnouncementBanner } from "@/components/campus/announcement-banner";
 import { ChatPanel } from "@/components/campus/chat-panel";
 import { useCampusChat } from "@/lib/campus/use-campus-chat";
 import { useCampusPresence } from "@/lib/campus/use-campus-presence";
@@ -97,7 +81,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
 
   const crowd = useQuery(async (u) => {
     const [ais, upcoming] = await Promise.all([
-      api.listAiTutors(),
+      api.listAiTutors(u),
       api.myUpcoming(u),
     ]);
     return { ais, upcoming };
@@ -163,7 +147,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
       id: a.id,
       ...AI_SPOTS[i],
       name: a.name,
-      caption: `Tutor IA · ${a.price_quipus} quipus`,
+      caption: `Tutor IA · ${aiPrice(a)} quipus`,
       href: `/tutores-ia?t=${a.id}`,
       prompt: `Tomar clase con ${a.name}`,
       ai: { emoji: a.persona.emoji, color: a.persona.color },
@@ -367,6 +351,11 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
               >
                 <User className="size-4" /> Mi perfil
               </Link>
+              {me.is_admin && (
+                <Link href="/admin" onClick={() => setMenu(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold hover:bg-muted">
+                  <ShieldCheck className="size-4" /> Admin
+                </Link>
+              )}
               <button
                 onClick={async () => {
                   setMenu(false);
@@ -427,6 +416,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
+      {!panelOpen && !welcome && <AnnouncementBanner />}
       {!panelOpen && !welcome && <ChatPanel chat={chat} />}
 
       {/* Barra inferior */}

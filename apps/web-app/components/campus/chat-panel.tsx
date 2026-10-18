@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Ban, MessageCircle, Send, X } from "lucide-react";
+import { Ban, Check, Flag, MessageCircle, Send, X } from "lucide-react";
 import { CHAT_MAX_LENGTH } from "@/lib/campus/chat-rules";
 import type { useCampusChat } from "@/lib/campus/use-campus-chat";
 import { cn } from "@/lib/utils";
@@ -10,10 +10,12 @@ type Chat = ReturnType<typeof useCampusChat>;
 
 /** Chat de proximidad: apagado por defecto, con registro reciente, bloqueo por persona y aviso de quién te escucha. */
 export function ChatPanel({ chat }: { chat: Chat }) {
-  const { enabled, setEnabled, online, log, hearers, blocked, block, unblock, send } = chat;
+  const { enabled, setEnabled, online, log, hearers, blocked, block, unblock, send, report } = chat;
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [reported, setReported] = useState<Set<number>>(new Set());
+  const [notice, setNotice] = useState<string | null>(null);
   const logEnd = useRef<HTMLDivElement>(null);
   const blockedList = Object.entries(blocked);
 
@@ -26,6 +28,15 @@ export function ChatPanel({ chat }: { chat: Chat }) {
     const err = send(text);
     setError(err);
     if (!err) setText("");
+  };
+
+  const sendReport = async (line: (typeof log)[number]) => {
+    if (reported.has(line.id)) return;
+    if (!confirm(`¿Reportar el mensaje de ${line.name} a los administradores?`)) return;
+    const err = await report(line);
+    if (err) return setError(err);
+    setReported((r) => new Set(r).add(line.id));
+    setNotice(`Reporte enviado. Gracias por avisar; también puedes bloquear a ${line.name}.`);
   };
 
   if (!open)
@@ -91,6 +102,17 @@ export function ChatPanel({ chat }: { chat: Chat }) {
                 </span>
                 {l.from !== "me" && (
                   <button
+                    onClick={() => sendReport(l)}
+                    disabled={reported.has(l.id)}
+                    aria-label={reported.has(l.id) ? `Mensaje de ${l.name} reportado` : `Reportar a ${l.name}`}
+                    title={reported.has(l.id) ? "Reportado" : `Reportar a ${l.name}`}
+                    className="grid size-7 shrink-0 place-items-center rounded-full text-white/60 hover:bg-white/15 hover:text-white disabled:text-mint"
+                  >
+                    {reported.has(l.id) ? <Check className="size-3.5" /> : <Flag className="size-3.5" />}
+                  </button>
+                )}
+                {l.from !== "me" && (
+                  <button
                     onClick={() => block(l.from, l.name)}
                     aria-label={`Bloquear a ${l.name}`}
                     title={`Bloquear a ${l.name}`}
@@ -125,6 +147,11 @@ export function ChatPanel({ chat }: { chat: Chat }) {
               <Send className="size-4" />
             </button>
           </form>
+          {notice && (
+            <p role="status" className="text-xs font-bold text-mint">
+              {notice}
+            </p>
+          )}
           {error && (
             <p role="alert" className="text-xs font-bold text-coral">
               {error}

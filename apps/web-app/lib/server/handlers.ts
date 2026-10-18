@@ -1,9 +1,10 @@
 // Endpoints de la API (§9). Cada handler recibe el usuario autenticado por cookie;
 // nunca confía en un id de usuario enviado por el navegador.
 
-import { db, env, HttpError, must, rpc } from "@/lib/server/core";
+import { db, env, HttpError, isMissingSchema, must, rpc } from "@/lib/server/core";
 import {
   aiTutors,
+  PROFILE_COLUMNS,
   availableOf,
   badgesOf,
   balanceOf,
@@ -22,6 +23,8 @@ import {
   type SessionRow,
   type TopicRow,
 } from "@/lib/server/data";
+import { applyPromos } from "@/lib/server/promos";
+import { agentGuideFor, isAdmin, requireNotSuspended } from "@/lib/server/admin";
 import { normalizeTopic } from "@/lib/server/topics";
 import { isSpriteSkin } from "@/lib/skins";
 import { closeRoom, createCampusToken, createRoomToken } from "@/lib/server/livekit";
@@ -46,16 +49,16 @@ export const TEST_PASSWORD = "aula2026";
 
 // ---------- validación de entrada ----------
 
-type Body = Record<string, unknown>;
+export type Body = Record<string, unknown>;
 
-const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+export const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
-function uuidParam(v: string | undefined, what = "recurso"): string {
+export function uuidParam(v: string | undefined, what = "recurso"): string {
   if (!isUuid(v)) throw new HttpError(404, `No encontramos ese ${what}.`, "not_found");
   return v;
 }
 
-function str(body: Body, key: string, { max = 500, min = 0 } = {}): string {
+export function str(body: Body, key: string, { max = 500, min = 0 } = {}): string {
   const v = body[key];
   if (typeof v !== "string") throw new HttpError(400, `Falta el campo "${key}".`);
   const t = v.trim();
@@ -64,7 +67,7 @@ function str(body: Body, key: string, { max = 500, min = 0 } = {}): string {
   return t;
 }
 
-function optionalIso(body: Body, key: string): string | null {
+export function optionalIso(body: Body, key: string): string | null {
   const v = body[key];
   if (v === null || v === undefined || v === "") return null;
   if (typeof v !== "string" || Number.isNaN(Date.parse(v))) throw new HttpError(400, "Fecha inválida.");
@@ -93,6 +96,7 @@ export async function login(body: Body, ip: string): Promise<{ userId: string }>
     loginAttempts.set(ip, next);
     throw new HttpError(401, "DNI o contraseña incorrectos.", "unauthorized");
   }
+  await requireNotSuspended(userId);
   loginAttempts.delete(ip);
   return { userId };
 }
@@ -116,18 +120,20 @@ async function skinsFor(userId: string): Promise<(Skin & { owned: boolean; equip
     must<{ skin_id: string; equipped: boolean }[]>(db().from("profile_skins").select("skin_id, equipped").eq("profile_id", userId)),
   ]);
   const mine = new Map(owned.map((o) => [o.skin_id, o.equipped]));
-  // Las skins gratis son de todos aunque no tengan fila en profile_skins
-  return catalog.map((k) => ({ ...k, owned: mine.has(k.id) || k.price_quipus === 0, equipped: mine.get(k.id) ?? false }));
+  // Las skins gratis son de todos aunque no tengan fila en profile_skins.
+  // Las ocultas por el admin dejan de venderse, pero quien ya las tiene las conserva.
+  return catalog.filter((k) => k.active !== false || mine.has(k.id)).map((k) => ({ ...k, owned: mine.has(k.id) || k.price_quipus === 0, equipped: mine.get(k.id) ?? false }));
 }
 
 export async function me(userId: string): Promise<Me> {
-  const [profile, balance, available, skins, equipped, stats] = await Promise.all([
+  const [profile, balance, available, skins, equipped, stats, admin] = await Promise.all([
     profileOf(userId),
     balanceOf(userId),
     availableOf(userId),
     skinsFor(userId),
     equippedFor([userId]),
     statsFor([userId]),
+    isAdmin(userId),
   ]);
   const st = stats.get(userId)!;
   return {
@@ -138,11 +144,12 @@ export async function me(userId: string): Promise<Me> {
     equipped: equipped.get(userId)!,
     badges: await badgesOf(userId, st, balance),
     stats: st,
+    is_admin: admin,
   };
 }
 
 export async function demoUsers(): Promise<Profile[]> {
-  return must<Profile[]>(db().from("profiles").select("*").order("display_name"));
+  return must<Profile[]>(db().from("profiles").select(PROFILE_COLUMNS).order("display_name"));
 }
 
 // ---------- temas y pedidos ----------
@@ -257,7 +264,9 @@ export async function match(userId: string, requestId: string): Promise<MatchOpt
         b.stats.estrellas_promedio - a.stats.estrellas_promedio || b.stats.sesiones_completadas - a.stats.sesiones_completadas,
     );
 
-  const ais = aiRows.length ? await aiTutors(aiRows.map((a) => a.ai_tutor_id)) : await aiTutors();
+  // Los de este tema primero; si no hay (o están en pausa), los demás activos
+  const assigned = aiRows.length ? await aiTutors(aiRows.map((a) => a.ai_tutor_id), { onlyActive: true }) : [];
+  const ais = await applyPromos(userId, assigned.length ? assigned : await aiTutors(undefined, { onlyActive: true }));
 
   return {
     request,
@@ -277,7 +286,7 @@ export async function match(userId: string, requestId: string): Promise<MatchOpt
   };
 }
 
-export const listAiTutors = () => aiTutors();
+export const listAiTutors = async (userId: string) => applyPromos(userId, await aiTutors(undefined, { onlyActive: true }));
 
 // ---------- reservas y sesiones ----------
 
@@ -338,6 +347,7 @@ export async function roomToken(userId: string, id: string): Promise<RoomToken> 
     const [tutor] = await aiTutors([row.ai_tutor_id]);
     const topic = await topicOf(row.topic_id);
     const persona = await must<{ persona: Record<string, string> }[]>(db().from("ai_tutors").select("persona").eq("id", row.ai_tutor_id));
+    const guide = await agentGuideFor(row.topic_id);
     agent = {
       sessionId: row.id,
       tutorName: tutor?.name ?? "Quipu",
@@ -345,6 +355,7 @@ export async function roomToken(userId: string, id: string): Promise<RoomToken> 
       focus: persona[0]?.persona?.focus ?? "",
       topic: topic.id ? topic.name.toLowerCase() : "",
       studentName: firstName,
+      ...(guide ? { guide } : {}),
     };
   }
 
@@ -591,10 +602,15 @@ export async function equipSkin(userId: string, id: string, body: Body) {
 
 // ---------- ledger ----------
 
+const LEDGER_BASE = "id, session_id, from_profile, to_profile, amount, kind, created_at";
+
 export async function ledger(userId: string): Promise<LedgerLine[]> {
-  const rows = await must<{ id: number; session_id: string | null; from_profile: string | null; to_profile: string | null; amount: number; kind: LedgerLine["kind"]; created_at: string }[]>(
-    db().from("quipus_ledger").select("*").or(`to_profile.eq.${userId},from_profile.eq.${userId}`).order("id", { ascending: false }).limit(200),
-  );
+  type Row = { id: number; session_id: string | null; from_profile: string | null; to_profile: string | null; amount: number; kind: LedgerLine["kind"]; created_at: string; note?: string | null };
+  const query = (columns: string) =>
+    db().from("quipus_ledger").select(columns).or(`to_profile.eq.${userId},from_profile.eq.${userId}`).order("id", { ascending: false }).limit(200);
+  // La columna note llega con la migración 003: sin ella se lee el ledger como antes
+  const first = await query(`${LEDGER_BASE}, note`);
+  const rows = await must<Row[]>(first.error && isMissingSchema(first.error) ? query(LEDGER_BASE) : Promise.resolve(first));
   const sessionIds = [...new Set(rows.map((r) => r.session_id).filter((x): x is string => !!x))];
   const sessions = sessionIds.length
     ? await must<{ id: string; topic_id: string | null; ai_tutor_id: string | null }[]>(
@@ -630,7 +646,35 @@ export async function ledger(userId: string): Promise<LedgerLine[]> {
       case "refund":
         description = `Devolución por clase cancelada${topic ? ` (${topic})` : ""}`;
         break;
+      case "grant":
+        description = `Regalo de AulaQuipu${l.note ? `: ${l.note}` : ""}`;
+        break;
+      case "adjust":
+        description = `Ajuste de AulaQuipu${l.note ? `: ${l.note}` : ""}`;
+        break;
     }
     return { ...l, amount: Number(l.amount), direction: l.to_profile === userId ? ("in" as const) : ("out" as const), description };
   });
+}
+
+// ---------- anuncios del campus ----------
+
+/** Banners vigentes. Sin migración (tabla ausente) no hay anuncios: el campus no debe fallar por esto. */
+export async function activeAnnouncements() {
+  const nowIso = new Date().toISOString();
+  const { data, error } = await db()
+    .from("announcements")
+    .select("id, text, ends_at")
+    .eq("active", true)
+    .lte("starts_at", nowIso)
+    .order("created_at", { ascending: false })
+    .limit(10);
+  if (error) {
+    if (!isMissingSchema(error)) console.error("[api] no se pudieron leer los anuncios", error.code, error.message);
+    return [];
+  }
+  return (data ?? [])
+    .filter((a) => !a.ends_at || Date.parse(a.ends_at) > Date.now())
+    .slice(0, 3)
+    .map((a) => ({ id: a.id as string, text: a.text as string }));
 }

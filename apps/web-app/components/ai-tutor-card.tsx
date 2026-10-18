@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Tag } from "lucide-react";
 import { api } from "@/lib/api";
 import type { AiTutor } from "@/lib/types";
 import { useMutation, useSession } from "@/components/providers";
 import { AiAvatar } from "@/components/avatar";
 import { Quipus, btn } from "@/components/bits";
+import { aiPrice } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
 
 /** Tarjeta de tutor IA con reserva en dos toques: tocar → confirmar. */
@@ -27,7 +28,8 @@ export function AiTutorCard({
   const { me } = useSession();
   const { run, pending } = useMutation();
   const [armed, setArmed] = useState(defaultArmed);
-  const short = me ? me.available < tutor.price_quipus : false;
+  const price = aiPrice(tutor);
+  const short = me ? me.available < price : false;
 
   const book = async () => {
     const res = await run((u) => api.book(u, { kind: "ai", aiTutorId: tutor.id, requestId }));
@@ -49,14 +51,22 @@ export function AiTutorCard({
           </p>
           <p className="truncate text-sm text-muted-foreground">{tutor.persona.tagline}</p>
         </div>
-        <Quipus amount={tutor.price_quipus} className="text-sm" />
+        <span className="flex flex-col items-end gap-0.5">
+          {tutor.promo && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-gold/25 px-2 py-0.5 text-[11px] font-extrabold text-gold-foreground">
+              <Tag className="size-3" /> {tutor.promo.first_class_free ? "Promo · 1ª gratis" : `Promo −${tutor.promo.percent_off}%`}
+            </span>
+          )}
+          {price === 0 ? <span className="text-sm font-extrabold text-accent-foreground">Gratis</span> : <Quipus amount={price} className="text-sm" />}
+          {price < tutor.price_quipus && <s className="text-xs font-semibold text-muted-foreground">{tutor.price_quipus}</s>}
+        </span>
       </button>
       {armed && (
         <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
           {!compact && <p className="text-sm text-muted-foreground">{tutor.persona.style}</p>}
           {short ? (
             <p className="rounded-2xl bg-gold/20 p-3 text-sm font-semibold text-gold-foreground">
-              Te faltan {tutor.price_quipus - (me?.available ?? 0)} quipus disponibles.{" "}
+              Te faltan {price - (me?.available ?? 0)} quipus disponibles.{" "}
               <Link href="/ensenar" className="underline">
                 Enseña para ganar más
               </Link>
@@ -64,7 +74,7 @@ export function AiTutorCard({
             </p>
           ) : (
             <button onClick={book} disabled={pending} className={cn(btn.primary, btn.md, "w-full")}>
-              {pending ? "Abriendo aula…" : `Empezar clase ahora · ${tutor.price_quipus} quipus`}
+              {pending ? "Abriendo aula…" : price === 0 ? "Empezar clase ahora · gratis" : `Empezar clase ahora · ${price} quipus`}
             </button>
           )}
           <p className="text-center text-xs text-muted-foreground">Se cobra al terminar la clase.</p>

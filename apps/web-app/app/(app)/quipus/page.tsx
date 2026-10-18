@@ -14,6 +14,8 @@ const KIND_ICON: Record<LedgerLine["kind"], string> = {
   ai_session: "🤖",
   skin_purchase: "🛍️",
   refund: "↩️",
+  grant: "🎉",
+  adjust: "🧾",
 };
 
 const TIPS = [

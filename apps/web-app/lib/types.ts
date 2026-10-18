@@ -9,7 +9,7 @@ export type RequestStatus = "open" | "matched" | "fulfilled" | "cancelled";
 export type GroupStatus = "forming" | "scheduled" | "live" | "completed" | "cancelled";
 export type SessionStatus = "live" | "completed" | "cancelled";
 export type TutorKind = "human" | "ai";
-export type LedgerKind = "mint" | "session_payment" | "ai_session" | "skin_purchase" | "refund";
+export type LedgerKind = "mint" | "session_payment" | "ai_session" | "skin_purchase" | "refund" | "grant" | "adjust";
 /** avatar = color del cuerpo · head = diseño de cabeza · frame · badge · profile_deco */
 export type SkinKind = "avatar" | "head" | "frame" | "badge" | "profile_deco";
 
@@ -28,6 +28,9 @@ export interface Profile {
   school: string | null;
   avatar_config: AvatarConfig;
   created_at: string;
+  /** Solo el mock lo usa: la API real nunca expone la suspensión. */
+  suspended_at?: string | null;
+  suspended_reason?: string | null;
 }
 
 export interface Topic {
@@ -60,13 +63,27 @@ export interface AiPersona {
   tagline: string;
   style: string;
   voice: string;
+  /** Especialidad (la usa el agente); la edita el admin. */
+  focus?: string;
+}
+
+/** Promoción vigente que aplica a este alumno en un tutor IA. */
+export interface AiPromoInfo {
+  percent_off: number;
+  first_class_free: boolean;
+  ends_at: string;
 }
 
 export interface AiTutor {
   id: UUID;
   name: string;
   persona: AiPersona;
+  /** Precio de lista. Lo que paga el alumno es `effective_price` (si no viene, es este). */
   price_quipus: number;
+  /** false = pausado por un admin: no se lista ni se reserva. */
+  active?: boolean;
+  effective_price?: number;
+  promo?: AiPromoInfo | null;
 }
 
 export interface Group {
@@ -112,6 +129,8 @@ export interface LedgerEntry {
   amount: number;
   kind: LedgerKind;
   created_at: string;
+  /** Motivo de un regalo o ajuste de la plataforma. */
+  note?: string | null;
 }
 
 export interface Review {
@@ -160,6 +179,8 @@ export interface Skin {
   kind: SkinKind;
   price_quipus: number;
   meta: SkinMeta;
+  /** false = oculto de la tienda por un admin (solo lo ven quienes ya lo tienen). */
+  active?: boolean;
 }
 
 export interface ProfileSkin {
@@ -200,6 +221,8 @@ export interface Me {
   equipped: Equipped;
   badges: Badge[];
   stats: TutorStats;
+  /** Administrador de la plataforma (muestra la entrada "Admin"). */
+  is_admin?: boolean;
 }
 
 export interface PublicProfile {
@@ -266,4 +289,10 @@ export interface LedgerLine extends LedgerEntry {
 
 export interface PrivateReview extends Review {
   topic: Topic | null;
+}
+
+/** Anuncio vigente que se muestra como banner en el campus. */
+export interface ActiveAnnouncement {
+  id: UUID;
+  text: string;
 }

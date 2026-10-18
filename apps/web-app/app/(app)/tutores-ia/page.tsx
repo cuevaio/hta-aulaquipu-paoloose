@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/bits";
 
 export default function AiTutorsPage() {
   const focus = useSearchParams().get("t");
-  const { data } = useQuery(() => api.listAiTutors());
+  const { data } = useQuery((u) => api.listAiTutors(u));
 
   return (
     <div className="space-y-4">

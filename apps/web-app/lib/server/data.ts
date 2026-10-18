@@ -15,6 +15,9 @@ import type {
   TutorStats,
 } from "@/lib/types";
 
+/** Columnas públicas del perfil: suspended_at/suspended_reason nunca salen de la API. */
+export const PROFILE_COLUMNS = "id, username, display_name, grade, school, avatar_config, created_at";
+
 export const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 // ---------- filas ----------
@@ -48,6 +51,8 @@ interface AiRow {
   name: string;
   persona: Record<string, unknown>;
   price_quipus: number;
+  /** Falta si la migración 003 aún no se aplicó: se trata como activo. */
+  active?: boolean;
 }
 
 // ---------- mapeos ----------
@@ -78,7 +83,7 @@ export function toAi(a: AiRow): AiTutor {
 export async function profilesById(ids: string[]): Promise<Map<string, Profile>> {
   const unique = [...new Set(ids.filter(Boolean))];
   if (!unique.length) return new Map();
-  const rows = await must<Profile[]>(db().from("profiles").select("*").in("id", unique));
+  const rows = await must<Profile[]>(db().from("profiles").select(PROFILE_COLUMNS).in("id", unique));
   return new Map(rows.map((p) => [p.id, p]));
 }
 
@@ -100,10 +105,12 @@ export async function topicOf(id: string | null): Promise<Topic> {
   return (await topicsById([id])).get(id) ?? UNKNOWN_TOPIC;
 }
 
-export async function aiTutors(ids?: string[]): Promise<AiTutor[]> {
+/** `onlyActive` deja fuera a los tutores pausados (listados); sin él se incluyen (clases ya reservadas). */
+export async function aiTutors(ids?: string[], opts: { onlyActive?: boolean } = {}): Promise<AiTutor[]> {
   let q = db().from("ai_tutors").select("*").order("name");
   if (ids) q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
-  return (await must<AiRow[]>(q)).map(toAi);
+  const rows = await must<AiRow[]>(q);
+  return rows.filter((r) => !opts.onlyActive || r.active !== false).map(toAi);
 }
 
 export async function equippedFor(ids: string[]): Promise<Map<string, Equipped>> {
