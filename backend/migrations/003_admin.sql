@@ -102,6 +102,25 @@ create table if not exists ai_promotions (
 
 create index if not exists ix_ai_promotions_active on ai_promotions (active, starts_at, ends_at);
 
+-- Una clase gratis se guarda con price_quipus = 0: se relaja el check de sessions (> 0 → >= 0).
+do $$
+declare c text;
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'sessions'::regclass and contype = 'c'
+      and pg_get_constraintdef(oid) like '%price_quipus%' and pg_get_constraintdef(oid) like '%>= 0%'
+  ) then
+    for c in
+      select conname from pg_constraint
+      where conrelid = 'sessions'::regclass and contype = 'c'
+        and pg_get_constraintdef(oid) like '%price_quipus%' and pg_get_constraintdef(oid) like '%> 0%'
+    loop
+      execute format('alter table sessions drop constraint %I', c);
+    end loop;
+    alter table sessions add constraint sessions_price_quipus_check check (price_quipus >= 0);
+  end if;
+end $$;
 
 -- ============================================================
 -- 5. ANUNCIOS Y REPORTES DEL CHAT
@@ -141,6 +160,195 @@ alter table ai_tutors add column if not exists active boolean not null default t
 -- 7. FUNCIONES
 -- ============================================================
 -- (créditos atómicos, precio efectivo de clases IA y métricas del panel)
+
+-- Precio efectivo de una clase IA para un alumno: mejor promoción vigente (% de descuento)
+-- o 0 si hay promoción de "primera clase gratis" y el alumno nunca tuvo una clase IA.
+-- Cuenta sesiones (no asientos del ledger): una clase gratis no deja asiento.
+create or replace function ai_price_for(p_student_id uuid, p_ai_tutor_id uuid)
+returns int language plpgsql stable security definer set search_path = public as $$
+declare
+  v_base int;
+  v_pct int;
+  v_free boolean;
+begin
+  select price_quipus into v_base from ai_tutors where id = p_ai_tutor_id;
+  if v_base is null then
+    return null;
+  end if;
+  select coalesce(max(percent_off), 0), coalesce(bool_or(first_class_free), false)
+    into v_pct, v_free
+  from ai_promotions
+  where active and starts_at <= now() and ends_at > now()
+    and (ai_tutor_id is null or ai_tutor_id = p_ai_tutor_id);
+  if v_free and not exists (
+    select 1 from sessions where student_id = p_student_id and tutor_kind = 'ai' and status <> 'cancelled'
+  ) then
+    return 0;
+  end if;
+  if v_pct = 0 then
+    return v_base;
+  end if;
+  return greatest(1, round(v_base::numeric * (100 - v_pct) / 100)::int);
+end $$;
+
+-- Clase 1:1 con tutor IA (igual que 001, con precio efectivo según promociones).
+create or replace function book_ai(p_student_id uuid, p_ai_tutor_id uuid, p_request_id uuid default null)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_price int;
+  v_topic uuid;
+  v_req requests%rowtype;
+  v_id uuid;
+begin
+  perform lock_wallet(p_student_id);
+  v_price := ai_price_for(p_student_id, p_ai_tutor_id);
+  if v_price is null then
+    raise exception 'tutor_no_existe';
+  end if;
+  if p_request_id is not null then
+    select * into v_req from requests where id = p_request_id;
+    if not found or v_req.student_id <> p_student_id then
+      raise exception 'pedido_no_existe';
+    end if;
+    v_topic := v_req.topic_id;
+  else
+    select att.topic_id into v_topic from ai_tutor_topics att join topics t on t.id = att.topic_id
+    where att.ai_tutor_id = p_ai_tutor_id order by t.created_at, t.name limit 1;
+  end if;
+
+  select id into v_id from sessions
+  where student_id = p_student_id and ai_tutor_id = p_ai_tutor_id and status = 'live'
+    and topic_id is not distinct from v_topic
+  limit 1;
+  if v_id is not null then
+    return v_id;
+  end if;
+
+  if available_balance(p_student_id) < v_price then
+    raise exception 'saldo_insuficiente';
+  end if;
+  v_id := gen_random_uuid();
+  insert into sessions (id, request_id, student_id, tutor_kind, ai_tutor_id, room_name, price_quipus, topic_id)
+  values (v_id, p_request_id, p_student_id, 'ai', p_ai_tutor_id, 'session-' || v_id, v_price, v_topic);
+  if p_request_id is not null then
+    update requests set status = 'matched' where id = p_request_id and status = 'open';
+  end if;
+  return v_id;
+end $$;
+
+-- Cierre de sesión (igual que 001; la clase IA gratis no escribe asiento de 0 quipus).
+create or replace function end_session(p_session_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v sessions%rowtype;
+  v_topic uuid;
+begin
+  update sessions
+    set status = 'completed', ended_at = now()
+    where id = p_session_id and status = 'live'
+    returning * into v;
+  if not found then
+    return;
+  end if;
+  if v.tutor_kind = 'ai' then
+    if v.price_quipus > 0 then
+      insert into quipus_ledger (session_id, from_profile, to_profile, amount, kind)
+      values (v.id, coalesce(v.student_id, (select student_id from requests where id = v.request_id)),
+              null, v.price_quipus, 'ai_session');
+    end if;
+    if v.request_id is not null then
+      update requests set status = 'fulfilled' where id = v.request_id and status in ('open', 'matched');
+    end if;
+  elsif v.group_id is not null then
+    insert into quipus_ledger (session_id, from_profile, to_profile, amount, kind)
+    select v.id, gm.student_id, v.tutor_id, gm.share_quipus, 'session_payment'
+    from group_members gm
+    where gm.group_id = v.group_id and gm.status = 'joined' and gm.share_quipus > 0
+      and gm.student_id is distinct from v.tutor_id;
+    select topic_id into v_topic from groups where id = v.group_id;
+    update groups set status = 'completed' where id = v.group_id;
+    update requests set status = 'fulfilled'
+      where status = 'matched' and topic_id = v_topic
+        and student_id in (select student_id from group_members where group_id = v.group_id and status = 'joined');
+  else
+    insert into quipus_ledger (session_id, from_profile, to_profile, amount, kind)
+    values (v.id, coalesce(v.student_id, (select student_id from requests where id = v.request_id)),
+            v.tutor_id, v.price_quipus, 'session_payment');
+    update requests set status = 'fulfilled' where id = v.request_id;
+  end if;
+end $$;
+
+-- Créditos: p_amount > 0 regala quipus (grant), p_amount < 0 los descuenta (adjust).
+-- p_scope: 'user' (p_value = id del perfil) | 'grade' (1..5) | 'school' (nombre exacto) | 'all'.
+-- Todo ocurre en una sola transacción. Los descuentos que dejarían un saldo negativo se
+-- omiten y se cuentan en `skipped`. Escribe su propia fila de auditoría.
+create or replace function admin_grant(
+  p_admin_id uuid, p_scope text, p_value text, p_amount bigint, p_reason text
+) returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_ids uuid[];
+  v_id uuid;
+  v_abs bigint := abs(p_amount);
+  v_note text := btrim(coalesce(p_reason, ''));
+  v_affected int := 0;
+  v_skipped int := 0;
+begin
+  if p_amount = 0 or v_abs > 10000 then
+    raise exception 'credito_monto_invalido';
+  end if;
+  if length(v_note) < 3 or length(v_note) > 140 then
+    raise exception 'credito_motivo_invalido';
+  end if;
+
+  if p_scope = 'user' then
+    if p_value is null or p_value !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+      raise exception 'perfil_no_existe';
+    end if;
+    select coalesce(array_agg(id), '{}') into v_ids from profiles where id = p_value::uuid;
+    if cardinality(v_ids) = 0 then
+      raise exception 'perfil_no_existe';
+    end if;
+  elsif p_scope = 'grade' then
+    if p_value is null or p_value !~ '^[1-5]$' then
+      raise exception 'credito_alcance_invalido';
+    end if;
+    select coalesce(array_agg(id order by id), '{}') into v_ids from profiles where grade = p_value::smallint;
+  elsif p_scope = 'school' then
+    if p_value is null or btrim(p_value) = '' then
+      raise exception 'credito_alcance_invalido';
+    end if;
+    select coalesce(array_agg(id order by id), '{}') into v_ids from profiles where school = p_value;
+  elsif p_scope = 'all' then
+    select coalesce(array_agg(id order by id), '{}') into v_ids from profiles;
+  else
+    raise exception 'credito_alcance_invalido';
+  end if;
+
+  foreach v_id in array v_ids loop
+    perform lock_wallet(v_id);
+    if p_amount > 0 then
+      insert into quipus_ledger (from_profile, to_profile, amount, kind, note, admin_id)
+      values (null, v_id, v_abs, 'grant', v_note, p_admin_id);
+      v_affected := v_affected + 1;
+    elsif get_balance(v_id) >= v_abs then
+      insert into quipus_ledger (from_profile, to_profile, amount, kind, note, admin_id)
+      values (v_id, null, v_abs, 'adjust', v_note, p_admin_id);
+      v_affected := v_affected + 1;
+    else
+      v_skipped := v_skipped + 1;
+    end if;
+  end loop;
+
+  insert into admin_audit (admin_id, action, target, payload)
+  values (
+    p_admin_id,
+    case when p_amount > 0 then 'credits.grant' else 'credits.adjust' end,
+    p_scope || coalesce(':' || p_value, ''),
+    jsonb_build_object('scope', p_scope, 'value', p_value, 'amount', p_amount, 'reason', v_note,
+                       'affected', v_affected, 'skipped', v_skipped)
+  );
+  return jsonb_build_object('affected', v_affected, 'skipped', v_skipped);
+end $$;
 
 
 -- Métricas del panel en una sola llamada. "Hoy" = día calendario de Lima.
@@ -271,6 +479,15 @@ grant select (id, username, display_name, grade, school, avatar_config, created_
 revoke execute on function admin_metrics() from public, anon, authenticated;
 grant execute on function admin_metrics() to service_role;
 
+revoke execute on function
+  ai_price_for(uuid, uuid), admin_grant(uuid, text, text, bigint, text),
+  book_ai(uuid, uuid, uuid), end_session(uuid)
+from public, anon, authenticated;
+
+grant execute on function
+  ai_price_for(uuid, uuid), admin_grant(uuid, text, text, bigint, text),
+  book_ai(uuid, uuid, uuid), end_session(uuid)
+to service_role;
 
 -- ============================================================
 -- 9. ADMINISTRADOR DEMO

@@ -4,8 +4,16 @@
 // Se elige con NEXT_PUBLIC_API_MODE=mock|http.
 
 import type {
+  AdminAiTutor,
   AdminMetrics,
+  AdminUser,
+  AiPromotion,
   AuditRow,
+  CreditOptions,
+  CreditScope,
+  CreditsInput,
+  CreditsResult,
+  PromotionInput,
 } from "@/lib/admin-types";
 import type {
   AiTutor,
@@ -78,6 +86,16 @@ export interface AdminApi {
   me(userId: UUID): Promise<{ isAdmin: boolean }>;
   metrics(userId: UUID): Promise<AdminMetrics>;
   audit(userId: UUID): Promise<AuditRow[]>;
+  searchUsers(userId: UUID, query: string): Promise<AdminUser[]>;
+  creditOptions(userId: UUID): Promise<CreditOptions>;
+  creditsPreview(userId: UUID, scope: CreditScope, value?: string): Promise<{ count: number }>;
+  grantCredits(userId: UUID, input: CreditsInput): Promise<CreditsResult>;
+  aiTutors(userId: UUID): Promise<AdminAiTutor[]>;
+  setAiPrice(userId: UUID, aiTutorId: UUID, price: number): Promise<void>;
+  promotions(userId: UUID): Promise<AiPromotion[]>;
+  /** id = null crea; con id edita. */
+  savePromotion(userId: UUID, id: UUID | null, input: PromotionInput): Promise<AiPromotion>;
+  deletePromotion(userId: UUID, id: UUID): Promise<void>;
 }
 
 export interface ApiClient {
@@ -98,7 +116,8 @@ export interface ApiClient {
   openRequestsFeed(userId: UUID): Promise<IncomingRequest[]>;
 
   match(userId: UUID, requestId: UUID): Promise<MatchOptions>;
-  listAiTutors(): Promise<AiTutor[]>;
+  /** Con `userId` trae el precio efectivo (promociones) para ese alumno. */
+  listAiTutors(userId?: UUID): Promise<AiTutor[]>;
 
   book(userId: UUID, input: BookingInput): Promise<BookingResult>;
   startGroupSession(userId: UUID, groupId: UUID): Promise<{ sessionId: UUID }>;

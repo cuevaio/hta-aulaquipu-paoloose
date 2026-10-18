@@ -97,6 +97,10 @@ const RPC_ERRORS: Record<string, [number, string, HttpError["code"]]> = {
   no_puedes_ensenarte: [400, "No puedes aceptar tu propio pedido.", "invalid"],
   no_puedes_unirte_a_tu_clase: [400, "No puedes unirte a una clase que tú enseñas.", "invalid"],
   tutor_no_ensena_tema: [400, "Ese tutor no enseña este tema.", "invalid"],
+  credito_monto_invalido: [400, "El monto va de 1 a 10000 quipus (positivo regala, negativo descuenta).", "invalid"],
+  credito_motivo_invalido: [400, "El motivo debe tener entre 3 y 140 caracteres.", "invalid"],
+  credito_alcance_invalido: [400, "Elige a quién aplicar los créditos.", "invalid"],
+  perfil_no_existe: [404, "No encontramos a ese alumno.", "not_found"],
 };
 
 /** Códigos de Postgres/PostgREST cuando falta una tabla, función o columna (migración sin aplicar). */

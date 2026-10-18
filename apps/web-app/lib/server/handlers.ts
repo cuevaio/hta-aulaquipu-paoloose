@@ -23,6 +23,7 @@ import {
   type SessionRow,
   type TopicRow,
 } from "@/lib/server/data";
+import { applyPromos } from "@/lib/server/promos";
 import { isAdmin, requireNotSuspended } from "@/lib/server/admin";
 import { normalizeTopic } from "@/lib/server/topics";
 import { closeRoom, createCampusToken, createRoomToken } from "@/lib/server/livekit";
@@ -261,7 +262,7 @@ export async function match(userId: string, requestId: string): Promise<MatchOpt
         b.stats.estrellas_promedio - a.stats.estrellas_promedio || b.stats.sesiones_completadas - a.stats.sesiones_completadas,
     );
 
-  const ais = aiRows.length ? await aiTutors(aiRows.map((a) => a.ai_tutor_id)) : await aiTutors();
+  const ais = await applyPromos(userId, aiRows.length ? await aiTutors(aiRows.map((a) => a.ai_tutor_id)) : await aiTutors());
 
   return {
     request,
@@ -281,7 +282,7 @@ export async function match(userId: string, requestId: string): Promise<MatchOpt
   };
 }
 
-export const listAiTutors = () => aiTutors();
+export const listAiTutors = async (userId: string) => applyPromos(userId, await aiTutors());
 
 // ---------- reservas y sesiones ----------
 

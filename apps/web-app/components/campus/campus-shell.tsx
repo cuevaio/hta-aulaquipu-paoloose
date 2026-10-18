@@ -9,6 +9,7 @@ import { AI_SPOTS, STUDENT_SPOTS, TUTOR_SPOTS, type Room } from "@/lib/campus/ma
 import { useQuery, useSession } from "@/components/providers";
 import { Avatar } from "@/components/avatar";
 import { Quipus } from "@/components/bits";
+import { aiPrice } from "@/lib/pricing";
 import { Logo } from "@/components/logo";
 import { MissionCard, WelcomeOverlay, useFlag, writeFlag } from "@/components/campus/welcome";
 import { CampusWorld, type CampusPerson, type Interactable } from "@/components/campus/world";
@@ -70,7 +71,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   const crowd = useQuery(async (u) => {
     const users = await api.listDemoUsers();
     const others = await Promise.all(users.filter((x) => x.id !== u).map((x) => api.tutorProfile(x.id)));
-    const ais = await api.listAiTutors();
+    const ais = await api.listAiTutors(u);
     const upcoming = await api.myUpcoming(u);
     return { others, ais, live: upcoming.some((c) => c.liveSessionId) };
   });
@@ -106,7 +107,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
       id: a.id,
       ...AI_SPOTS[i],
       name: a.name,
-      caption: `Tutor IA · ${a.price_quipus} quipus`,
+      caption: `Tutor IA · ${aiPrice(a)} quipus`,
       href: `/tutores-ia?t=${a.id}`,
       prompt: `Tomar clase con ${a.name}`,
       ai: { emoji: a.persona.emoji, color: a.persona.color },

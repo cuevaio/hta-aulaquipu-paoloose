@@ -13,8 +13,10 @@ import type {
 } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
 import { buildMockAdmin, isMockAdmin } from "@/lib/api/mock-admin";
+import { aiPrice, priceWithPromos } from "@/lib/pricing";
 import { buildSeed, SEED_VERSION, TOPIC_KEYWORDS, type DbState } from "@/lib/api/seed";
 import type {
+  AiTutor,
   Badge,
   Equipped,
   Group,
@@ -296,6 +298,11 @@ function ensureLiveGroupSession(s: DbState, group: Group): Session {
 
 // ---------- cliente ----------
 
+/** Precio efectivo de las clases IA para un alumno (promociones vigentes del mock). */
+function withPromos(s: DbState, userId: UUID | undefined, ais: AiTutor[]): AiTutor[] {
+  const first = !!userId && !s.sessions.some((x) => x.tutor_kind === "ai" && x.status !== "cancelled" && x.student_ids.includes(userId));
+  return ais.map((a) => priceWithPromos(a, s.ai_promotions, first));
+}
 
 export const mockApi: ApiClient = {
   admin: buildMockAdmin({ read, write, balanceOf, addLedger, uid, now }),
@@ -417,17 +424,17 @@ export const mockApi: ApiClient = {
       const aiIds = new Set(s.ai_tutor_topics.filter((x) => x.topic_id === topic.id).map((x) => x.ai_tutor_id));
       const aiTutors = aiIds.size ? s.ai_tutors.filter((a) => aiIds.has(a.id)) : s.ai_tutors;
 
-      return { request, topic, topicWasCreated: topic.proposed_by === userId, groups, tutors, aiTutors };
+      return { request, topic, topicWasCreated: topic.proposed_by === userId, groups, tutors, aiTutors: withPromos(s, userId, aiTutors) };
     }),
 
-  listAiTutors: () => read((s) => s.ai_tutors),
+  listAiTutors: (userId) => read((s) => withPromos(s, userId, s.ai_tutors)),
 
   book: (userId, input: BookingInput) =>
     write((s): BookingResult => {
       if (input.kind === "ai") {
         const ai = s.ai_tutors.find((a) => a.id === input.aiTutorId);
         if (!ai) throw new ApiError("Tutor IA no encontrado", "not_found");
-        const price = ai.price_quipus;
+        const price = aiPrice(withPromos(s, userId, [ai])[0]);
         requireBalance(s, userId, price);
         const request = input.requestId ? s.requests.find((r) => r.id === input.requestId) : null;
         const topicId =

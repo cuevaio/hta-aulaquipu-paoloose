@@ -47,3 +47,52 @@ export interface AuditRow {
   created_at: string;
 }
 
+export interface AdminUser {
+  id: UUID;
+  username: string;
+  display_name: string;
+  grade: number;
+  school: string | null;
+  balance: number;
+}
+
+export type CreditScope = "user" | "grade" | "school" | "all";
+
+export interface CreditsInput {
+  scope: CreditScope;
+  value?: string;
+  /** Positivo regala (grant), negativo descuenta (adjust). */
+  amount: number;
+  reason: string;
+}
+
+export interface CreditsResult {
+  affected: number;
+  skipped: number;
+}
+
+export interface CreditOptions {
+  grades: number[];
+  schools: string[];
+}
+
+export interface AdminAiTutor {
+  id: UUID;
+  name: string;
+  emoji: string;
+  price_quipus: number;
+  active: boolean;
+}
+
+export interface AiPromotion {
+  id: UUID;
+  ai_tutor_id: UUID | null;
+  percent_off: number;
+  starts_at: string;
+  ends_at: string;
+  first_class_free: boolean;
+  active: boolean;
+  created_at: string;
+}
+
+export type PromotionInput = Omit<AiPromotion, "id" | "created_at">;

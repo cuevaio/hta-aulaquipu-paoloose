@@ -63,11 +63,21 @@ export interface AiPersona {
   voice: string;
 }
 
+/** Promoción vigente que aplica a este alumno en un tutor IA. */
+export interface AiPromoInfo {
+  percent_off: number;
+  first_class_free: boolean;
+  ends_at: string;
+}
+
 export interface AiTutor {
   id: UUID;
   name: string;
   persona: AiPersona;
+  /** Precio de lista. Lo que paga el alumno es `effective_price` (si no viene, es este). */
   price_quipus: number;
+  effective_price?: number;
+  promo?: AiPromoInfo | null;
 }
 
 export interface Group {

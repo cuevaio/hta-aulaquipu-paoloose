@@ -1,6 +1,7 @@
 // Datos ficticios para la demo. Imitan los seeds de backend/database.sql
 // (tutores IA, skins, temas) más alumnos precargados con su mint de 100 quipus.
 
+import type { AiPromotion } from "@/lib/admin-types";
 import type { AuditRow } from "@/lib/admin-types";
 import type {
   AiTutor,
@@ -51,6 +52,7 @@ export interface DbState {
   /** Panel de administración: perfiles admin, auditoría y promociones IA. */
   admins: string[];
   admin_audit: AuditRow[];
+  ai_promotions: AiPromotion[];
 }
 
 export const SEED_VERSION = 5;
@@ -367,6 +369,7 @@ export function buildSeed(): DbState {
     // El administrador demo es la primera cuenta de prueba (como valentina5 en la base real)
     admins: ["usr-valeria"],
     admin_audit: [],
+    ai_promotions: [],
   };
 }
 

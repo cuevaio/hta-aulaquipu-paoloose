@@ -47,7 +47,7 @@ const ROUTES: Route[] = [
   r("POST", "requests/:id/cancel", ({ user, params }) => h.cancelRequest(user, params[0])),
   r("POST", "requests/:id/accept", ({ user, params, body }) => h.acceptRequest(user, params[0], body)),
   r("GET", "match/:id", ({ user, params }) => h.match(user, params[0])),
-  r("GET", "ai-tutors", () => h.listAiTutors()),
+  r("GET", "ai-tutors", ({ user }) => h.listAiTutors(user)),
   r("POST", "sessions", ({ user, body }) => h.book(user, body)),
   r("GET", "sessions/mine", ({ user }) => h.mySessions(user)),
   r("GET", "sessions/:id", ({ user, params }) => h.session(user, params[0])),
@@ -73,6 +73,17 @@ const ROUTES: Route[] = [
   r("GET", "admin/me", async ({ user }) => ({ isAdmin: await isAdmin(user) })),
   a("GET", "admin/metrics", () => ad.metrics()),
   a("GET", "admin/audit", () => ad.auditLog()),
+  a("GET", "admin/users", ({ query }) => ad.searchUsers(query)),
+  a("GET", "admin/credits/options", () => ad.creditOptions()),
+  a("GET", "admin/credits/preview", ({ query }) => ad.creditsPreview(query)),
+  a("POST", "admin/credits", ({ user, body }) => ad.grantCredits(user, body)),
+  a("GET", "admin/ai-tutors", () => ad.aiTutorList()),
+  a("GET", "admin/ai-tutors/:id/price", ({ params }) => ad.aiPrice(params[0])),
+  a("PUT", "admin/ai-tutors/:id/price", ({ user, params, body }) => ad.setAiPrice(user, params[0], body)),
+  a("GET", "admin/promotions", () => ad.promotions()),
+  a("POST", "admin/promotions", ({ user, body }) => ad.createPromotion(user, body)),
+  a("PUT", "admin/promotions/:id", ({ user, params, body }) => ad.updatePromotion(user, params[0], body)),
+  a("DELETE", "admin/promotions/:id", ({ user, params }) => ad.deletePromotion(user, params[0])),
 ];
 
 function find(method: string, segments: string[]): { route: Route; params: string[] } | null {

@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 export default function HomePage() {
   const { me } = useSession();
   const feed = useQuery((u) => api.openRequestsFeed(u));
-  const ai = useQuery(() => api.listAiTutors());
+  const ai = useQuery((u) => api.listAiTutors(u));
 
 
   const firstName = me?.profile.display_name.split(" ")[0];

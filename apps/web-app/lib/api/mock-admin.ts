@@ -5,6 +5,7 @@ import type { AdminApi } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
 import type { DbState } from "@/lib/api/seed";
 import type { AdminMetrics } from "@/lib/admin-types";
+import type { AuditRow } from "@/lib/admin-types";
 import type { LedgerKind, UUID } from "@/lib/types";
 
 export interface MockHelpers {
@@ -26,7 +27,37 @@ function requireAdmin(s: DbState, userId: UUID) {
 }
 
 export function buildMockAdmin(h: MockHelpers): AdminApi {
+  const audit = (s: DbState, adminId: UUID, action: string, target: string | null, payload: Record<string, unknown>) => {
+    const id = s.admin_audit.reduce((m, r) => Math.max(m, r.id), 0) + 1;
+    const row: AuditRow = {
+      id,
+      admin_id: adminId,
+      admin_name: s.profiles.find((p) => p.id === adminId)?.display_name ?? null,
+      action,
+      target,
+      payload,
+      created_at: h.now(),
+    };
+    s.admin_audit.push(row);
+  };
 
+  const scopeIds = (s: DbState, scope: string, value?: string): UUID[] => {
+    if (scope === "all") return s.profiles.map((p) => p.id);
+    if (scope === "user") return s.profiles.filter((p) => p.id === value).map((p) => p.id);
+    if (scope === "grade") return s.profiles.filter((p) => String(p.grade) === value).map((p) => p.id);
+    if (scope === "school") return s.profiles.filter((p) => p.school === value).map((p) => p.id);
+    throw new ApiError("Elige a quién aplicar los créditos.");
+  };
+
+  const promoInput = (input: Parameters<AdminApi["savePromotion"]>[2]) => {
+    if (!Number.isInteger(input.percent_off) || input.percent_off < 0 || input.percent_off > 100)
+      throw new ApiError("El descuento va de 0 a 100 %.");
+    if (input.percent_off === 0 && !input.first_class_free)
+      throw new ApiError("Indica un descuento o marca la primera clase gratis.");
+    if (Number.isNaN(Date.parse(input.starts_at)) || Number.isNaN(Date.parse(input.ends_at))) throw new ApiError("Fechas inválidas.");
+    if (Date.parse(input.ends_at) <= Date.parse(input.starts_at)) throw new ApiError("La promoción debe terminar después de empezar.");
+    return { ...input, ai_tutor_id: input.ai_tutor_id || null };
+  };
 
   return {
     me: (u) => h.read((s) => ({ isAdmin: isMockAdmin(s, u) })),
@@ -147,5 +178,107 @@ export function buildMockAdmin(h: MockHelpers): AdminApi {
         return [...s.admin_audit].sort((a, b) => b.id - a.id).slice(0, 100);
       }),
 
+    searchUsers: (u, query) =>
+      h.read((s) => {
+        requireAdmin(s, u);
+        const q = query.trim().toLowerCase();
+        if (q.length < 2) return [];
+        return s.profiles
+          .filter((p) => p.username.toLowerCase().includes(q) || p.display_name.toLowerCase().includes(q))
+          .slice(0, 8)
+          .map((p) => ({ id: p.id, username: p.username, display_name: p.display_name, grade: p.grade, school: p.school, balance: h.balanceOf(s, p.id) }));
+      }),
+
+    creditOptions: (u) =>
+      h.read((s) => {
+        requireAdmin(s, u);
+        return { grades: [1, 2, 3, 4, 5], schools: [...new Set(s.profiles.map((p) => p.school).filter((x): x is string => !!x))].sort() };
+      }),
+
+    creditsPreview: (u, scope, value) =>
+      h.read((s) => {
+        requireAdmin(s, u);
+        return { count: scopeIds(s, scope, value).length };
+      }),
+
+    grantCredits: (u, input) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const reason = input.reason.trim();
+        if (!Number.isInteger(input.amount) || input.amount === 0 || Math.abs(input.amount) > 10_000)
+          throw new ApiError("El monto va de 1 a 10000 quipus (positivo regala, negativo descuenta).");
+        if (reason.length < 3 || reason.length > 140) throw new ApiError("El motivo debe tener entre 3 y 140 caracteres.");
+        const ids = scopeIds(s, input.scope, input.value);
+        if (input.scope === "user" && !ids.length) throw new ApiError("No encontramos a ese alumno.", "not_found");
+        const abs = Math.abs(input.amount);
+        let affected = 0;
+        let skipped = 0;
+        for (const id of ids) {
+          if (input.amount > 0) {
+            h.addLedger(s, { kind: "grant", amount: abs, from: null, to: id, note: reason });
+            affected++;
+          } else if (h.balanceOf(s, id) >= abs) {
+            h.addLedger(s, { kind: "adjust", amount: abs, from: id, to: null, note: reason });
+            affected++;
+          } else skipped++;
+        }
+        audit(s, u, input.amount > 0 ? "credits.grant" : "credits.adjust", input.scope + (input.value ? `:${input.value}` : ""), {
+          scope: input.scope,
+          value: input.value ?? null,
+          amount: input.amount,
+          reason,
+          affected,
+          skipped,
+        });
+        return { affected, skipped };
+      }),
+
+    aiTutors: (u) =>
+      h.read((s) => {
+        requireAdmin(s, u);
+        return s.ai_tutors.map((a) => ({ id: a.id, name: a.name, emoji: a.persona.emoji, price_quipus: a.price_quipus, active: true }));
+      }),
+
+    setAiPrice: (u, id, price) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        if (!Number.isInteger(price) || price < 1 || price > 500) throw new ApiError("El precio va de 1 a 500 quipus.");
+        const ai = s.ai_tutors.find((a) => a.id === id);
+        if (!ai) throw new ApiError("Ese tutor no existe.", "not_found");
+        audit(s, u, "ai_tutor.price", id, { name: ai.name, from: ai.price_quipus, to: price });
+        ai.price_quipus = price;
+      }),
+
+    promotions: (u) =>
+      h.read((s) => {
+        requireAdmin(s, u);
+        return [...s.ai_promotions].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+      }),
+
+    savePromotion: (u, id, input) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const data = promoInput(input);
+        if (id) {
+          const row = s.ai_promotions.find((p) => p.id === id);
+          if (!row) throw new ApiError("Esa promoción no existe.", "not_found");
+          Object.assign(row, data);
+          audit(s, u, "promotion.update", id, data);
+          return row;
+        }
+        const row = { ...data, id: h.uid("promo"), created_at: h.now() };
+        s.ai_promotions.push(row);
+        audit(s, u, "promotion.create", row.id, data);
+        return row;
+      }),
+
+    deletePromotion: (u, id) =>
+      h.write((s) => {
+        requireAdmin(s, u);
+        const i = s.ai_promotions.findIndex((p) => p.id === id);
+        if (i < 0) throw new ApiError("Esa promoción no existe.", "not_found");
+        audit(s, u, "promotion.delete", id, { ai_tutor_id: s.ai_promotions[i].ai_tutor_id, percent_off: s.ai_promotions[i].percent_off });
+        s.ai_promotions.splice(i, 1);
+      }),
   };
 }

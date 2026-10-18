@@ -35,6 +35,16 @@ const admin: AdminApi = {
   me: (u) => call(u, "GET", "/admin/me"),
   metrics: (u) => call(u, "GET", "/admin/metrics"),
   audit: (u) => call(u, "GET", "/admin/audit"),
+  searchUsers: (u, query) => call(u, "GET", `/admin/users?query=${q(query)}`),
+  creditOptions: (u) => call(u, "GET", "/admin/credits/options"),
+  creditsPreview: (u, scope, value) => call(u, "GET", `/admin/credits/preview?scope=${q(scope)}&value=${q(value ?? "")}`),
+  grantCredits: (u, input) => call(u, "POST", "/admin/credits", input),
+  aiTutors: (u) => call(u, "GET", "/admin/ai-tutors"),
+  setAiPrice: (u, id, price) => call(u, "PUT", `/admin/ai-tutors/${q(id)}/price`, { price }),
+  promotions: (u) => call(u, "GET", "/admin/promotions"),
+  savePromotion: (u, id, input) =>
+    id ? call(u, "PUT", `/admin/promotions/${q(id)}`, input) : call(u, "POST", "/admin/promotions", input),
+  deletePromotion: (u, id) => call(u, "DELETE", `/admin/promotions/${q(id)}`),
 };
 
 export const httpApi: ApiClient = {
@@ -50,7 +60,7 @@ export const httpApi: ApiClient = {
   cancelRequest: (u, id) => call(u, "POST", `/requests/${q(id)}/cancel`),
   openRequestsFeed: (u) => call(u, "GET", "/requests/open"),
   match: (u, id) => call(u, "GET", `/match/${q(id)}`),
-  listAiTutors: () => call(null, "GET", "/ai-tutors"),
+  listAiTutors: (u) => call(u ?? null, "GET", "/ai-tutors"),
   book: (u, input) => call(u, "POST", "/sessions", input),
   startGroupSession: (u, groupId) => call(u, "POST", `/groups/${q(groupId)}/start`),
   session: (u, id) => call(u, "GET", `/sessions/${q(id)}`),
