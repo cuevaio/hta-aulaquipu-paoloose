@@ -14,6 +14,9 @@ const TOPIC = "campus:pos";
 export const CHAT_TOPIC = "campus:chat";
 const SEND_EVERY_MS = 100; // ~10 por segundo mientras camina
 const HEARTBEAT_MS = 2000; // aunque esté quieto o en otra pestaña, para quien recién llega
+// Sin latidos por este tiempo se le saca del mapa: LiveKit tarda ~20 s en notar una desconexión
+// brusca (laptop suspendida, wifi caída) y mientras tanto quedaría "varado". Vuelve con su próximo latido.
+const STALE_MS = 8000;
 
 export interface CampusPeer {
   id: string; // profile id
@@ -57,6 +60,7 @@ export function useCampusPresence(userId: string | null) {
   const [peers, setPeers] = useState<CampusPeer[]>([]);
   const [online, setOnline] = useState(false);
   const positions = useRef(new Map<string, PeerPosition>());
+  const lastSeen = useRef(new Map<string, number>());
   const room = useRef<Room | null>(null);
   const last = useRef<{ pos: PeerPosition | null; at: number; sent: PeerPosition | null }>({ pos: null, at: 0, sent: null });
   const encoder = useRef(new TextEncoder());
@@ -109,21 +113,31 @@ export function useCampusPresence(userId: string | null) {
     let cancelled = false;
     const lkRoom = new Room({ adaptiveStream: false, dynacast: false });
     const decoder = new TextDecoder();
-    const syncPeers = () => {
-      const list = [...lkRoom.remoteParticipants.values()]
+    const alive = (id: string) => performance.now() - (lastSeen.current.get(id) ?? 0) < STALE_MS;
+    let shown = "";
+    const livePeers = () =>
+      [...lkRoom.remoteParticipants.values()]
         .map(peerFrom)
-        .filter((p): p is CampusPeer => !!p && p.id !== userId);
+        .filter((p): p is CampusPeer => !!p && p.id !== userId && alive(p.id));
+    const syncPeers = () => {
+      const list = livePeers();
+      shown = list.map((p) => p.id).join();
       setPeers(list);
     };
+    // A quien ya estaba o recién entra se le da margen hasta su primer latido
+    const greet = (p: RemoteParticipant) => lastSeen.current.set(p.identity.slice("profile:".length), performance.now());
 
     lkRoom
-      .on(RoomEvent.ParticipantConnected, () => {
+      .on(RoomEvent.ParticipantConnected, (p: RemoteParticipant) => {
+        greet(p);
         syncPeers();
         // Quien recién llega debe vernos ya, sin esperar el latido
         if (last.current.pos) send(last.current.pos, true);
       })
       .on(RoomEvent.ParticipantDisconnected, (p: RemoteParticipant) => {
-        positions.current.delete(p.identity.slice("profile:".length));
+        const id = p.identity.slice("profile:".length);
+        positions.current.delete(id);
+        lastSeen.current.delete(id);
         syncPeers();
       })
       .on(RoomEvent.ParticipantMetadataChanged, syncPeers)
@@ -138,7 +152,11 @@ export function useCampusPresence(userId: string | null) {
         try {
           const msg = JSON.parse(decoder.decode(payload));
           if (!isPos(msg)) return;
-          positions.current.set(p.identity.slice("profile:".length), { x: msg.x, y: msg.y, f: msg.f === -1 ? -1 : 1 });
+          const id = p.identity.slice("profile:".length);
+          const wasHidden = !alive(id);
+          lastSeen.current.set(id, performance.now());
+          positions.current.set(id, { x: msg.x, y: msg.y, f: msg.f === -1 ? -1 : 1 });
+          if (wasHidden) syncPeers();
         } catch {
           // mensaje inválido: se ignora
         }
@@ -147,6 +165,7 @@ export function useCampusPresence(userId: string | null) {
         setOnline(false);
         setPeers([]);
         positions.current.clear();
+        lastSeen.current.clear();
         if (reason === DisconnectReason.DUPLICATE_IDENTITY) console.info("[campus] abriste el campus en otra pestaña");
       })
       .on(RoomEvent.Reconnected, () => setOnline(true));
@@ -165,13 +184,17 @@ export function useCampusPresence(userId: string | null) {
       }
       room.current = lkRoom;
       setOnline(true);
+      lkRoom.remoteParticipants.forEach(greet);
       syncPeers();
       if (last.current.pos) send(last.current.pos, true);
     })();
 
     // Latido con temporizador propio: el bucle de animación se pausa en pestañas en segundo plano
+    // y de paso se retira a quien dejó de latir
     const heartbeat = setInterval(() => {
       if (last.current.pos) send(last.current.pos, true);
+      for (const id of positions.current.keys()) if (!alive(id)) positions.current.delete(id);
+      if (livePeers().map((p) => p.id).join() !== shown) syncPeers();
     }, HEARTBEAT_MS);
 
     return () => {

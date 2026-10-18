@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, GraduationCap, LayoutDashboard, HelpCircle, LogOut, ShieldCheck, User, X } from "lucide-react";
 import { api, API_MODE } from "@/lib/api";
-import { AI_SPOTS, CLASS_DOORS, STUDENT_SPOTS, TUTOR_SPOTS, type Room } from "@/lib/campus/map";
+import { AI_SPOTS, CLASS_DOORS, GUIDES, type Room } from "@/lib/campus/map";
 import { useQuery, useSession, useToast } from "@/components/providers";
 import { Avatar } from "@/components/avatar";
 import { Quipus, friendlyWhen } from "@/components/bits";
@@ -40,7 +40,10 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   const [near, setNear] = useState<Interactable | null>(null);
   const [menu, setMenu] = useState(false);
   const presence = useCampusPresence(ready && me ? userId : null);
-  const showBubble = useCallback((id: string, text: string) => bubbleRef.current?.(id, text), []);
+  const showBubble = useCallback(
+    (id: string, text: string) => bubbleRef.current?.(id, text),
+    [],
+  );
   const chat = useCampusChat(ready && me ? userId : null, presence, showBubble);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [moved, setMoved] = useState(false);
@@ -61,8 +64,14 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
 
   // Sin pedidos, clases ni temas declarados: aún no hizo nada en la plataforma
   const fresh = useQuery(async (u) => {
-    const [reqs, panel, upcoming] = await Promise.all([api.myRequests(u), api.tutorPanel(u), api.myUpcoming(u)]);
-    return reqs.length === 0 && panel.topics.length === 0 && upcoming.length === 0;
+    const [reqs, panel, upcoming] = await Promise.all([
+      api.myRequests(u),
+      api.tutorPanel(u),
+      api.myUpcoming(u),
+    ]);
+    return (
+      reqs.length === 0 && panel.topics.length === 0 && upcoming.length === 0
+    );
   });
   const showMission = !!fresh.data && !missionHidden && !welcome;
 
@@ -71,26 +80,38 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   }, [ready, userId, router]);
 
   const crowd = useQuery(async (u) => {
-    const users = await api.listDemoUsers();
-    const others = await Promise.all(users.filter((x) => x.id !== u).map((x) => api.tutorProfile(x.id)));
-    const ais = await api.listAiTutors(u);
-    const upcoming = await api.myUpcoming(u);
-    return { others, ais, upcoming };
+    const [ais, upcoming] = await Promise.all([
+      api.listAiTutors(u),
+      api.myUpcoming(u),
+    ]);
+    return { ais, upcoming };
   });
 
   // Cada clase del alumno es una puerta del pasillo (la 5ª muestra "+N más" si hay muchas)
   const doors = useMemo<ClassDoor[]>(() => {
     const list = crowd.data?.upcoming ?? [];
-    const shown = list.length > CLASS_DOORS.length ? list.slice(0, CLASS_DOORS.length - 1) : list;
+    const shown =
+      list.length > CLASS_DOORS.length
+        ? list.slice(0, CLASS_DOORS.length - 1)
+        : list;
     const out: ClassDoor[] = shown.map((c) => {
       const live = !!c.liveSessionId;
-      const who = c.role === "tutor" ? "Enseñas tú" : c.tutor ? `con ${c.tutor.display_name.split(" ")[0]}` : "";
+      const who =
+        c.role === "tutor"
+          ? "Enseñas tú"
+          : c.tutor
+            ? `con ${c.tutor.display_name.split(" ")[0]}`
+            : "";
       return {
         title: c.topic.name,
-        subtitle: live ? who || "En vivo" : `${friendlyWhen(c.group.scheduled_at)}${who ? ` · ${who}` : ""}`,
+        subtitle: live
+          ? who || "En vivo"
+          : `${friendlyWhen(c.group.scheduled_at)}${who ? ` · ${who}` : ""}`,
         live,
         href: live ? `/aula/${c.liveSessionId}` : `class:${c.group.id}`,
-        prompt: live ? `Entrar a ${c.topic.name} (en vivo)` : `Entrar a tu clase de ${c.topic.name}`,
+        prompt: live
+          ? `Entrar a ${c.topic.name} (en vivo)`
+          : `Entrar a tu clase de ${c.topic.name}`,
       };
     });
     if (list.length > CLASS_DOORS.length)
@@ -104,34 +125,25 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
     return out;
   }, [crowd.data]);
 
+  // En el mapa solo hay quien está conectado de verdad (camina en vivo), los tutores IA, que siempre
+  // atienden, y dos guías que dan consejos
+  const guides = useMemo<CampusPerson[]>(
+    () =>
+      GUIDES.map((g) => ({
+        id: g.id,
+        x: g.x,
+        y: g.y,
+        name: g.name,
+        caption: `${g.role} · habla conmigo`,
+        href: `guide:${g.id}`,
+        prompt: `Hablar con ${g.name}`,
+        guide: { emoji: g.emoji, color: g.color },
+      })),
+    [],
+  );
   const people = useMemo<CampusPerson[]>(() => {
-    if (!crowd.data) return [];
-    // Quienes enseñan van a la sala de tutores; el resto se reparte por el campus
-    const teachers = crowd.data.others.filter((p) => p.topics.length > 0);
-    const learners = crowd.data.others.filter((p) => p.topics.length === 0);
-    const placed = [
-      ...teachers.slice(0, TUTOR_SPOTS.length).map((p, i) => ({ p, spot: TUTOR_SPOTS[i] })),
-      ...[...teachers.slice(TUTOR_SPOTS.length), ...learners]
-        .slice(0, STUDENT_SPOTS.length)
-        .map((p, i) => ({ p, spot: STUDENT_SPOTS[i] })),
-    ];
-    const students: CampusPerson[] = placed.map(({ p, spot }) => {
-      const first = p.profile.display_name.split(" ")[0];
-      const teaches = p.topics.length > 0;
-      return {
-        id: p.profile.id,
-        ...spot,
-        name: first,
-        caption: teaches
-          ? `Tutor · ★ ${p.stats.estrellas_promedio ? p.stats.estrellas_promedio.toFixed(1) : "nuevo"}`
-          : `${p.profile.grade}º de secundaria`,
-        href: `/tutor/${p.profile.id}`,
-        prompt: `Ver el perfil de ${first}`,
-        avatar: p.profile.avatar_config,
-        equipped: p.equipped,
-      };
-    });
-    const ais: CampusPerson[] = crowd.data.ais.slice(0, AI_SPOTS.length).map((a, i) => ({
+    if (!crowd.data) return guides;
+    const ais = crowd.data.ais.slice(0, AI_SPOTS.length).map((a, i) => ({
       id: a.id,
       ...AI_SPOTS[i],
       name: a.name,
@@ -140,31 +152,48 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
       prompt: `Tomar clase con ${a.name}`,
       ai: { emoji: a.persona.emoji, color: a.persona.color },
     }));
-    // Quien está conectado camina en vivo: no se muestra además en su lugar fijo
-    const live = new Set(presence.peers.map((p) => p.id));
-    return [...students.filter((s) => !live.has(s.id)), ...ais];
-  }, [crowd.data, presence.peers]);
+    return [...guides, ...ais];
+  }, [crowd.data, guides]);
 
   const reportPosition = presence.reportPosition;
   const onMove = useCallback(
     (pos: Parameters<typeof reportPosition>[0]) => {
       reportPosition(pos);
       if (!startPos.current) startPos.current = { x: pos.x, y: pos.y };
-      else if (Math.hypot(pos.x - startPos.current.x, pos.y - startPos.current.y) > 1) setMoved(true);
+      else if (
+        Math.hypot(pos.x - startPos.current.x, pos.y - startPos.current.y) > 1
+      )
+        setMoved(true);
     },
     [reportPosition],
   );
 
   const toastMsg = useToast();
+  const tipIndex = useRef(new Map<string, number>());
   const open = useCallback(
     async (href: string) => {
+      // Guía: cada vez que le hablas dice el siguiente consejo
+      if (href.startsWith("guide:")) {
+        const g = GUIDES.find((x) => x.id === href.slice("guide:".length));
+        if (!g) return;
+        const i = tipIndex.current.get(g.id) ?? 0;
+        tipIndex.current.set(g.id, (i + 1) % g.tips.length);
+        bubbleRef.current?.(g.id, g.tips[i]);
+        return;
+      }
       // Puerta de una clase agendada: se abre el aula (la sesión se crea si aún no existe)
       if (href.startsWith("class:") && userId) {
         try {
-          const { sessionId } = await api.startGroupSession(userId, href.slice("class:".length));
+          const { sessionId } = await api.startGroupSession(
+            userId,
+            href.slice("class:".length),
+          );
           router.push(`/aula/${sessionId}`);
         } catch (e) {
-          toastMsg(e instanceof Error ? e.message : "No se pudo abrir el aula", "error");
+          toastMsg(
+            e instanceof Error ? e.message : "No se pudo abrir el aula",
+            "error",
+          );
         }
         return;
       }
@@ -189,7 +218,12 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
     const onKey = (e: KeyboardEvent) => {
       // Escape mientras se escribe (p. ej. en el chat) solo sale del campo
       const el = e.target as HTMLElement | null;
-      if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
+      if (
+        el &&
+        (el.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))
+      )
+        return;
       if (e.key === "Escape" && panelOpen) close();
     };
     window.addEventListener("keydown", onKey);
@@ -199,14 +233,20 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   if (!ready || !userId || !me)
     return (
       <div className="room-floor grid min-h-dvh place-items-center text-white">
-        <p className="animate-pulse font-heading text-xl">Entrando al campus…</p>
+        <p className="animate-pulse font-heading text-xl">
+          Entrando al campus…
+        </p>
       </div>
     );
 
   return (
     <div className="fixed inset-0 overflow-hidden">
       <CampusWorld
-        me={{ name: me.profile.display_name.split(" ")[0], avatar: me.profile.avatar_config, equipped: me.equipped }}
+        me={{
+          name: me.profile.display_name.split(" ")[0],
+          avatar: me.profile.avatar_config,
+          equipped: me.equipped,
+        }}
         people={people}
         peers={presence.peers}
         peerPositions={presence.positions}
@@ -234,7 +274,11 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
           {presence.online && (
             <span
               className="flex items-center gap-1.5 rounded-full bg-navy-3 px-2.5 py-1 text-xs font-bold text-white"
-              title={presence.peers.length ? presence.peers.map((p) => p.name).join(", ") : "Solo tú por ahora"}
+              title={
+                presence.peers.length
+                  ? presence.peers.map((p) => p.name).join(", ")
+                  : "Solo tú por ahora"
+              }
             >
               <span className="size-2 rounded-full bg-mint" />
               {presence.peers.length + 1} en línea
@@ -247,12 +291,16 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
             onClick={() => goToRef.current?.(CLASS_DOORS[0].id)}
             className={cn(
               "pointer-events-auto absolute top-16 left-3 flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-2xl px-3 py-2 text-left text-xs font-extrabold shadow-lg",
-              doors[0].live ? "bg-coral text-white" : "bg-gold text-gold-foreground",
+              doors[0].live
+                ? "bg-coral text-white"
+                : "bg-gold text-gold-foreground",
             )}
           >
             <span aria-hidden>{doors[0].live ? "🔴" : "🚪"}</span>
             <span className="min-w-0">
-              <span className="block truncate">{doors[0].live ? "Tu clase está en vivo: ir" : "Ir a mi clase"}</span>
+              <span className="block truncate">
+                {doors[0].live ? "Tu clase está en vivo: ir" : "Ir a mi clase"}
+              </span>
               <span className="block truncate font-semibold opacity-80">
                 {doors[0].title} · {doors[0].subtitle}
               </span>
@@ -260,14 +308,33 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
           </button>
         )}
         <div className="pointer-events-auto relative flex items-center gap-2 rounded-2xl bg-navy/90 py-1.5 pr-1.5 pl-3 shadow-lg backdrop-blur">
-          <Link href="/quipus" className="text-gold" aria-label={`${me.balance} quipus, ver historial`}>
+          <Link
+            href="/quipus"
+            className="text-gold"
+            aria-label={`${me.balance} quipus, ver historial`}
+          >
             <Quipus amount={me.balance} className="text-base" />
           </Link>
-          <button onClick={() => setWelcomeOpen(true)} aria-label="Ver la guía de bienvenida" title="¿Cómo funciona?" className="rounded-full p-1 text-white/80 hover:text-white">
+          <button
+            onClick={() => setWelcomeOpen(true)}
+            aria-label="Ver la guía de bienvenida"
+            title="¿Cómo funciona?"
+            className="rounded-full p-1 text-white/80 hover:text-white"
+          >
             <HelpCircle className="size-6" />
           </button>
-          <button onClick={() => setMenu((m) => !m)} aria-label="Mi cuenta" aria-expanded={menu} className="rounded-full">
-            <Avatar config={me.profile.avatar_config} equipped={me.equipped} size={34} label={me.profile.display_name} />
+          <button
+            onClick={() => setMenu((m) => !m)}
+            aria-label="Mi cuenta"
+            aria-expanded={menu}
+            className="rounded-full"
+          >
+            <Avatar
+              config={me.profile.avatar_config}
+              equipped={me.equipped}
+              size={34}
+              label={me.profile.display_name}
+            />
           </button>
           {menu && (
             <div className="absolute top-full right-0 mt-2 w-56 overflow-hidden rounded-2xl bg-card text-foreground shadow-xl ring-1 ring-border">
@@ -277,7 +344,11 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
                   {me.profile.grade}º · {me.profile.school}
                 </span>
               </p>
-              <Link href="/perfil" onClick={() => setMenu(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold hover:bg-muted">
+              <Link
+                href="/perfil"
+                onClick={() => setMenu(false)}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold hover:bg-muted"
+              >
                 <User className="size-4" /> Mi perfil
               </Link>
               {me.is_admin && (
@@ -303,12 +374,22 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
 
       {/* Cartel al entrar a una sala */}
       {banner && !panelOpen && (
-        <div key={banner.id} className={cn("pointer-events-none absolute inset-x-0 z-[55] flex justify-center px-4", showMission ? "top-44 sm:top-20" : "top-20")}>
+        <div
+          key={banner.id}
+          className={cn(
+            "pointer-events-none absolute inset-x-0 z-[55] flex justify-center px-4",
+            showMission ? "top-44 sm:top-20" : "top-20",
+          )}
+        >
           <div className="rounded-2xl bg-white/95 px-5 py-2.5 text-center shadow-xl animate-in fade-in slide-in-from-top-2">
             <p className="font-heading text-lg font-semibold text-navy">
               {banner.emoji} {banner.name}
             </p>
-            {banner.subtitle && <p className="text-xs font-bold text-muted-foreground">{banner.subtitle}</p>}
+            {banner.subtitle && (
+              <p className="text-xs font-bold text-muted-foreground">
+                {banner.subtitle}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -327,7 +408,9 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
             onClick={() => interactRef.current?.()}
             className="flex items-center gap-2 rounded-2xl bg-gold py-2 pr-4 pl-2 font-extrabold text-gold-foreground shadow-[0_4px_0_0_oklch(0.7_0.15_80)] animate-in fade-in slide-in-from-bottom-2"
           >
-            <kbd className="hidden rounded-lg bg-white/70 px-2 py-0.5 font-mono text-sm sm:inline">X</kbd>
+            <kbd className="hidden rounded-lg bg-white/70 px-2 py-0.5 font-mono text-sm sm:inline">
+              X
+            </kbd>
             {near.prompt}
           </button>
         </div>
@@ -345,7 +428,9 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
               href={href}
               className={cn(
                 "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-xs leading-tight font-bold whitespace-nowrap transition-colors sm:min-w-20 sm:flex-none sm:px-4 sm:text-sm",
-                pathname === href ? "bg-mint text-navy" : "text-white/75 hover:bg-navy-3 hover:text-white",
+                pathname === href
+                  ? "bg-mint text-navy"
+                  : "text-white/75 hover:bg-navy-3 hover:text-white",
               )}
             >
               <Icon className="size-5 shrink-0" />
@@ -361,19 +446,30 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         </p>
       )}
 
-      {welcome && <WelcomeOverlay balance={me.balance} onClose={closeWelcome} />}
+      {welcome && (
+        <WelcomeOverlay balance={me.balance} onClose={closeWelcome} />
+      )}
 
       {!panelOpen && (
         <p className="pointer-events-none absolute bottom-24 left-4 z-[50] hidden rounded-xl bg-navy/70 px-3 py-2 text-[11px] font-semibold text-white/80 lg:block">
-          ← ↑ → ↓ o WASD para moverte · clic en el mapa para caminar · X para interactuar
-          {API_MODE === "mock" && <span className="block text-white/50">Modo demo: datos ficticios en este navegador</span>}
+          ← ↑ → ↓ o WASD para moverte · clic en el mapa para caminar · X para
+          interactuar
+          {API_MODE === "mock" && (
+            <span className="block text-white/50">
+              Modo demo: datos ficticios en este navegador
+            </span>
+          )}
         </p>
       )}
 
       {/* Panel con la pantalla abierta */}
       {panelOpen && (
         <>
-          <button aria-label="Cerrar panel" onClick={close} className="absolute inset-0 z-[65] bg-navy/25 md:bg-transparent" />
+          <button
+            aria-label="Cerrar panel"
+            onClick={close}
+            className="absolute inset-0 z-[65] bg-navy/25 md:bg-transparent"
+          />
           <aside
             data-panel
             className="@container absolute inset-x-0 bottom-0 z-[70] flex h-[88dvh] flex-col overflow-hidden rounded-t-[1.75rem] bg-background shadow-2xl animate-in slide-in-from-bottom-8 md:inset-y-3 md:right-3 md:left-auto md:h-auto md:w-[min(720px,calc(100%-24px))] md:rounded-[1.75rem] md:slide-in-from-right-8"
@@ -385,7 +481,9 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
             >
               <X className="size-4" />
             </button>
-            <div className="flex-1 overflow-y-auto px-4 pt-5 pb-10 @xl:px-7 @xl:pt-7">{children}</div>
+            <div className="flex-1 overflow-y-auto px-4 pt-5 pb-10 @xl:px-7 @xl:pt-7">
+              {children}
+            </div>
           </aside>
         </>
       )}

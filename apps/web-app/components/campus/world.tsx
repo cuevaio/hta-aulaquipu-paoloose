@@ -35,6 +35,8 @@ export interface CampusPerson {
   avatar?: AvatarConfig;
   equipped?: Equipped | null;
   ai?: { emoji: string; color: string };
+  /** Guía del colegio: habla con globos en vez de abrir una pantalla. */
+  guide?: { emoji: string; color: string };
 }
 
 /** Una clase del alumno puesta en una puerta del pasillo. */
@@ -179,6 +181,7 @@ export function CampusWorld({
   const facing = useRef(1);
   // Elementos y posición dibujada de cada persona conectada (se interpola hacia la recibida)
   const peerEls = useRef(new Map<string, HTMLDivElement>());
+  const personEls = useRef(new Map<string, HTMLDivElement>());
   const peerDrawn = useRef(new Map<string, { x: number; y: number }>());
 
   const bubbleTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -187,7 +190,7 @@ export function CampusWorld({
   useEffect(() => {
     const timers = bubbleTimers.current;
     bubbleRef.current = (id, text) => {
-      const holder = id === "me" ? player.current : peerEls.current.get(id);
+      const holder = id === "me" ? player.current : (peerEls.current.get(id) ?? personEls.current.get(id));
       const el = holder?.querySelector<HTMLElement>("[data-bubble]");
       if (!el) return;
       el.textContent = text;
@@ -547,11 +550,31 @@ export function CampusWorld({
         {people.map((p) => (
           <div
             key={p.id}
+            ref={(el) => {
+              if (el) personEls.current.set(p.id, el);
+              else personEls.current.delete(p.id);
+            }}
             className="absolute flex cursor-pointer flex-col items-center"
             style={{ left: p.x * T, top: p.y * T - T * 0.35, width: T, zIndex: (p.y + 1) * 10 + 5 }}
           >
+            {p.guide && (
+              <div
+                data-bubble
+                aria-live="polite"
+                className="hidden absolute bottom-full left-1/2 z-10 mb-1 w-max max-w-[13rem] -translate-x-1/2 rounded-2xl rounded-bl-sm bg-white px-2.5 py-1.5 text-xs leading-snug font-semibold break-words text-navy shadow-lg ring-1 ring-black/10"
+              />
+            )}
             <div className={cn("float", nearId === p.id && "rounded-xl ring-4 ring-gold")}>
-              {p.ai ? (
+              {p.guide ? (
+                <div
+                  role="img"
+                  aria-label={p.name}
+                  className="grid place-items-center rounded-full ring-2 ring-white/80"
+                  style={{ width: T * 0.95, height: T * 0.95, background: `radial-gradient(circle at 30% 30%, ${p.guide.color}, ${p.guide.color}aa)` }}
+                >
+                  <span style={{ fontSize: T * 0.95 * 0.5 }}>{p.guide.emoji}</span>
+                </div>
+              ) : p.ai ? (
                 <AiAvatar emoji={p.ai.emoji} color={p.ai.color} size={T * 0.95} />
               ) : (
                 <Avatar config={p.avatar ?? {}} equipped={p.equipped} size={T * 0.95} label={p.name} bare />
