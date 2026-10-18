@@ -1,7 +1,7 @@
 import { ServerOptions, cli, defineAgent, voice } from '@livekit/agents';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
-import { type ClassContext, createAgent } from './agent.ts';
+import { type ClassContext, createAgent, watchDelegations } from './agent.ts';
 import { memoryScope, recallBrief, remember } from './memory.ts';
 
 dotenv.config({ path: '.env.local' });
@@ -48,7 +48,8 @@ export default defineAgent({
 
     const publish = async (msg: Record<string, unknown>, topic: string) => {
       const local = ctx.room.localParticipant;
-      if (!local) return;
+      // Falla en voz alta: si no sale, la herramienta debe devolver ERROR y no un falso "OK"
+      if (!local) throw new Error('la sala no está disponible');
       await local.publishData(encoder.encode(JSON.stringify(msg)), {
         reliable: true,
         topic,
@@ -100,10 +101,15 @@ export default defineAgent({
         : 'progreso del alumno y temas vistos en clases anteriores',
     );
 
-    await session.start({
-      agent: createAgent(hooks, klass, memoryBrief),
-      room: ctx.room,
-    });
+    const agent = createAgent(hooks, klass, memoryBrief);
+    await session.start({ agent, room: ctx.room });
+
+    // Si el modelo de respaldo termina sin llamar herramientas, se registra y el tutor lo dice
+    try {
+      watchDelegations(agent.duplexSession as unknown as Parameters<typeof watchDelegations>[0], hooks);
+    } catch (err) {
+      console.warn('no se pudo vigilar la delegación', err);
+    }
 
     await ctx.connect();
     await logEvent('join', { name: klass.tutorName, guide: !!klass.guide });

@@ -34,6 +34,8 @@ export type ClassroomEvent =
   | { type: "speaking"; actor: string; on: boolean }
   | { type: "chat"; actor: string; name: string; text: string }
   | { type: "notebook_image"; actor: string; url: string }
+  /** Confirmación de una herramienta del agente que sí se ejecutó (chip del chat). */
+  | { type: "tool_action"; actor: string; tool: string; label: string }
   | { type: "session_event"; actor: string; kind: string; payload: Record<string, unknown> };
 
 /** Aplica un evento de pizarra a la lista de trazos (idempotente por id de trazo). */

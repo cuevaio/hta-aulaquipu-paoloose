@@ -2,7 +2,7 @@
 // que consume el aula en modo local:
 // - "aulaquipu:class" (text stream): eventos entre personas (documento, pizarra…)
 // - "aulaquipu:notebook" (byte stream): foto del cuaderno
-// - "aulaquipu:doc" / "aulaquipu:graph": herramientas del agente (backend/agents/aulaquipu-tutor)
+// - "aulaquipu:doc" / "aulaquipu:graph" / "aulaquipu:action": herramientas del agente (backend/agents/aulaquipu-tutor)
 // - "lk.chat": chat de texto (el agente lo escucha como entrada)
 // - "lk.transcription": subtítulos de lo que dice el agente y de lo que dice el alumno
 
@@ -161,6 +161,10 @@ export class LiveKitTransport implements ClassroomTransport {
         this.emit({ type: "focus_tool", actor, tool: "doc" });
         this.emit({ type: "doc_append_table", actor, rows, title: typeof msg.title === "string" ? msg.title : undefined });
       }
+      return;
+    }
+    if (topic === "aulaquipu:action" && msg.type === "action" && typeof msg.label === "string") {
+      this.emit({ type: "tool_action", actor, tool: typeof msg.tool === "string" ? msg.tool : "", label: msg.label.slice(0, 120) });
       return;
     }
     if (topic === "aulaquipu:graph" && msg.type === "graph_op" && typeof msg.id === "string") {

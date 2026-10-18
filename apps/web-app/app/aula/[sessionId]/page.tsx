@@ -50,7 +50,7 @@ interface ChatLine {
   actor: string;
   name: string;
   text: string;
-  kind: "chat" | "speech" | "ask" | "system";
+  kind: "chat" | "speech" | "ask" | "system" | "action";
 }
 
 function useElapsed(since: string | undefined) {
@@ -99,6 +99,9 @@ export default function ClassroomPage() {
   const [tutorBusy, setTutorBusy] = useState<"writing" | "graphing" | null>(null);
   const [tutorGaze, setTutorGaze] = useState<TutorGaze>("center");
   const busyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Última confirmación de una herramienta del tutor: aparece unos segundos aunque el chat esté cerrado
+  const [actionChip, setActionChip] = useState<string | null>(null);
+  const chipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const elapsed = useElapsed(data?.session.started_at);
   const myActor = `profile:${userId}`;
@@ -229,6 +232,12 @@ export default function ClassroomPage() {
         case "chat":
           pushChat({ actor: e.actor, name: e.name, text: e.text, kind: "chat" });
           break;
+        case "tool_action":
+          pushChat({ actor: e.actor, name: "", text: `✓ ${e.label}`, kind: "action" });
+          setActionChip(`✓ ${e.label}`);
+          if (chipTimer.current) clearTimeout(chipTimer.current);
+          chipTimer.current = setTimeout(() => setActionChip(null), 3500);
+          break;
         case "session_event":
           if (e.kind === "join") pushChat({ actor: e.actor, name: "", text: `${names[e.actor] ?? "Alguien"} entró al aula`, kind: "system" });
           // Otro participante terminó la clase: todos pasan al resumen
@@ -241,6 +250,7 @@ export default function ClassroomPage() {
   useEffect(
     () => () => {
       if (busyTimer.current) clearTimeout(busyTimer.current);
+      if (chipTimer.current) clearTimeout(chipTimer.current);
     },
     [],
   );
@@ -526,6 +536,15 @@ export default function ClassroomPage() {
               />
             </div>
 
+            {actionChip && (
+              <p
+                role="status"
+                className="pointer-events-none absolute right-3 top-3 z-10 max-w-[80%] truncate rounded-full bg-navy/90 px-3 py-1.5 text-xs font-extrabold text-mint shadow-lg animate-in fade-in slide-in-from-top-2"
+              >
+                {actionChip}
+              </p>
+            )}
+
             {/* Subtítulos de lo que dice el tutor */}
             {caption && speaking[caption.actor] && !question && (
               <div className="pointer-events-none absolute inset-x-3 bottom-3 flex justify-center">
@@ -583,6 +602,13 @@ export default function ClassroomPage() {
               {[...chat].reverse().map((l) =>
                 l.kind === "system" ? (
                   <p key={l.id} className="text-center text-xs font-semibold text-muted-foreground">
+                    {l.text}
+                  </p>
+                ) : l.kind === "action" ? (
+                  <p
+                    key={l.id}
+                    className="self-center rounded-full bg-mint/20 px-3 py-1 text-center text-xs font-extrabold text-foreground"
+                  >
                     {l.text}
                   </p>
                 ) : (

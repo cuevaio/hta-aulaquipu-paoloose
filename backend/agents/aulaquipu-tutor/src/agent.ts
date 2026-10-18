@@ -19,6 +19,100 @@ export type ClassContext = {
   studentId: string;
 };
 
+export const ACTION_TOPIC = 'aulaquipu:action';
+
+// LaTeX de Desmos a algo legible para el chip del chat ("y=\frac{1}{2}x" -> "y = 1/2x")
+function prettyLatex(latex: string): string {
+  return latex
+    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2')
+    .replace(/\\left|\\right/g, '')
+    .replace(/\\cdot/g, '·')
+    .replace(/\\sqrt/g, '√')
+    .replace(/\\([a-zA-Z]+)/g, '$1')
+    .replace(/[{}]/g, '')
+    .replace(/\s*=\s*/, ' = ')
+    .trim();
+}
+
+type Action = {
+  tool: string;
+  /** Texto del chip de confirmación en el chat, sin el "✓" (lo pone la web) */
+  label: string;
+  msg: Record<string, unknown>;
+  topic: string;
+  log: Record<string, unknown>;
+  ok: string;
+};
+
+// Una herramienta solo cuenta como hecha si el mensaje salió a la sala. Si no, el resultado
+// que ve el modelo de respaldo (y por él el tutor de voz) dice explícitamente que NO se hizo.
+async function runAction(hooks: TutorHooks, a: Action): Promise<string> {
+  try {
+    await hooks.publish(a.msg, a.topic);
+  } catch (err) {
+    await hooks.logEvent('error', { tool: a.tool, message: String(err), ...a.log });
+    return `ERROR: no se pudo ejecutar ${a.tool} (${String(err)}). NO quedó hecho en pantalla: dilo tal cual al tutor ("no pude hacerlo") y no lo des por hecho.`;
+  }
+  await hooks.logEvent('tool_call', { tool: a.tool, ...a.log });
+  // El chip es un extra: si falla, la acción ya se hizo
+  await hooks.publish({ type: 'action', tool: a.tool, label: a.label }, ACTION_TOPIC).catch(() => {});
+  return a.ok;
+}
+
+// --- Vigilancia de la delegación ---
+
+type DelegationEmitter = {
+  on(event: 'openai_server_event_received', cb: (e: never) => void): unknown;
+  appendCommentary(text: string): void;
+};
+
+const NOT_RUN_RETRY =
+  'AVISO DEL SISTEMA: lo último que delegaste NO se ejecutó (no se escribió ni se graficó nada). Dile al alumno en una frase corta que no pudiste y que lo intentas de nuevo, y vuelve a delegar el mismo pedido una sola vez. Si era solo una consulta que no necesitaba herramientas, ignora este aviso.';
+const NOT_RUN_GIVE_UP =
+  'AVISO DEL SISTEMA: de nuevo no se ejecutó lo que delegaste. Dile al alumno con naturalidad que ahora no pudiste hacerlo, no digas que quedó listo y sigue explicándolo de palabra.';
+
+/**
+ * El modelo de respaldo puede terminar sin llamar ninguna herramienta aunque se le pidió una.
+ * Si la primera respuesta de una delegación acaba sin llamadas: se registra el error y se le
+ * avisa al tutor de voz para que reintente una vez y, si vuelve a pasar, lo diga sin disimular.
+ */
+export function watchDelegations(session: DelegationEmitter, hooks: TutorHooks) {
+  const runs = new Map<string, { tools: number; checked: boolean }>();
+  let strikes = 0;
+  type ServerEvt = {
+    type?: string;
+    delegation?: { id?: string | null };
+    delegation_id?: string | null;
+    event?: { type?: string; item?: { type?: string } };
+  };
+  session.on('openai_server_event_received', ((e: ServerEvt) => {
+    if (e.type === 'session.delegation.created' && e.delegation?.id) {
+      runs.set(e.delegation.id, { tools: 0, checked: false });
+      if (runs.size > 100) runs.delete(runs.keys().next().value as string);
+      return;
+    }
+    if (e.type !== 'response.event' || !e.delegation_id) return;
+    const run = runs.get(e.delegation_id);
+    const ev = e.event;
+    if (!run || !ev) return;
+    if (ev.type === 'response.output_item.done' && ev.item?.type === 'function_call') {
+      run.tools++;
+      strikes = 0;
+    } else if (!run.checked && (ev.type === 'response.completed' || ev.type === 'response.failed' || ev.type === 'response.incomplete')) {
+      run.checked = true;
+      if (run.tools > 0) return;
+      strikes++;
+      void hooks.logEvent('error', {
+        tool: 'delegation',
+        reason: ev.type === 'response.completed' ? 'backend_returned_without_tool_call' : ev.type,
+        attempt: strikes,
+      });
+      session.appendCommentary(strikes === 1 ? NOT_RUN_RETRY : NOT_RUN_GIVE_UP);
+      if (strikes > 1) strikes = 0;
+    }
+  }) as (e: never) => void);
+}
+
 const DEFAULT_CONTEXT: ClassContext = {
   tutorName: 'Quipu',
   style: '',
@@ -75,6 +169,10 @@ function backendInstructions(c: ClassContext, memoryBrief: string): string {
         antes, y memorySave con hechos duraderos de su progreso (qué domina, qué le cuesta, acuerdos)
         durante la clase y al cerrarla.
       - Puedes llamar varias herramientas seguidas.
+      - Si te piden escribir, graficar, tabular, preguntar o guardar algo, DEBES llamar la herramienta: nunca respondas solo con texto.
+      - Cada herramienta devuelve "OK" o "ERROR". Tu respuesta final se basa SOLO en esos resultados:
+        si alguna devolvió ERROR o no la llamaste, di claramente que no se pudo ("No pude graficarlo")
+        y nunca digas que quedó hecho.
       - Responde al tutor con una sola frase corta que pueda decir en voz alta, sin markdown.
     ` +
     (c.topic ? `\nEl tema de la clase es: ${c.topic}.` : '') +
@@ -107,9 +205,12 @@ export function createAgent(
       - Delega cuando haya una tabla útil (comparaciones, valores) o algo que se entienda mejor graficado (funciones, rectas, puntos).
       - Al cerrar la clase, o cuando el alumno domine algo nuevo, delega memorySave con un registro breve de su progreso.
       - Si el alumno menciona clases anteriores o retoman algo ya trabajado, delega memoryRecall antes de responder.
-      - Mientras se escribe, di en una frase qué estás anotando ("te lo anoto en el documento").
       - Saludos, preguntas de diagnóstico, ánimo y respuestas cortas: respóndelos tú, sin delegar.
-      - Nunca digas que ya escribiste o graficaste algo si no lo delegaste.
+
+      # Honestidad con lo que hace la pantalla
+      - Al delegar, ANUNCIA la intención en futuro ("voy a graficarlo", "te lo anoto en el documento"). Nunca uses "listo", "ya lo grafiqué" o "ya está escrito" al delegar.
+      - Confirma que algo quedó hecho solo cuando el resultado de la delegación lo diga. Mientras llega, sigue explicando de palabra.
+      - Si el resultado dice que falló, o recibes un aviso del sistema de que no se ejecutó, díselo al alumno ("no pude graficarlo") y vuelve a delegarlo una sola vez. Nunca finjas que se hizo.
 
       # Reglas de voz
       - Habla en texto plano corto: una a tres frases por turno, una sola pregunta a la vez.
@@ -144,11 +245,15 @@ export function createAgent(
           section: z.string().describe('Título de la sección del documento'),
           markdown: z.string().describe('Contenido en markdown: explicación, tablas o esquemas'),
         }),
-        execute: async ({ section, markdown }) => {
-          await hooks.publish({ type: 'doc_op', op: 'write', section, markdown }, 'aulaquipu:doc');
-          await hooks.logEvent('tool_call', { tool: 'docWrite', section });
-          return `Sección "${section}" escrita en el documento.`;
-        },
+        execute: ({ section, markdown }) =>
+          runAction(hooks, {
+            tool: 'docWrite',
+            label: `Escrito en el documento: ${section}`,
+            msg: { type: 'doc_op', op: 'write', section, markdown },
+            topic: 'aulaquipu:doc',
+            log: { section },
+            ok: `OK: sección "${section}" escrita en el documento.`,
+          }),
       }),
       tool({
         name: 'docAppendTable',
@@ -159,14 +264,15 @@ export function createAgent(
           columns: z.array(z.string()).describe('Encabezados de columna'),
           rows: z.array(z.array(z.string())).describe('Filas de la tabla'),
         }),
-        execute: async ({ title, columns, rows }) => {
-          await hooks.publish(
-            { type: 'doc_op', op: 'append_table', title, columns, rows },
-            'aulaquipu:doc',
-          );
-          await hooks.logEvent('tool_call', { tool: 'docAppendTable', title });
-          return `Tabla "${title}" agregada al documento.`;
-        },
+        execute: ({ title, columns, rows }) =>
+          runAction(hooks, {
+            tool: 'docAppendTable',
+            label: `Tabla agregada al documento: ${title}`,
+            msg: { type: 'doc_op', op: 'append_table', title, columns, rows },
+            topic: 'aulaquipu:doc',
+            log: { title },
+            ok: `OK: tabla "${title}" agregada al documento.`,
+          }),
       }),
       tool({
         name: 'graphSet',
@@ -181,11 +287,15 @@ export function createAgent(
             .optional()
             .describe('Color opcional en hexadecimal, por ejemplo "#7C6BF2"'),
         }),
-        execute: async ({ id, latex, color }) => {
-          await hooks.publish({ type: 'graph_op', op: 'set', id, latex, color }, 'aulaquipu:graph');
-          await hooks.logEvent('tool_call', { tool: 'graphSet', id, latex, color });
-          return `Curva ${id} dibujada en el graficador.`;
-        },
+        execute: ({ id, latex, color }) =>
+          runAction(hooks, {
+            tool: 'graphSet',
+            label: `Graficado ${prettyLatex(latex)}`,
+            msg: { type: 'graph_op', op: 'set', id, latex, color },
+            topic: 'aulaquipu:graph',
+            log: { id, latex, color },
+            ok: `OK: curva ${id} dibujada en el graficador.`,
+          }),
       }),
       tool({
         name: 'graphRemove',
@@ -193,11 +303,15 @@ export function createAgent(
         parameters: z.object({
           id: z.string().describe('Identificador de la curva a quitar'),
         }),
-        execute: async ({ id }) => {
-          await hooks.publish({ type: 'graph_op', op: 'remove', id }, 'aulaquipu:graph');
-          await hooks.logEvent('tool_call', { tool: 'graphRemove', id });
-          return `Curva ${id} quitada del graficador.`;
-        },
+        execute: ({ id }) =>
+          runAction(hooks, {
+            tool: 'graphRemove',
+            label: `Quitada del graficador: ${id}`,
+            msg: { type: 'graph_op', op: 'remove', id },
+            topic: 'aulaquipu:graph',
+            log: { id },
+            ok: `OK: curva ${id} quitada del graficador.`,
+          }),
       }),
       tool({
         name: 'memorySave',
