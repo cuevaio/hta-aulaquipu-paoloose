@@ -4,6 +4,33 @@
 // Se elige con NEXT_PUBLIC_API_MODE=mock|http.
 
 import type {
+  AdminAiTutor,
+  AdminGuide,
+  AdminGuideTopic,
+  AdminSkin,
+  Announcement,
+  AnnouncementInput,
+  ChatReport,
+  AdminTopic,
+  AiTutorInput,
+  AdminMetrics,
+  AdminUser,
+  AiPromotion,
+  AuditRow,
+  CreditOptions,
+  CreditScope,
+  CreditsInput,
+  CreditsResult,
+  MergeResult,
+  ModUser,
+  PromotionInput,
+  SkinInput,
+  StuckSession,
+  TopicPatch,
+  TopicGuide,
+} from "@/lib/admin-types";
+import type {
+  ActiveAnnouncement,
   AiTutor,
   Group,
   IncomingRequest,
@@ -69,7 +96,52 @@ export interface RoomToken {
   docName: string;
 }
 
+/** Panel de administración. El servidor exige sesión + admin en cada llamada (excepto me). */
+export interface AdminApi {
+  me(userId: UUID): Promise<{ isAdmin: boolean }>;
+  metrics(userId: UUID): Promise<AdminMetrics>;
+  audit(userId: UUID): Promise<AuditRow[]>;
+  searchUsers(userId: UUID, query: string): Promise<AdminUser[]>;
+  creditOptions(userId: UUID): Promise<CreditOptions>;
+  creditsPreview(userId: UUID, scope: CreditScope, value?: string): Promise<{ count: number }>;
+  grantCredits(userId: UUID, input: CreditsInput): Promise<CreditsResult>;
+  aiTutors(userId: UUID): Promise<AdminAiTutor[]>;
+  setAiPrice(userId: UUID, aiTutorId: UUID, price: number): Promise<void>;
+  promotions(userId: UUID): Promise<AiPromotion[]>;
+  /** id = null crea; con id edita. */
+  savePromotion(userId: UUID, id: UUID | null, input: PromotionInput): Promise<AiPromotion>;
+  deletePromotion(userId: UUID, id: UUID): Promise<void>;
+  guides(userId: UUID): Promise<AdminGuideTopic[]>;
+  guide(userId: UUID, topicId: UUID): Promise<AdminGuide>;
+  saveGuide(userId: UUID, topicId: UUID, input: TopicGuide): Promise<AdminGuide>;
+  deleteGuide(userId: UUID, topicId: UUID): Promise<void>;
+  topics(userId: UUID): Promise<AdminTopic[]>;
+  updateTopic(userId: UUID, topicId: UUID, patch: TopicPatch): Promise<void>;
+  /** Mueve pedidos, tutores, grupos, clases y guía de `sourceId` a `targetId` y borra el origen. */
+  mergeTopics(userId: UUID, sourceId: UUID, targetId: UUID): Promise<MergeResult>;
+  /** id = null crea; con id edita (persona, temas, precio y pausa). */
+  saveAiTutor(userId: UUID, id: UUID | null, input: AiTutorInput): Promise<AdminAiTutor>;
+  skins(userId: UUID): Promise<AdminSkin[]>;
+  /** id = null crea; con id edita (el tipo no cambia). */
+  saveSkin(userId: UUID, id: UUID | null, input: SkinInput): Promise<AdminSkin>;
+  /** Con 2+ caracteres busca; sin búsqueda lista a los suspendidos. */
+  moderationUsers(userId: UUID, query: string): Promise<ModUser[]>;
+  suspendUser(userId: UUID, targetId: UUID, reason: string): Promise<void>;
+  reactivateUser(userId: UUID, targetId: UUID): Promise<void>;
+  chatReports(userId: UUID): Promise<ChatReport[]>;
+  /** `suspend` suspende además a la persona reportada. */
+  resolveReport(userId: UUID, reportId: UUID, suspend: boolean): Promise<void>;
+  stuckSessions(userId: UUID): Promise<StuckSession[]>;
+  /** Cierra sin cobrar y libera los quipus retenidos. */
+  cancelSession(userId: UUID, sessionId: UUID): Promise<{ released: number }>;
+  announcements(userId: UUID): Promise<Announcement[]>;
+  saveAnnouncement(userId: UUID, id: UUID | null, input: AnnouncementInput): Promise<Announcement>;
+  deleteAnnouncement(userId: UUID, id: UUID): Promise<void>;
+}
+
 export interface ApiClient {
+  admin: AdminApi;
+
   /** Login con DNI (8 dígitos) y contraseña. Por ahora cuentas de prueba. */
   login(dni: string, password: string): Promise<{ userId: UUID }>;
   logout(): Promise<void>;
@@ -85,7 +157,8 @@ export interface ApiClient {
   openRequestsFeed(userId: UUID): Promise<IncomingRequest[]>;
 
   match(userId: UUID, requestId: UUID): Promise<MatchOptions>;
-  listAiTutors(): Promise<AiTutor[]>;
+  /** Con `userId` trae el precio efectivo (promociones) para ese alumno. */
+  listAiTutors(userId?: UUID): Promise<AiTutor[]>;
 
   book(userId: UUID, input: BookingInput): Promise<BookingResult>;
   startGroupSession(userId: UUID, groupId: UUID): Promise<{ sessionId: UUID }>;
@@ -111,6 +184,11 @@ export interface ApiClient {
 
   ledger(userId: UUID): Promise<LedgerLine[]>;
 
+  /** Anuncios vigentes para el banner del campus. */
+  activeAnnouncements(userId: UUID): Promise<ActiveAnnouncement[]>;
+  /** Reporta un mensaje del chat del campus (texto de hasta 140 caracteres). */
+  reportChat(userId: UUID, reportedId: UUID, text: string): Promise<void>;
+
   /** Token para el campus compartido (LiveKit). null si el servidor no tiene LiveKit. */
   campusToken(userId: UUID): Promise<{ url: string; token: string } | null>;
 
@@ -120,7 +198,7 @@ export interface ApiClient {
 export class ApiError extends Error {
   constructor(
     message: string,
-    public code: "insufficient_funds" | "not_found" | "invalid" | "conflict" | "network" | "unauthorized" = "invalid",
+    public code: "insufficient_funds" | "not_found" | "invalid" | "conflict" | "network" | "unauthorized" | "forbidden" | "suspended" = "invalid",
   ) {
     super(message);
   }

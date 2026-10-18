@@ -207,4 +207,13 @@ from profiles p
 where p.id::text like '10000000-0000-0000-0000-0000000000%'
 on conflict (profile_id) do nothing;
 
+-- Administrador demo (valentina5, DNI 70000001). Solo si ya se aplicó migrations/003_admin.sql.
+do $$
+begin
+  if to_regclass('public.admins') is not null then
+    insert into admins (profile_id) values ('10000000-0000-0000-0000-000000000001')
+    on conflict (profile_id) do nothing;
+  end if;
+end $$;
+
 commit;

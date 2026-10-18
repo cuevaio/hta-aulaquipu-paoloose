@@ -8,7 +8,7 @@ export class HttpError extends Error {
   constructor(
     public status: number,
     message: string,
-    public code: "insufficient_funds" | "not_found" | "invalid" | "conflict" | "unauthorized" | "forbidden" | "unavailable" = "invalid",
+    public code: "insufficient_funds" | "not_found" | "invalid" | "conflict" | "unauthorized" | "forbidden" | "suspended" | "unavailable" = "invalid",
   ) {
     super(message);
   }
@@ -97,7 +97,20 @@ const RPC_ERRORS: Record<string, [number, string, HttpError["code"]]> = {
   no_puedes_ensenarte: [400, "No puedes aceptar tu propio pedido.", "invalid"],
   no_puedes_unirte_a_tu_clase: [400, "No puedes unirte a una clase que tú enseñas.", "invalid"],
   tutor_no_ensena_tema: [400, "Ese tutor no enseña este tema.", "invalid"],
+  credito_monto_invalido: [400, "El monto va de 1 a 10000 quipus (positivo regala, negativo descuenta).", "invalid"],
+  credito_motivo_invalido: [400, "El motivo debe tener entre 3 y 140 caracteres.", "invalid"],
+  credito_alcance_invalido: [400, "Elige a quién aplicar los créditos.", "invalid"],
+  perfil_no_existe: [404, "No encontramos a ese alumno.", "not_found"],
+  tema_no_existe: [404, "Ese tema no existe.", "not_found"],
+  tema_invalido: [400, "Elige dos temas distintos para unir.", "invalid"],
+  clase_no_existe: [404, "No encontramos esa clase.", "not_found"],
+  tutor_pausado: [409, "Este tutor IA está en pausa por ahora. Elige otro.", "conflict"],
 };
+
+/** Códigos de Postgres/PostgREST cuando falta una tabla, función o columna (migración sin aplicar). */
+const MISSING_SCHEMA = new Set(["42P01", "42883", "42703", "PGRST202", "PGRST204", "PGRST205"]);
+
+export const isMissingSchema = (err: PgError | null | undefined) => !!err?.code && MISSING_SCHEMA.has(err.code);
 
 interface PgError {
   message: string;
@@ -109,6 +122,10 @@ export function fromDbError(err: PgError): HttpError {
     if (err.message?.includes(key)) return new HttpError(status, msg, code);
   }
   if (err.code === "23505") return new HttpError(409, "Eso ya estaba registrado.", "conflict");
+  if (isMissingSchema(err)) {
+    console.error("[api] falta aplicar una migración", err.code, err.message);
+    return new HttpError(503, "Falta aplicar la migración 003_admin.sql en la base de datos.", "unavailable");
+  }
   console.error("[api] error de base de datos", err.code, err.message);
   return new HttpError(500, "Algo salió mal en el servidor. Intenta de nuevo.", "invalid");
 }

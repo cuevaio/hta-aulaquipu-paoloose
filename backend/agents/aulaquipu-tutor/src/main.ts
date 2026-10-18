@@ -26,9 +26,11 @@ function classContextFrom(metadata: string | undefined): ClassContext {
       focus: typeof raw.focus === 'string' ? raw.focus : '',
       topic: typeof raw.topic === 'string' ? raw.topic : '',
       studentName: typeof raw.studentName === 'string' ? raw.studentName : '',
+      // Tope defensivo: la web ya la recorta, pero el metadata viene de fuera del proceso
+      guide: typeof raw.guide === 'string' ? raw.guide.trim().slice(0, 4500) : '',
     };
   } catch {
-    return { tutorName: 'Quipu', style: '', focus: '', topic: '', studentName: '' };
+    return { tutorName: 'Quipu', style: '', focus: '', topic: '', studentName: '', guide: '' };
   }
 }
 
@@ -37,6 +39,10 @@ export default defineAgent({
     // El nombre de la sala viene en el job: ctx.room.name sigue vacío hasta ctx.connect()
     const sessionId = sessionIdFromRoom(ctx.job.room?.name ?? ctx.room.name);
     const klass = classContextFrom(ctx.job.metadata);
+    // Una línea por sesión, sin volcar el contenido de la guía
+    console.log(
+      `[tutor] sesión ${sessionId ?? '?'}: guía del tema ${klass.guide ? `aplicada (${klass.guide.length} caracteres)` : 'no definida'}`,
+    );
 
     const publish = async (msg: Record<string, unknown>, topic: string) => {
       const local = ctx.room.localParticipant;
@@ -85,7 +91,7 @@ export default defineAgent({
     });
 
     await ctx.connect();
-    await logEvent('join', { name: klass.tutorName });
+    await logEvent('join', { name: klass.tutorName, guide: !!klass.guide });
 
     const who = klass.studentName ? ` a ${klass.studentName}` : ' al alumno';
     session.generateReply({
