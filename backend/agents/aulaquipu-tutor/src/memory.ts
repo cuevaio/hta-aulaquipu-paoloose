@@ -5,6 +5,9 @@ import { MemoryClient } from '@atomicmemory/sdk/browser';
 
 export type MemoryScope = { studentId: string; sessionId: string };
 
+// Si solo hay clave, se usa el servicio público de AtomicMemory
+const DEFAULT_API_URL = 'https://api.atomicstrata.ai';
+
 const TIMEOUT_MS = 4_000;
 const MAX_BRIEF_CHARS = 1_200;
 const MAX_RESULTS = 5;
@@ -35,10 +38,10 @@ function withTimeout<T>(work: Promise<T>): Promise<T> {
 // Las variables se leen aquí, no al importar: main.ts carga el .env después de sus imports
 function connect(): Promise<MemoryClient | null> {
   ready ??= (async () => {
-    const apiUrl = process.env.ATOMICMEMORY_API_URL;
+    const apiUrl = process.env.ATOMICMEMORY_API_URL || DEFAULT_API_URL;
     const apiKey = process.env.ATOMICMEMORY_API_KEY;
-    if (!apiUrl || !apiKey) {
-      warnOnce('faltan ATOMICMEMORY_API_URL / ATOMICMEMORY_API_KEY');
+    if (!apiKey) {
+      warnOnce('falta ATOMICMEMORY_API_KEY');
       return null;
     }
     try {
