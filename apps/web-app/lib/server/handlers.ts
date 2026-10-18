@@ -27,7 +27,7 @@ import { applyPromos } from "@/lib/server/promos";
 import { agentGuideFor, isAdmin, requireNotSuspended } from "@/lib/server/admin";
 import { normalizeTopic } from "@/lib/server/topics";
 import { sanitizeAvatar } from "@/lib/avatar-catalog";
-import { isSpriteSkin } from "@/lib/skins";
+import { isSpriteSkin, spriteSlot } from "@/lib/skins";
 import { closeRoom, createCampusToken, createRoomToken } from "@/lib/server/livekit";
 import type {
   Group,
@@ -604,7 +604,7 @@ export async function equipSkin(userId: string, id: string, body: Body) {
     const conflicts = sameKind.filter((k) => {
       const kSprite = isSpriteSkin(k.meta);
       if (kSprite !== isSprite) return false;
-      if (isSprite) return (k.meta?.slot ?? "acc") === (skin.meta?.slot ?? "acc");
+      if (isSprite) return spriteSlot(k.meta) === spriteSlot(skin.meta);
       return true;
     });
     await must(

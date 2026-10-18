@@ -1,6 +1,6 @@
 import type { AvatarConfig, Equipped, Skin, SkinMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { FRAME_STYLES, avatarColor, avatarLook, frameOf } from "@/lib/skins";
+import { FRAME_STYLES, avatarColor, avatarLook, frameOf, spriteSlot } from "@/lib/skins";
 import { SpriteAvatar, type SpriteSpec } from "@/components/sprite-avatar";
 import type { FigureView } from "@/components/sprite-figure";
 
@@ -146,7 +146,7 @@ function spriteLayersOf(config: AvatarConfig, meta: SkinMeta | undefined, parts:
     if (item) out.set(slot, item);
   }
   const add = (m?: SkinMeta) => {
-    if (m?.item) out.set(m.slot ?? m.item, m.item);
+    if (m?.item) out.set(spriteSlot(m), m.item);
   };
   add(meta);
   for (const p of parts) add(p.meta);
@@ -163,6 +163,7 @@ export function Avatar({
   bare = false,
   view,
   walking,
+  direction,
 }: {
   config: AvatarConfig;
   equipped?: Partial<Equipped> | null;
@@ -173,6 +174,8 @@ export function Avatar({
   bare?: boolean;
   view?: FigureView;
   walking?: boolean;
+  /** Dirección Habbo 0–7 hacia donde mira (solo sprites). */
+  direction?: number;
 }) {
   const look = avatarLook(equipped?.avatar?.meta);
   const color = look.color ?? avatarColor(config);
@@ -189,6 +192,7 @@ export function Avatar({
         colors={{ accent: color, skin: config.skin, hair: config.hair }}
         view={view}
         walking={walking}
+        direction={direction}
         frame={frame}
         size={size}
         className={className}

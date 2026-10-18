@@ -28,8 +28,8 @@ export interface CampusPeer {
 export interface PeerPosition {
   x: number;
   y: number;
-  /** 1 mira a la derecha, -1 a la izquierda */
-  f: number;
+  /** Hacia dónde mira: dirección Habbo 0–7 (ver directionFor en walk-store). */
+  d: number;
 }
 
 function peerFrom(p: RemoteParticipant): CampusPeer | null {
@@ -72,7 +72,13 @@ export function useCampusPresence(userId: string | null) {
     if (!r || r.state !== "connected") return;
     last.current.sent = pos;
     last.current.at = performance.now();
-    const payload = encoder.current.encode(JSON.stringify({ x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), f: pos.f }));
+    const payload = encoder.current.encode(JSON.stringify({
+        x: +pos.x.toFixed(2),
+        y: +pos.y.toFixed(2),
+        d: pos.d,
+        // f: lado al que mira, para clientes que aún no conocen `d`
+        f: pos.d >= 4 && pos.d <= 6 ? -1 : 1,
+      }));
     // Al caminar: con pérdida (el siguiente corrige). Latidos y llegadas: confiable
     void r.localParticipant.publishData(payload, { reliable, topic: TOPIC }).catch(() => {});
   }, []);
@@ -83,7 +89,7 @@ export function useCampusPresence(userId: string | null) {
       last.current.pos = pos;
       const s = last.current.sent;
       const elapsed = performance.now() - last.current.at;
-      const moved = !s || Math.abs(s.x - pos.x) > 0.02 || Math.abs(s.y - pos.y) > 0.02 || s.f !== pos.f;
+      const moved = !s || Math.abs(s.x - pos.x) > 0.02 || Math.abs(s.y - pos.y) > 0.02 || s.d !== pos.d;
       if (moved && elapsed >= SEND_EVERY_MS) send(pos);
     },
     [send],
@@ -155,7 +161,13 @@ export function useCampusPresence(userId: string | null) {
           const id = p.identity.slice("profile:".length);
           const wasHidden = !alive(id);
           lastSeen.current.set(id, performance.now());
-          positions.current.set(id, { x: msg.x, y: msg.y, f: msg.f === -1 ? -1 : 1 });
+          const d = (msg as { d?: unknown }).d;
+          const f = (msg as { f?: unknown }).f;
+          positions.current.set(id, {
+            x: msg.x,
+            y: msg.y,
+            d: Number.isInteger(d) && (d as number) >= 0 && (d as number) < 8 ? (d as number) : f === -1 ? 4 : 2,
+          });
           if (wasHidden) syncPeers();
         } catch {
           // mensaje inválido: se ignora

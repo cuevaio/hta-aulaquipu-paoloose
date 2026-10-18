@@ -150,13 +150,12 @@
 .markdown-body code { background: var(--muted); padding: 0.1em 0.35em; border-radius: 0.35em; font-size: 0.9em; }
 .markdown-body blockquote { border-left: 3px solid var(--primary); padding-left: 0.8em; color: var(--muted-foreground); }
 
-/* Caminata del avatar en el campus */
+/* Caminata del avatar en el campus: un rebote leve encima de los cuadros de paso */
 @keyframes walk-bob {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  25% { transform: translateY(-4px) rotate(-4deg); }
-  75% { transform: translateY(-4px) rotate(4deg); }
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.5px); }
 }
-.walking .player-body > * { animation: walk-bob 0.36s ease-in-out infinite; }
+.walking .player-body > * { animation: walk-bob 0.28s ease-in-out infinite; }
 
 /* Avatar animado del tutor IA (components/classroom/ai-tutor-avatar.tsx) */
 @keyframes tutor-bob {

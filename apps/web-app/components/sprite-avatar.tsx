@@ -185,8 +185,11 @@ export function SpriteAvatar({
   colors,
   view,
   walking = false,
+  direction = 2,
 }: {
   specs: SpriteSpec[];
+  /** Dirección Habbo 0–7 (2 = de frente, tres cuartos a la derecha). */
+  direction?: number;
   /** Muestra la animación de caminar (ver SpriteFigure). */
   walking?: boolean;
   colors?: FigureColors;
@@ -221,7 +224,7 @@ export function SpriteAvatar({
           <SpriteFigure
             layers={layers}
             walking={walking}
-            direction={2}
+            direction={direction}
             width={size * 1.6}
             height={size * 2.25}
             className="pointer-events-none absolute bottom-0 left-1/2 max-w-none -translate-x-1/2"
@@ -230,7 +233,7 @@ export function SpriteAvatar({
           <SpriteFigure
             layers={layers}
             walking={walking}
-            direction={2}
+            direction={direction}
             width={size}
             height={size}
             view={view ?? (size >= 100 ? "full" : "bust")}

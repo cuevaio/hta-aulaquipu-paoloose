@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import { ArrowRight, Compass, X } from "lucide-react";
-import { AvatarBuilder } from "@/components/avatar-builder";
+import { AvatarBuilder, initialAvatar } from "@/components/avatar-builder";
 import { btn } from "@/components/bits";
+import { useMutation } from "@/components/providers";
+import { api } from "@/lib/api";
 import type { AvatarConfig } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -82,20 +84,29 @@ export function AvatarDialog({
 }
 
 /**
- * Bienvenida: si aún no armó su avatar, primero el creador; luego 3 pasos que terminan en
- * dos acciones grandes: aprender o enseñar.
+ * Bienvenida: en la primera visita, si aún no armó su avatar, primero el creador; luego 3 pasos
+ * que terminan en dos acciones grandes: aprender o enseñar.
  */
 export function WelcomeOverlay({
   balance,
   avatar,
+  firstVisit,
   onClose,
 }: {
   balance: number;
   avatar: AvatarConfig | undefined;
+  /** Solo la bienvenida automática ofrece el creador; el botón "?" muestra los pasos. */
+  firstVisit: boolean;
   onClose: () => void;
 }) {
-  const [building, setBuilding] = useState(!avatar?.slots?.hh);
+  const [building, setBuilding] = useState(firstVisit && !avatar?.slots?.hh);
   const [step, setStep] = useState(0);
+  const { run } = useMutation();
+  // Saltar guarda el avatar de partida: así el creador no vuelve a abrirse en cada inicio de sesión
+  const skip = () => {
+    setBuilding(false);
+    void run((u) => api.saveAvatar(u, initialAvatar(avatar)));
+  };
   if (building) {
     return (
       <AvatarDialog
@@ -103,7 +114,8 @@ export function WelcomeOverlay({
         title="¡Hola! Crea tu avatar"
         subtitle="Así te verán en el campus y en tus clases. Puedes cambiarlo cuando quieras."
         closeLabel="Saltar por ahora"
-        onClose={() => setBuilding(false)}
+        onClose={skip}
+        onDone={() => setBuilding(false)}
       />
     );
   }

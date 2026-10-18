@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AvatarConfig, Equipped } from "@/lib/types";
-import { setWalking, useWalking } from "@/lib/campus/walk-store";
+import { DEFAULT_DIRECTION, directionFor, setDirection, setWalking, useDirection, useWalking } from "@/lib/campus/walk-store";
 import { AiAvatar, Avatar } from "@/components/avatar";
 import {
   CLASS_DOORS,
@@ -136,7 +136,8 @@ const BIG_EMOJI = new Set(["plant", "tree", "fountain"]);
 /** Avatar del campus que anima sus pasos cuando su dueño camina (estado en walk-store). */
 function WalkingAvatar({ id, ...props }: React.ComponentProps<typeof Avatar> & { id: string }) {
   const walking = useWalking(id);
-  return <Avatar {...props} walking={walking} bare />;
+  const direction = useDirection(id);
+  return <Avatar {...props} walking={walking} direction={direction} bare />;
 }
 
 export function CampusWorld({
@@ -174,7 +175,6 @@ export function CampusWorld({
   const viewport = useRef<HTMLDivElement>(null);
   const world = useRef<HTMLDivElement>(null);
   const player = useRef<HTMLDivElement>(null);
-  const body = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [T, setT] = useState(() => (typeof window !== "undefined" ? tileFor(window.innerWidth) : 48));
   const [nearId, setNearId] = useState<string | null>(null);
@@ -185,7 +185,7 @@ export function CampusWorld({
   const path = useRef<{ x: number; y: number }[]>([]);
   const pending = useRef<Interactable | null>(null);
   const callbacks = useRef({ onOpen, onRoomChange, onNearChange, onMove });
-  const facing = useRef(1);
+  const facing = useRef(DEFAULT_DIRECTION);
   // Elementos y posición dibujada de cada persona conectada (se interpola hacia la recibida)
   const peerEls = useRef(new Map<string, HTMLDivElement>());
   const personEls = useRef(new Map<string, HTMLDivElement>());
@@ -334,6 +334,7 @@ export function CampusWorld({
           p.y += (dy / d) * stepLen;
         }
         vx = dx;
+        vy = dy;
         moving = true;
       }
 
@@ -351,8 +352,8 @@ export function CampusWorld({
         player.current.style.zIndex = String(Math.floor(p.y * 10) + 5);
         player.current.classList.toggle("walking", moving);
         setWalking("me", moving);
-        if (vx) facing.current = vx < 0 ? -1 : 1;
-        if (body.current) body.current.style.transform = `scaleX(${facing.current})`;
+        facing.current = directionFor(vx, vy) ?? facing.current;
+        setDirection("me", facing.current);
 
         // Personas conectadas: se acercan suavemente a la última posición recibida
         const k = Math.min(1, dt * 12);
@@ -374,11 +375,10 @@ export function CampusWorld({
           el.style.zIndex = String(Math.floor(d.y * 10) + 5);
           el.classList.toggle("walking", moving);
           setWalking(id, moving);
-          const inner = el.firstElementChild as HTMLElement | null;
-          if (inner) inner.style.transform = `scaleX(${target.f})`;
+          setDirection(id, target.d);
         }
       }
-      callbacks.current.onMove({ x: p.x, y: p.y, f: facing.current });
+      callbacks.current.onMove({ x: p.x, y: p.y, d: facing.current });
 
       const near = nearest();
       if ((near?.id ?? null) !== lastNear) {
@@ -638,7 +638,7 @@ export function CampusWorld({
               style={{ marginBottom: T }}
               className="hidden absolute bottom-full left-1/2 z-10 w-max max-w-[11rem] -translate-x-1/2 rounded-2xl rounded-bl-sm bg-white px-2.5 py-1.5 text-xs leading-snug font-semibold break-words text-navy shadow-lg ring-1 ring-black/10"
             />
-          <div ref={body} className="player-body">
+          <div className="player-body">
             <WalkingAvatar id="me" config={me.avatar} equipped={me.equipped} size={T * 0.95} label={me.name} />
           </div>
           <span className="mt-0.5 rounded-full bg-mint px-1.5 py-px text-[10px] font-black whitespace-nowrap text-navy shadow">
