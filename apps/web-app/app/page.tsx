@@ -65,7 +65,7 @@ export default function LoginPage() {
     <div className="grid min-h-dvh grid-cols-1 lg:grid-cols-[1.1fr_1fr]">
       {/* Lado ilustrado: un pedacito del campus */}
       <section className="hero-sky relative flex flex-col overflow-hidden px-6 py-6 text-white md:px-12 md:py-10">
-        <Logo gold />
+        <Logo />
         <div className="my-10 lg:my-auto">
           <p className="mb-4 inline-flex items-center gap-2 rounded-full bg-aurum/15 px-3 py-1 text-xs font-bold text-aurum-hi ring-1 ring-aurum/40">
             <QuipuIcon /> Dinero de juego, aprendizaje de verdad

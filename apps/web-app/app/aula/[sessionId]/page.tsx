@@ -681,7 +681,7 @@ export default function ClassroomPage() {
         <Link href="/campus" className="rounded-xl p-2 hover:bg-navy-2" aria-label="Volver al campus sin terminar la clase">
           <ArrowLeft className="size-5" />
         </Link>
-        <Logo light className="hidden text-lg md:inline-flex" />
+        <Logo className="hidden text-lg md:inline-flex" />
         <div className="min-w-0 flex-1 md:ml-4">
           <p className="truncate font-heading text-lg font-semibold">{topic.name}</p>
           <p className="flex items-center gap-2 text-xs font-bold text-white/60">

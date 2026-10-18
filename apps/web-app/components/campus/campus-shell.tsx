@@ -260,7 +260,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[60] flex items-start justify-between gap-2 p-3">
         <div className="pointer-events-auto flex items-center gap-2 rounded-2xl bg-navy/90 px-3 py-2 shadow-lg backdrop-blur">
           <Link href="/campus" aria-label="Ir al campus">
-            <Logo light className="text-base" />
+            <Logo className="text-base" />
           </Link>
           {presence.online && (
             <span

@@ -56,7 +56,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-border bg-card/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
-            <Logo />
+            <Logo onLight />
             <span className="hidden items-center gap-1 rounded-full bg-navy px-2.5 py-1 text-xs font-extrabold text-white sm:inline-flex">
               <ShieldAlert className="size-3.5 text-mint" /> Admin
             </span>

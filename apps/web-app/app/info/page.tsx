@@ -42,7 +42,7 @@ export default function InfoPage() {
     <main className="min-h-dvh flex-1 bg-ink text-cream">
       <div className="mx-auto w-full max-w-6xl px-5 md:px-10">
         <header className="flex items-center justify-between py-6">
-          <Logo gold />
+          <Logo />
           <Link href="/presentacion" className={`${QUIET} text-sm font-bold`}>
             Presentación
           </Link>

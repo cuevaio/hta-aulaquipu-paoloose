@@ -22,7 +22,7 @@ const slideTitle: DeckSlide = {
   notes: "Presenta el nombre y la frase. En 20 segundos: es un campus donde los alumnos de secundaria se enseñan entre sí y con tutores de IA, pagando con dinero de juego.",
   content: (
     <div className="flex h-full flex-col justify-between px-[120px] py-[100px]">
-      <Logo gold className="origin-left scale-[2] text-[28px]" />
+      <Logo className="origin-left scale-[2] text-[28px]" />
       <h1 className="font-heading text-[124px] leading-[1.04] font-semibold">
         <span className="text-aurum">El que sabe enseña y gana.</span>
         <br />
@@ -231,7 +231,7 @@ const slideThanks: DeckSlide = {
   notes: "Cierra con la frase y deja esta pantalla para preguntas.",
   content: (
     <div className="flex h-full flex-col justify-between px-[120px] py-[100px]">
-      <Logo gold className="origin-left scale-[2] text-[28px]" />
+      <Logo className="origin-left scale-[2] text-[28px]" />
       <div>
         <h2 className="font-heading text-[120px] leading-[1.04] font-semibold">
           Pruébalo ahora<span className="text-aurum">.</span>
