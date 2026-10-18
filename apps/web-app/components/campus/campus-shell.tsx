@@ -32,6 +32,9 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const panelOpen = pathname !== "/campus";
+  // Un clic rezagado (p. ej. el segundo de un doble clic en "Terminar" del aula) caería sobre el fondo
+  // del panel recién abierto y lo cerraría: durante un instante tras abrirse, el fondo lo ignora.
+  const panelOpenedAt = useRef(0);
   const interactRef = useRef<(() => void) | null>(null);
   const goToRef = useRef<((targetId: string) => void) | null>(null);
   const bubbleRef = useRef<((id: string, text: string) => void) | null>(null);
@@ -203,6 +206,9 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
     [router, userId, toastMsg],
   );
   const close = useCallback(() => router.push("/campus"), [router]);
+  useEffect(() => {
+    if (panelOpen) panelOpenedAt.current = Date.now();
+  }, [panelOpen]);
 
   const onRoomChange = useCallback((r: Room | null) => {
     setRoom(r);
@@ -480,7 +486,9 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         <>
           <button
             aria-label="Cerrar panel"
-            onClick={close}
+            onClick={() => {
+              if (Date.now() - panelOpenedAt.current > 800) close();
+            }}
             className="absolute inset-0 z-[65] bg-navy/25 md:bg-transparent"
           />
           <aside

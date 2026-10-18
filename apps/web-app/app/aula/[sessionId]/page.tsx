@@ -120,7 +120,14 @@ export default function ClassroomPage() {
   const aiKey = data?.aiTutor ? `ai:${data.aiTutor.id}` : null;
   const myName = me?.profile.display_name.split(" ")[0] ?? "Tú";
 
-  const onRoomClosed = useCallback(() => router.replace(`/resumen/${sessionId}`), [router, sessionId]);
+  // Una sola salida al resumen: la sala cerrada, el evento "completed" y el cierre propio pueden coincidir
+  const leaving = useRef(false);
+  const goToSummary = useCallback(() => {
+    if (leaving.current) return;
+    leaving.current = true;
+    router.replace(`/resumen/${sessionId}`);
+  }, [router, sessionId]);
+  const onRoomClosed = goToSummary;
   const onMediaError = useCallback((m: string) => toast(m, "error"), [toast]);
   const live = useClassroomRoom({
     sessionId,
@@ -143,8 +150,8 @@ export default function ClassroomPage() {
 
   // Si la sesión ya terminó, el lugar correcto es el resumen
   useEffect(() => {
-    if (data && data.session.status !== "live") router.replace(`/resumen/${sessionId}`);
-  }, [data, sessionId, router]);
+    if (data && data.session.status !== "live") goToSummary();
+  }, [data, goToSummary]);
 
   const savedDoc = data?.session.doc_markdown ?? "";
   const doc = docDraft ?? savedDoc;
@@ -424,7 +431,7 @@ export default function ClassroomPage() {
     const res = await run((u) => api.endSession(u, sessionId));
     if (res) {
       transport?.publish({ type: "session_event", actor: myActor, kind: "completed", payload: {} });
-      router.push(`/resumen/${sessionId}`);
+      goToSummary();
     } else {
       finishing.current = false;
       wrapping.current = false;
