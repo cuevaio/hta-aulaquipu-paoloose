@@ -105,6 +105,14 @@ export default defineAgent({
       logEvent,
       remember: (content: string) => remember(scope, content),
       recall: (query: string) => recallBrief(scope, query),
+      // Aviso del agente al tutor de voz (p. ej. la imagen que se buscaba en segundo plano no apareció)
+      tell: (instructions: string) => {
+        try {
+          session.generateReply({ instructions });
+        } catch (err) {
+          console.warn('no se pudo avisar al tutor', err);
+        }
+      },
       topicImages: () => fetchTopicImages({ url: SUPABASE_URL, key: SUPABASE_SECRET_KEY }, klass.topicId),
     };
     const memoryBrief = await hooks.recall(

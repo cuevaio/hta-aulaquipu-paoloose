@@ -13,6 +13,8 @@ import {
   createAgent,
   createQuizBook,
   handleQuizAnswer,
+  showImage,
+  startImage,
   wrapUpClass,
   watchDelegations,
   type TutorHooks,
@@ -263,7 +265,7 @@ describe('showImage', () => {
         { url: 'https://cdn.example.com/celula.png', caption: 'Partes de la célula animal', credit: '' },
       ],
     });
-    const out = await run(toolsOf(hooks).showImage, { query: 'célula animal' });
+    const out = await showImage(hooks, new Set(), { query: 'célula animal' });
     expect(out).toMatch(/^OK/);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(published[0]).toMatchObject({
@@ -277,7 +279,7 @@ describe('showImage', () => {
   it('sin banco busca en Wikimedia: filtra título inseguro, mime, host y toma el crédito sin HTML', async () => {
     const fetchMock = jsonFetch(commons);
     const { hooks, published } = makeHooks({ fetch: fetchMock as unknown as typeof fetch });
-    const out = await run(toolsOf(hooks).showImage, { query: 'animal cell', caption: 'La célula animal' });
+    const out = await showImage(hooks, new Set(), { query: 'animal cell', caption: 'La célula animal' });
     expect(out).toMatch(/^OK/);
     const [calledUrl, init] = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
     expect(calledUrl).toContain('commons.wikimedia.org/w/api.php');
@@ -291,22 +293,53 @@ describe('showImage', () => {
 
   it('devuelve ERROR sin publicar si Wikimedia falla o no hay resultados', async () => {
     const down = makeHooks({ fetch: jsonFetch({}, false) as unknown as typeof fetch });
-    expect(await run(toolsOf(down.hooks).showImage, { query: 'mapa del Perú' })).toMatch(/^ERROR/);
+    expect(await showImage(down.hooks, new Set(), { query: 'mapa del Perú' })).toMatch(/^ERROR/);
     expect(down.published).toHaveLength(0);
     expect(down.events[0]).toMatchObject({ kind: 'error', payload: { tool: 'showImage' } });
 
     const empty = makeHooks({ fetch: jsonFetch({ batchcomplete: '' }) as unknown as typeof fetch });
-    expect(await run(toolsOf(empty.hooks).showImage, { query: 'algo raro' })).toMatch(/^ERROR: no encontré/);
+    expect(await showImage(empty.hooks, new Set(), { query: 'algo raro' })).toMatch(/^ERROR: no encontré/);
     expect(empty.published).toHaveLength(0);
   });
 
-  it('limita a 3 imágenes por clase', async () => {
+  it('limita a 3 imágenes por clase (contando las que aún se buscan)', async () => {
     const { hooks, published } = makeHooks({
       topicImages: async () => [1, 2, 3, 4].map((n) => ({ url: `https://cdn.example.com/${n}.png`, caption: `Imagen ${n}`, credit: '' })),
     });
-    const t = toolsOf(hooks).showImage;
-    for (let i = 0; i < 3; i++) expect(await run(t, { query: 'imagen' })).toMatch(/^OK/);
-    expect(await run(t, { query: 'imagen' })).toMatch(/^ERROR: ya se mostraron 3/);
+    const state = { shown: new Set<string>(), pending: 0 };
+    const runs = [1, 2, 3].map(() => startImage(hooks, state, { query: 'imagen' }));
+    expect(runs.every((r) => r.message.startsWith('OK'))).toBe(true);
+    expect(startImage(hooks, state, { query: 'imagen' }).message).toMatch(/^ERROR: ya se mostraron 3/);
+    await Promise.all(runs.map((r) => r.done));
     expect(published.filter((p) => p.topic === 'aulaquipu:doc')).toHaveLength(3);
+    expect(state.pending).toBe(0);
+  });
+
+  it('el tool responde al instante y la imagen llega después, en segundo plano', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const { hooks, published } = makeHooks({
+      topicImages: async () => {
+        await gate;
+        return [{ url: 'https://cdn.example.com/celula.png', caption: 'Célula', credit: '' }];
+      },
+    });
+    const out = await run(toolsOf(hooks).showImage, { query: 'célula' });
+    expect(out).toMatch(/^OK: buscando la imagen/);
+    expect(published).toHaveLength(0);
+    release();
+    await vi.waitFor(() => expect(published.map((p) => p.topic)).toEqual(['aulaquipu:doc', 'aulaquipu:action']));
+  });
+
+  it('si no se encuentra, publica un chip de error y avisa al tutor sin bloquear', async () => {
+    const tell = vi.fn();
+    const { hooks, published } = makeHooks({ tell, fetch: jsonFetch({ batchcomplete: '' }) as unknown as typeof fetch });
+    const r = startImage(hooks, { shown: new Set(), pending: 0 }, { query: 'algo raro' });
+    expect(r.message).toMatch(/^OK: buscando/);
+    await r.done;
+    expect(published).toEqual([
+      { topic: 'aulaquipu:action', msg: { type: 'action', tool: 'showImage', label: 'No pude mostrar la imagen: algo raro', ok: false } },
+    ]);
+    expect(tell).toHaveBeenCalledWith(expect.stringContaining('algo raro'));
   });
 });

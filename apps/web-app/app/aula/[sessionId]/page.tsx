@@ -280,8 +280,8 @@ export default function ClassroomPage() {
           wrapTimer.current = setTimeout(() => void finishRef.current(), 400);
           break;
         case "tool_action":
-          pushChat({ actor: e.actor, name: "", text: `✓ ${e.label}`, kind: "action" });
-          setActionChip(`✓ ${e.label}`);
+          pushChat({ actor: e.actor, name: "", text: `${e.ok === false ? "⚠" : "✓"} ${e.label}`, kind: "action" });
+          setActionChip(`${e.ok === false ? "⚠" : "✓"} ${e.label}`);
           if (chipTimer.current) clearTimeout(chipTimer.current);
           chipTimer.current = setTimeout(() => setActionChip(null), 3500);
           break;

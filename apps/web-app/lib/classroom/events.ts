@@ -57,7 +57,7 @@ export type ClassroomEvent =
   /** El agente terminó (ok) o no pudo escribir el resumen. */
   | { type: "wrap_up_done"; actor: string; ok: boolean }
   /** Confirmación de una herramienta del agente que sí se ejecutó (chip del chat). */
-  | { type: "tool_action"; actor: string; tool: string; label: string }
+  | { type: "tool_action"; actor: string; tool: string; label: string; ok?: boolean }
   | { type: "session_event"; actor: string; kind: string; payload: Record<string, unknown> };
 
 /**

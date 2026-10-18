@@ -9,6 +9,8 @@ export type TutorHooks = {
   recall: (query: string) => Promise<string>;
   /** Imágenes del banco del tema (admin). Opcional: sin banco, showImage va directo a Wikimedia. */
   topicImages?: () => Promise<Array<{ url: string; caption: string; credit: string }>>;
+  /** Pide al tutor de voz que diga algo (p. ej. que la imagen que buscaba en segundo plano no apareció). */
+  tell?: (instructions: string) => void;
   /** fetch para Wikimedia (se inyecta en las pruebas) */
   fetch?: typeof fetch;
 };
@@ -58,6 +60,10 @@ type Action = {
   log: Record<string, unknown>;
   ok: string;
 };
+
+// Chip de error en el chat (extra visible para el alumno cuando algo en segundo plano no salió)
+const failChip = (hooks: TutorHooks, tool: string, label: string) =>
+  hooks.publish({ type: 'action', tool, label, ok: false }, ACTION_TOPIC).catch(() => {});
 
 // Una herramienta solo cuenta como hecha si el mensaje salió a la sala. Si no, el resultado
 // que ve el modelo de respaldo (y por él el tutor de voz) dice explícitamente que NO se hizo.
@@ -249,6 +255,51 @@ export async function showImage(
   return out;
 }
 
+export type ImageState = { shown: Set<string>; pending: number };
+
+/**
+ * showImage sin bloquear al tutor: responde al instante y la búsqueda (banco o Wikimedia, hasta varios
+ * segundos) corre en segundo plano; al terminar, publica el documento y el chip, o un chip de error.
+ */
+export function startImage(
+  hooks: TutorHooks,
+  state: ImageState,
+  args: { query: string; caption?: string | undefined },
+): { message: string; done: Promise<void> } {
+  if (state.shown.size + state.pending >= MAX_IMAGES_PER_CLASS) {
+    return {
+      message: `ERROR: ya se mostraron ${MAX_IMAGES_PER_CLASS} imágenes en esta clase y NO se agregó otra; explica de palabra o con un gráfico.`,
+      done: Promise.resolve(),
+    };
+  }
+  state.pending++;
+  const done = (async () => {
+    let out: string;
+    try {
+      out = await showImage(hooks, state.shown, args);
+    } catch (err) {
+      out = `ERROR: ${String(err)}`;
+      await hooks.logEvent('error', { tool: 'showImage', stage: 'background', message: String(err) });
+    } finally {
+      state.pending--;
+    }
+    if (out.startsWith('OK')) return;
+    await failChip(hooks, 'showImage', `No pude mostrar la imagen: ${args.query}`.slice(0, 120));
+    try {
+      hooks.tell?.(
+        `La imagen que buscabas ("${args.query}") no apareció en pantalla. Díselo al alumno en una frase corta y sigue explicando de palabra o con un gráfico.`,
+      );
+    } catch {
+      // el aviso es un extra: el chip ya salió
+    }
+  })();
+  return {
+    message:
+      'OK: buscando la imagen; aparecerá en el documento en unos segundos. Sigue explicando de palabra mientras tanto y no esperes ni la menciones como lista hasta verla.',
+    done,
+  };
+}
+
 // --- Vigilancia de la delegación ---
 
 type DelegationEmitter = {
@@ -356,10 +407,7 @@ export function backendInstructions(c: ClassContext, memoryBrief: string): strin
       - Memoria de clases: llama memoryRecall cuando necesites saber qué trabajó o le costó al alumno
         antes, y memorySave con hechos duraderos de su progreso (qué domina, qué le cuesta, acuerdos)
         durante la clase y al cerrarla.
-      - Imágenes: llama showImage con una consulta corta del concepto visual (por ejemplo "célula animal",
-        "triángulo rectángulo", "mapa del Perú", "partes de una planta") y, si quieres, un título breve.
-        Usa el banco del tema o Wikimedia por ti. Máximo ${MAX_IMAGES_PER_CLASS} por clase; no la repitas ni la describas en el documento.
-      - Los gráficos, las preguntas de opción múltiple (quizAsk) y las reacciones del avatar (emote) los hace el tutor directamente, sin pasar por ti: no los repitas.
+      - Los gráficos, las preguntas de opción múltiple (quizAsk), las reacciones del avatar (emote) y las imágenes (showImage) los hace el tutor directamente, sin pasar por ti: no los repitas.
       - Puedes llamar varias herramientas seguidas.
       - Si te piden escribir, tabular, preguntar o guardar algo, DEBES llamar la herramienta: nunca respondas solo con texto.
       - Cada herramienta devuelve "OK" o "ERROR". Tu respuesta final se basa SOLO en esos resultados:
@@ -381,7 +429,7 @@ export function createAgent(
   memoryBrief = '',
   quizzes: QuizBook = createQuizBook(),
 ) {
-  const shownImages = new Set<string>();
+  const images: ImageState = { shown: new Set<string>(), pending: 0 };
   return Agent.create({
     instructions:
       dedent`
@@ -399,6 +447,7 @@ export function createAgent(
       - Anuncia en futuro ("voy a graficarlo") y llama la herramienta de inmediato; cuando devuelva OK, confírmalo y explica lo que se ve. Si devuelve ERROR, dilo ("no pude graficarlo") y reintenta una vez.
       - La pantalla cambia sola al graficador cuando graficas.
       - Para una pregunta de opción múltiple llama TÚ quizAsk (2 a 4 opciones, correctIndex = posición de la correcta empezando en 0, explicación breve). El alumno la ve como tarjeta en la pestaña Actividad, que se abre sola. Léela en voz alta de forma breve y espera su respuesta: no le digas cuál es la correcta, el sistema te avisará qué eligió y si acertó.
+      - Para un concepto visual (células, triángulos, mapas, partes de una planta, el sistema solar…) llama TÚ showImage con una consulta corta ("célula animal", "triángulo rectángulo", "mapa del Perú") y, si quieres, un título breve. Responde al instante y la imagen aparece en el documento en unos segundos: NO esperes; sigue hablando y explicando. Di que "va a aparecer en el documento", no que ya está a la vista; si no aparece, el sistema te avisará. Máximo ${MAX_IMAGES_PER_CLASS} por clase y solo como apoyo.
       - Para reaccionar llama TÚ emote (celebrate, think, surprised o encourage) cuando el alumno acierte, dude o te sorprenda; con moderación. Si se equivoca, anímalo.
 
       # Qué delegar
@@ -406,7 +455,6 @@ export function createAgent(
       - Delega cuando haya una tabla útil (comparaciones, valores). Lo que se entienda mejor graficado (funciones, rectas, puntos) NO se delega: lo grafica el tutor con graphSet.
       - Al cerrar la clase, o cuando el alumno domine algo nuevo, delega memorySave con un registro breve de su progreso.
       - Si el alumno menciona clases anteriores o retoman algo ya trabajado, delega memoryRecall antes de responder.
-      - Para conceptos visuales (células, triángulos, mapas, partes de una planta, el sistema solar…) delega que se muestre una imagen del tema; sirve como apoyo, no más de unas 3 veces por clase.
       - Saludos, preguntas de diagnóstico, ánimo y respuestas cortas: respóndelos tú, sin delegar.
 
       # Honestidad con lo que hace la pantalla
@@ -549,12 +597,16 @@ export function createAgent(
       tool({
         name: 'showImage',
         description:
-          'Muestra en el documento de la clase una imagen educativa de un concepto visual (célula, triángulo, mapa, planta…). Usa primero las imágenes del tema y si no hay, busca en Wikimedia Commons. Máximo 3 por clase.',
+          'Muestra en el documento de la clase una imagen educativa de un concepto visual (célula, triángulo, mapa, planta…). Responde al instante y la imagen aparece en unos segundos: sigue explicando mientras tanto. Usa primero las imágenes del tema y si no hay, busca en Wikimedia Commons. Máximo 3 por clase.',
         parameters: z.object({
           query: z.string().min(2).describe('Qué mostrar, en pocas palabras, por ejemplo "célula animal"'),
           caption: z.string().optional().describe('Título breve de la imagen para el alumno'),
         }),
-        execute: (args) => showImage(hooks, shownImages, args),
+        execute: (args) => {
+          const { message, done } = startImage(hooks, images, args);
+          void done;
+          return Promise.resolve(message);
+        },
       }),
       tool({
         name: 'emote',

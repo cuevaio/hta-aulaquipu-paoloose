@@ -182,7 +182,7 @@ export class LiveKitTransport implements ClassroomTransport {
       return;
     }
     if (topic === "aulaquipu:action" && msg.type === "action" && typeof msg.label === "string") {
-      this.emit({ type: "tool_action", actor, tool: typeof msg.tool === "string" ? msg.tool : "", label: msg.label.slice(0, 120) });
+      this.emit({ type: "tool_action", actor, tool: typeof msg.tool === "string" ? msg.tool : "", label: msg.label.slice(0, 120), ok: msg.ok !== false });
       return;
     }
     if (topic === "aulaquipu:quiz" && msg.type === "quiz" && typeof msg.id === "string" && typeof msg.question === "string") {
