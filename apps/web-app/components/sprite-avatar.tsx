@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { SmokePuff } from "@/components/smoke-puff";
+import type { Pose } from "@/lib/campus/teacher-avatars";
 import { SpriteFigure, type FigureLayer, type FigureView } from "@/components/sprite-figure";
 import { parseItem, type SpritesheetManifest } from "@/lib/figure";
 import { FRAME_STYLES } from "@/lib/skins";
@@ -188,7 +189,10 @@ export function SpriteAvatar({
   walking = false,
   direction = 2,
   puff = false,
+  pose,
 }: {
+  /** Pose fija de Habbo (std, spk, wav, sig, respect…) y cuadro; sin esto, de pie. */
+  pose?: Pose;
   specs: SpriteSpec[];
   /** Nube de humo al cambiar de look; la figura nueva aparece con la nube ya densa. */
   puff?: boolean;
@@ -253,6 +257,8 @@ export function SpriteAvatar({
           <SpriteFigure
             layers={layers}
             walking={walking}
+            action={pose?.action}
+            frame={pose?.frame}
             direction={direction}
             width={size * 1.6}
             height={size * 2.25}
@@ -262,6 +268,8 @@ export function SpriteAvatar({
           <SpriteFigure
             layers={layers}
             walking={walking}
+            action={pose?.action}
+            frame={pose?.frame}
             direction={direction}
             width={size}
             height={size}

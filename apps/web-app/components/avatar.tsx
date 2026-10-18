@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { FRAME_STYLES, avatarColor, avatarLook, figureSlot, frameOf, headSprite, spriteSlot } from "@/lib/skins";
 import { SpriteAvatar, type SpriteSpec } from "@/components/sprite-avatar";
 import type { FigureView } from "@/components/sprite-figure";
+import type { Pose } from "@/lib/campus/teacher-avatars";
 
 const loggedFallbacks = new Set<string>();
 
@@ -167,6 +168,7 @@ export function Avatar({
   walking,
   direction,
   puff,
+  pose,
 }: {
   config: AvatarConfig;
   equipped?: Partial<Equipped> | null;
@@ -181,6 +183,8 @@ export function Avatar({
   direction?: number;
   /** Nube de humo al cambiar de look (solo sprites): para avatares principales, no para miniaturas. */
   puff?: boolean;
+  /** Pose de Habbo para avatares de pie (tutores IA del campus). */
+  pose?: Pose;
 }) {
   const look = avatarLook(equipped?.avatar?.meta);
   const color = look.color ?? avatarColor(config);
@@ -199,6 +203,7 @@ export function Avatar({
         walking={walking}
         direction={direction}
         puff={puff}
+        pose={pose}
         frame={frame}
         size={size}
         className={className}

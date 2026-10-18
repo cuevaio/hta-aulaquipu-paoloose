@@ -7,7 +7,7 @@ import { BookOpen, GraduationCap, LayoutDashboard, HelpCircle, LogOut, ShieldChe
 import { api, API_MODE } from "@/lib/api";
 import { AI_SPOTS, CLASS_DOORS, type Room } from "@/lib/campus/map";
 import { KILLA, type GuideTopic } from "@/lib/campus/guides";
-import { GuideDialog, GuideSprite } from "@/components/campus/guide-dialog";
+import { GuidePanel, GuideSprite } from "@/components/campus/guide-dialog";
 import { useQuery, useSession, useToast } from "@/components/providers";
 import { Avatar } from "@/components/avatar";
 import { Quipus, friendlyWhen } from "@/components/bits";
@@ -44,7 +44,8 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
   const [banner, setBanner] = useState<Room | null>(null);
   const [near, setNear] = useState<Interactable | null>(null);
   // Killa, la mascota guía: su conversación y el lugar al que te está llevando
-  const [guideOpen, setGuideOpen] = useState(false);
+  // La mascota arranca abierta; minimizada queda como una figura chica en la esquina
+  const [guideOpen, setGuideOpen] = useState(true);
   const [guiding, setGuiding] = useState<GuideTopic | null>(null);
   const onTrailEnd = useCallback(() => setGuiding(null), []);
   // Al entrar asoma un "¿Te ayudo?" unos segundos, una vez por visita
@@ -261,11 +262,6 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
           <Link href="/campus" aria-label="Ir al campus">
             <Logo light className="text-base" />
           </Link>
-          {room && (
-            <span className="hidden rounded-full bg-navy-3 px-2.5 py-1 text-xs font-bold text-white sm:inline">
-              {room.emoji} {room.name}
-            </span>
-          )}
           {presence.online && (
             <span
               className="flex items-center gap-1.5 rounded-full bg-navy-3 px-2.5 py-1 text-xs font-bold text-white"
@@ -406,7 +402,7 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Acción disponible cerca */}
-      {near && !panelOpen && !guideOpen && (
+      {near && !panelOpen && (
         <div className="absolute inset-x-0 bottom-24 z-[55] flex justify-center px-4">
           <button
             onClick={() => interactRef.current?.()}
@@ -425,19 +421,19 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
 
       {/* Barra inferior */}
       <nav className="absolute inset-x-0 bottom-3 z-[55] flex justify-center px-3">
-        <div className="flex w-full max-w-full justify-center gap-1 sm:w-auto rounded-2xl bg-navy/90 p-1.5 shadow-xl backdrop-blur">
+        <div className="flex w-full max-w-full justify-center gap-1.5 sm:w-auto rounded-2xl bg-navy/90 p-2 shadow-xl backdrop-blur">
           {BAR.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
               className={cn(
-                "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-xs leading-tight font-bold whitespace-nowrap transition-colors sm:min-w-20 sm:flex-none sm:px-4 sm:text-sm",
+                "flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-[13px] leading-tight font-extrabold whitespace-nowrap ring-1 transition-colors sm:min-w-24 sm:flex-none sm:px-5 sm:text-base",
                 pathname === href
-                  ? "bg-mint text-navy"
-                  : "text-white/75 hover:bg-navy-3 hover:text-white",
+                  ? "bg-mint text-navy ring-mint"
+                  : "bg-white/10 text-white ring-white/15 hover:bg-white/20",
               )}
             >
-              <Icon className="size-5 shrink-0" />
+              <Icon className="size-6 shrink-0" />
               {label}
             </Link>
           ))}
@@ -471,10 +467,10 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
           )}
         </div>
       )}
-      {guideOpen && !welcome && (
-        <GuideDialog
+      {guideOpen && !welcome && !panelOpen && (
+        <GuidePanel
           guide={KILLA}
-          onClose={() => setGuideOpen(false)}
+          onMinimize={() => setGuideOpen(false)}
           onPick={(topic) => {
             setGuideOpen(false);
             if (!topic.go) return;
@@ -514,16 +510,18 @@ export function CampusShell({ children }: { children: React.ReactNode }) {
         <AvatarDialog avatar={me.profile.avatar_config} onClose={() => setAvatarOpen(false)} />
       )}
 
-      {!panelOpen && (
-        <p className="pointer-events-none absolute bottom-24 left-4 z-[50] hidden rounded-xl bg-navy/70 px-3 py-2 text-[11px] font-semibold text-white/80 lg:block">
-          ← ↑ → ↓ o WASD para moverte · clic en el mapa para caminar · X para
-          interactuar
-          {API_MODE === "mock" && (
-            <span className="block text-white/50">
-              Modo demo: datos ficticios en este navegador
+      {/* Espacio actual, abajo a la derecha (sobre el botón del chat) */}
+      {!panelOpen && (room || API_MODE === "mock") && (
+        <div className="pointer-events-none absolute right-3 bottom-[9.5rem] z-[56] flex flex-col items-end gap-1">
+          {room && (
+            <span className="rounded-full bg-navy/90 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur">
+              {room.emoji} {room.name}
             </span>
           )}
-        </p>
+          {API_MODE === "mock" && (
+            <span className="rounded-lg bg-navy/70 px-2 py-0.5 text-[10px] font-semibold text-white/70">Modo demo: datos ficticios</span>
+          )}
+        </div>
       )}
 
       {/* Panel con la pantalla abierta */}

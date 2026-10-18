@@ -149,6 +149,15 @@
   50% { box-shadow: 0 0 0 10px oklch(0.84 0.15 85 / 0%); }
 }
 .trail-goal { animation: trail-goal 1.1s ease-in-out infinite; }
+/* Las flechas laten una tras otra, como si el camino "avanzara" hacia el destino */
+@keyframes trail-arrow {
+  0%, 100% { opacity: 0.85; transform: translateX(-1px); filter: drop-shadow(0 0 0 transparent); }
+  50% { opacity: 1; transform: translateX(2px); filter: drop-shadow(0 0 4px oklch(0.9 0.15 85)); }
+}
+.trail-arrow { animation: trail-arrow 1.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@media (prefers-reduced-motion: reduce) {
+  .trail-arrow, .trail-goal { animation: none; }
+}
 
 .markdown-body h1 { font-size: 1.4rem; font-weight: 800; margin: 0.4em 0; }
 .markdown-body h2 { font-size: 1.15rem; font-weight: 800; margin: 0.8em 0 0.3em; }

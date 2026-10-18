@@ -22,7 +22,7 @@ import {
   type WorldObject,
 } from "@/lib/campus/map";
 import { BUBBLE_MS } from "@/lib/campus/chat-rules";
-import { teacherAvatar } from "@/lib/campus/teacher-avatars";
+import { teacherAvatar, useTeacherPose } from "@/lib/campus/teacher-avatars";
 import { cn } from "@/lib/utils";
 import { FURNI_SIZE, furniScale, furniSrc } from "@/lib/campus/furni";
 import type { CampusPeer, PeerPosition } from "@/lib/campus/use-campus-presence";
@@ -134,6 +134,12 @@ const OBJECT_STYLE: Partial<Record<WorldObject["kind"], string>> = {
 const BIG_EMOJI = new Set(["plant", "tree", "fountain"]);
 
 /** Avatar del campus que anima sus pasos cuando su dueño camina (estado en walk-store). */
+/** Tutor IA de pie que da clase: cambia de pose solo (ver useTeacherPose). */
+function TeacherNpc({ id, color, size, label }: { id: string; color: string; size: number; label: string }) {
+  const pose = useTeacherPose(id);
+  return <Avatar config={teacherAvatar(id, color)} pose={pose} size={size} label={label} bare />;
+}
+
 function WalkingAvatar({ id, ...props }: React.ComponentProps<typeof Avatar> & { id: string }) {
   const walking = useWalking(id);
   const direction = useDirection(id);
@@ -524,14 +530,18 @@ export function CampusWorld({
                 className="trail-step pointer-events-none absolute grid place-items-center"
                 style={{ left: (c.x - 0.5) * T, top: (c.y - 0.5) * T, width: T, height: T, zIndex: 2, animationDelay: `${i * 35}ms` }}
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="drop-shadow-[0_1px_1px_rgb(0_0_0/0.25)]"
-                  style={{ width: T * 0.34, height: T * 0.34, transform: `rotate(${c.angle}deg)` }}
-                  aria-hidden
-                >
-                  <path d="M9 6l6 6-6 6" fill="none" stroke="oklch(0.72 0.16 75)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                {/* Disco oscuro detrás: la flecha se lee sobre cualquier piso, claro u oscuro */}
+                <div className="grid place-items-center rounded-full bg-navy/45 shadow-[0_0_0_2px_rgb(255_255_255/0.35)]" style={{ width: T * 0.6, height: T * 0.6 }}>
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="trail-arrow"
+                    style={{ width: T * 0.42, height: T * 0.42, transform: `rotate(${c.angle}deg)`, animationDelay: `${i * 90}ms` }}
+                    aria-hidden
+                  >
+                    <path d="M8 4l8 8-8 8" fill="none" stroke="rgb(0 0 0 / 0.35)" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M8 4l8 8-8 8" fill="none" stroke="oklch(0.86 0.16 85)" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
               </div>
             ))}
             <div
@@ -659,7 +669,7 @@ export function CampusWorld({
               {p.ai ? (
                 // Tutor IA de pie como un profe más; la etiqueta con su emoji recuerda que es IA
                 <div className="relative">
-                  <Avatar config={teacherAvatar(p.id, p.ai.color)} size={T * 0.95} label={p.name} bare />
+                  <TeacherNpc id={p.id} color={p.ai.color} size={T * 0.95} label={p.name} />
                   <span
                     className="absolute -right-3 bottom-0 flex items-center gap-0.5 rounded-full bg-navy px-1 py-px text-[9px] font-black text-mint ring-2 ring-white"
                     aria-hidden
