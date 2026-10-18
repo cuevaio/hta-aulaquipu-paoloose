@@ -25,7 +25,7 @@
 ## Tasks
 - [x] T1 — `/info` landing.
 - [x] T2 — `/presentacion` deck.
-- [ ] T3 — Browser review (orchestrator).
+- [x] T3 — Browser review (orchestrator): /info hero, problem stats with sources, 3 steps, AI tutor cards, campus, safety sections render cleanly at 1393px; /presentacion slides 1 (title), 4 (loop diagram) and 6 (architecture diagram) render without overflow, counter and controls visible. Not checked: mobile widths, print, fullscreen, notes panel.
 
 ## Progress
 - T1 done: `app/info/page.tsx` (static server component, metadata/OG), shared copy in `lib/public-content.ts` (stats worded as in the spec; team names and public URL are marked placeholders), login footer links in `app/page.tsx`. Checks: tsc clean, eslint clean, /info 200 and / 200 without cookie. Browser review pending (T3).
