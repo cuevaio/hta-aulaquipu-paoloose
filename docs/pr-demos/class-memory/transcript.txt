@@ -21,4 +21,3 @@ Verificado: continuidad entre clases, aislamiento y borrado confirmado.
       Tests  1 passed | 5 skipped (6)
    Start at  00:01:37
    Duration  9.14s (transform 22ms, setup 0ms, import 39ms, tests 9.04s, environment 0ms)
-
